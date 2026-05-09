@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block title %}{{ page }} - Rebooter-Droids{% endblock %}
+{% block content %}
+<section class="placeholder">
+  <h1>{{ page }}</h1>
+  <p class="muted">This page lands in a subsequent task. Endpoints under <code>/api/v1/admin/{{ page|lower }}</code> may already be functional.</p>
+  <p><a href="{{ url_for('admin_ui.index') }}">Back to dashboard</a></p>
+</section>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+{% block title %}Firmware - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>Firmware</h1>
+
+{% if uploaded %}
+<section class="placeholder" style="border-color:#2563eb">
+  <h2>Uploaded</h2>
+  <p>{{ uploaded.filename }} · sha256 <code>{{ uploaded.sha256 }}</code> · <a href="{{ uploaded.download_url }}">{{ uploaded.download_url }}</a></p>
+</section>
+{% endif %}
+
+<section class="placeholder">
+  <h2>Upload a release</h2>
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('admin_ui.firmware_upload_submit') }}">
+    <label>Version <input type="text" name="version" placeholder="0.1.2" required></label>
+    <label>Channel
+      <select name="channel"><option value="dev">dev</option><option value="beta">beta</option><option value="stable">stable</option></select>
+    </label>
+    <label>SHA256 (optional, will be verified) <input type="text" name="sha256"></label>
+    <label>Release notes <textarea name="release_notes" rows="3"></textarea></label>
+    <label>Binary <input type="file" name="file" required></label>
+    <button type="submit">Upload</button>
+  </form>
+</section>
+
+<h2>Releases</h2>
+{% if releases %}
+<table>
+  <thead><tr><th>Version</th><th>Channel</th><th>SHA256</th><th>Created</th><th>Deploy</th><th></th></tr></thead>
+  <tbody>
+  {% for r in releases %}
+    <tr>
+      <td><a href="{{ r.download_url }}">{{ r.version }}</a></td>
+      <td><span class="badge">{{ r.channel }}</span></td>
+      <td><code style="font-size:0.75rem">{{ r.sha256[:16] }}…</code></td>
+      <td>{{ r.created_at }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_ui.firmware_deploy_submit') }}">
+          <input type="hidden" name="release_id" value="{{ r.id }}">
+          <select name="target_type">
+            <option value="all_devices">all devices</option>
+            <option value="device">device…</option>
+            <option value="group">group…</option>
+          </select>
+          <select name="target_id">
+            <option value="">—</option>
+            {% for d in devices %}<option value="{{ d.id }}">dev: {{ d.display_name or d.id }}</option>{% endfor %}
+            {% for g in groups %}<option value="{{ g.id }}">grp: {{ g.name }}</option>{% endfor %}
+          </select>
+          <label><input type="checkbox" name="force"> force</label>
+          <button type="submit">Deploy</button>
+        </form>
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('admin_ui.firmware_delete_submit', release_id=r.id) }}">
+          <button type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No firmware releases yet.</p>
+{% endif %}
+
+<h2>Deployments</h2>
+{% if deployments %}
+<table>
+  <thead><tr><th>When</th><th>Release</th><th>Target</th><th>Progress</th></tr></thead>
+  <tbody>
+  {% for d in deployments %}
+    <tr>
+      <td>{{ d.created_at }}</td>
+      <td>{{ d.release.version if d.release else '—' }} ({{ d.channel }})</td>
+      <td><span class="badge">{{ d.target_type }}{% if d.target_id %} · {{ d.target_id[:14] }}{% endif %}</span></td>
+      <td>
+        <span class="badge green">{{ d.counts.completed or 0 }} done</span>
+        <span class="badge amber">{{ d.counts.delivered or 0 }} delivered</span>
+        <span class="badge">{{ d.counts.pending or 0 }} pending</span>
+        <span class="badge red">{{ d.counts.failed or 0 }} failed</span>
+        / {{ d.counts.total or 0 }} total
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No deployments yet.</p>
+{% endif %}
+{% endblock %}

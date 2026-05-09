@@ -1,0 +1,83 @@
+{% extends "layout.html" %}
+{% block title %}{{ device.display_name or device.id }} - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.list_devices_page') }}">← Devices</a></p>
+<h1>{{ device.display_name or device.id }}</h1>
+<p class="muted">{{ device.id }} · {{ device.hardware_model or 'unknown model' }} · firmware {{ device.firmware_version or '—' }}</p>
+
+<section class="placeholder">
+  <h2>Heartbeat</h2>
+  {% if device.latest_heartbeat %}
+    <p>Last seen <strong>{{ device.latest_heartbeat.received_at }}</strong></p>
+    <ul>
+      <li>mode: {{ device.latest_heartbeat.mode or '—' }}</li>
+      <li>relay_on: {{ device.latest_heartbeat.relay_on }}</li>
+      <li>health: {{ device.latest_heartbeat.health_state or '—' }}</li>
+      <li>uptime_s: {{ device.latest_heartbeat.uptime_seconds or 0 }}</li>
+      <li>incident_cycles: {{ device.latest_heartbeat.incident_cycles or 0 }}</li>
+    </ul>
+  {% else %}
+    <p class="muted">No heartbeats received yet.</p>
+  {% endif %}
+</section>
+
+<section class="placeholder">
+  <h2>Edit metadata</h2>
+  <form method="post" action="{{ url_for('admin_ui.device_update_submit', device_id=device.id) }}">
+    <label>Display name <input type="text" name="display_name" value="{{ device.display_name or '' }}"></label>
+    <label>Notes <textarea name="notes" rows="3">{{ device.notes or '' }}</textarea></label>
+    <label><input type="checkbox" name="central_management_enabled" {% if device.central_management_enabled %}checked{% endif %}> Central management enabled</label>
+    <button type="submit">Save</button>
+  </form>
+</section>
+
+<section class="placeholder">
+  <h2>Send command</h2>
+  <div class="actions">
+    {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
+    <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}">
+      <input type="hidden" name="type" value="{{ t }}">
+      <button type="submit">{{ t }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}">
+    <input type="hidden" name="type" value="relay_cycle">
+    <label>relay_cycle — power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
+    <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
+    <button type="submit">Send relay_cycle</button>
+  </form>
+</section>
+
+<section class="placeholder">
+  <h2>Pending commands</h2>
+  {% if device.pending_commands %}
+  <table>
+    <thead><tr><th>Type</th><th>Status</th><th>Created</th><th>Expires</th></tr></thead>
+    <tbody>
+    {% for c in device.pending_commands %}
+      <tr><td>{{ c.type }}</td><td>{{ c.status }}</td><td>{{ c.created_at }}</td><td>{{ c.expires_at }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No pending commands.</p>
+  {% endif %}
+</section>
+
+<section class="placeholder">
+  <h2>Recent events</h2>
+  {% if device.recent_events %}
+  <table>
+    <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for e in device.recent_events %}
+      <tr><td>{{ e.timestamp }}</td><td>{{ e.type }}</td><td>{{ e.message or '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No events yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

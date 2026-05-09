@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block title %}{{ group.name }} - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.list_groups_page') }}">← Groups</a></p>
+<h1>{{ group.name }}</h1>
+<p class="muted">{{ group.id }} · {{ group.member_count }} member(s)</p>
+
+<section class="placeholder">
+  <h2>Send command to all members</h2>
+  <div class="actions">
+    {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
+    <form method="post" action="{{ url_for('admin_ui.group_send_command_submit', group_id=group.id) }}">
+      <input type="hidden" name="type" value="{{ t }}">
+      <button type="submit">{{ t }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  <form method="post" action="{{ url_for('admin_ui.group_send_command_submit', group_id=group.id) }}">
+    <input type="hidden" name="type" value="relay_cycle">
+    <label>relay_cycle — power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
+    <button type="submit">Fan out relay_cycle</button>
+  </form>
+</section>
+
+<section class="placeholder">
+  <h2>Members</h2>
+  {% if group.members %}
+  <table>
+    <thead><tr><th>Name</th><th>State</th><th>Last heartbeat</th><th></th></tr></thead>
+    <tbody>
+    {% for m in group.members %}
+      <tr>
+        <td><a href="{{ url_for('admin_ui.device_detail_page', device_id=m.id) }}">{{ m.display_name or m.id }}</a></td>
+        <td><span class="badge">{{ m.registration_state }}</span></td>
+        <td>{{ m.last_heartbeat_at or '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin_ui.group_remove_member_submit', group_id=group.id, device_id=m.id) }}">
+            <button type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No members yet.</p>
+  {% endif %}
+</section>
+
+<section class="placeholder">
+  <h2>Add a member</h2>
+  {% if available_devices %}
+  <form method="post" action="{{ url_for('admin_ui.group_add_member_submit', group_id=group.id) }}">
+    <label>Device
+      <select name="device_id">
+        {% for d in available_devices %}<option value="{{ d.id }}">{{ d.display_name or d.id }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Add</button>
+  </form>
+  {% else %}
+  <p class="muted">All known devices are already members of this group.</p>
+  {% endif %}
+</section>
+{% endblock %}
