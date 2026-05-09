@@ -129,3 +129,37 @@ If any step fails, the script aborts; nothing partial is shipped.
 curl -fsS https://www.voipguru.org/rebooter/api/v1/version
 curl -fsSI https://www.voipguru.org/rebooter/firmware/    # 403 if empty (expected)
 ```
+
+## Architectural rules
+
+### Postgres is private to its node
+
+The `rebooter-droids-pg` container is **never** exposed beyond the
+local docker network — no LAN port, no SSH tunnel, no cross-host
+bridge. The DB is consumed only by the `rebooter-droids` Flask
+container on the same node.
+
+### Cross-component access is HTTPS API only
+
+Every consumer of rebooter-droids data — including the future node-2
+on tmrwww02, ops tooling, the firmware team, the mobile app — uses
+the authenticated public REST API at
+`https://<node>/rebooter/api/v1/`. Direct database clients are
+forbidden by project rule.
+
+When node-2 lands (v0.3+), inter-node sync happens via dedicated
+internal HTTPS endpoints on the `rebooter-droids` container —
+not via DB replication or shared storage of the cluster directory.
+
+## Multi-node deployment plan (v0.3+)
+
+Two nodes:
+
+- **node-1** on tmrwww01 → <https://www.voipguru.org/rebooter/>
+- **node-2** on tmrwww02 → <https://www2.voipguru.org/rebooter/>
+
+Each node runs its own `rebooter-droids` + `rebooter-droids-pg` pair.
+Sync between them goes through HTTPS APIs (TBD in v0.3 design). Same
+admin credentials and SSH keys on both nodes; never SSH to FQDNs, only
+short hostnames `tmrwww01` / `tmrwww02`. Rolling deploys per
+`feedback_rolling_deploy.md` — never both nodes simultaneously.
