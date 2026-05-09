@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Rebooter-Droids{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
@@ -16,6 +17,10 @@
       <a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a>
       <a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a>
       <a href="{{ url_for('admin_ui.events_page') }}">Events</a>
+      {% if current_user is defined and current_user.role in ('super_admin','admin') %}
+      <a href="{{ url_for('admin_ui.users_page') }}">Users</a>
+      <a href="{{ url_for('admin_ui.audit_page') }}">Audit</a>
+      {% endif %}
     </nav>
     <span class="version">v{{ version }}</span>
   </header>

@@ -2,10 +2,37 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, g, request
 
-from app.middleware.admin_auth import admin_required_api
+from app.middleware.admin_auth import (
+    ADMIN_AND_UP,
+    SUPER_ADMIN_ONLY,
+    WRITE_ROLES,
+    admin_required_api,
+    role_required_api,
+)
+from app.models.users import (
+    ALL_ROLES,
+    ROLE_ADMIN,
+    ROLE_OPERATOR,
+    ROLE_SUPER_ADMIN,
+    ROLE_VIEWER,
+)
+from app.services import audit
+from app.services.invitations import (
+    InvitationError,
+    list_invitations,
+    mint_invitation,
+)
+from app.services.users import (
+    UserError,
+    deactivate_user,
+    list_users,
+    revoke_all_tokens,
+    update_user_role,
+)
 from app.middleware.response import err, ok
 from app.services.commands import enqueue_for_device, enqueue_for_group
 from app.services.devices import (
+    UnknownPatchFieldError,
     get_device_detail,
     list_devices as svc_list_devices,
     update_device,
@@ -136,17 +163,28 @@ def get_device(device_id: str):
 
 
 @bp.patch("/devices/<device_id>")
-@admin_required_api
+@role_required_api(*ADMIN_AND_UP)
 def patch_device(device_id: str):
     body = request.get_json(silent=True) or {}
-    updated = update_device(device_id, body)
+    try:
+        updated = update_device(device_id, body)
+    except UnknownPatchFieldError as e:
+        return err("validation_failed", str(e), status=400)
     if updated is None:
         return err("device_unknown", "Device not found.", status=404)
+    audit.record(
+        "device.updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={"fields": sorted(body.keys())},
+    )
     return ok(updated)
 
 
 @bp.post("/devices/<device_id>/commands")
-@admin_required_api
+@role_required_api(*WRITE_ROLES)
 def send_device_command(device_id: str):
     body = request.get_json(silent=True) or {}
     cmd_type = body.get("type")
@@ -164,6 +202,14 @@ def send_device_command(device_id: str):
         return err("device_unknown", "Device not found.", status=404)
     except ValueError as e:
         return err("validation_failed", str(e), status=400)
+    audit.record(
+        "device.command_issued",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={"type": cmd_type, "command_id": cmd.id},
+    )
     return ok(
         {
             "command_id": cmd.id,
@@ -268,7 +314,7 @@ def list_firmware_releases_api():
 
 
 @bp.post("/firmware/releases")
-@admin_required_api
+@role_required_api(*ADMIN_AND_UP)
 def create_firmware_release():
     settings = current_app.config["SETTINGS"]
     if "file" not in request.files:
@@ -295,7 +341,7 @@ def create_firmware_release():
 
 
 @bp.delete("/firmware/releases/<release_id>")
-@admin_required_api
+@role_required_api(*ADMIN_AND_UP)
 def delete_firmware_release(release_id: str):
     settings = current_app.config["SETTINGS"]
     if not delete_release(release_id, settings):
@@ -310,7 +356,7 @@ def list_firmware_deployments_api():
 
 
 @bp.post("/firmware/deployments")
-@admin_required_api
+@role_required_api(*ADMIN_AND_UP)
 def create_firmware_deployment():
     body = request.get_json(silent=True) or {}
     release_id = (body.get("release_id") or body.get("version") or "").strip()
@@ -361,6 +407,175 @@ def delete_site_api(site_id: str):
     if not svc_delete_site(site_id):
         return err("site_unknown", "Site not found.", status=404)
     return ok({"deleted": True})
+
+
+# ── users + invitations + audit (super-admin or admin) ──────────────────
+
+@bp.get("/users")
+@role_required_api(*ADMIN_AND_UP)
+def list_users_api():
+    return ok({"users": list_users()})
+
+
+@bp.post("/users/<user_id>/role")
+@role_required_api(*SUPER_ADMIN_ONLY)
+def change_user_role(user_id: str):
+    body = request.get_json(silent=True) or {}
+    role = body.get("role") or ""
+    if role not in ALL_ROLES:
+        return err("validation_failed", f"role must be one of {ALL_ROLES}", status=400)
+    try:
+        out = update_user_role(user_id, role)
+    except UserError as e:
+        return err("validation_failed", str(e), status=400)
+    if out is None:
+        return err("user_unknown", "User not found.", status=404)
+    audit.record(
+        "user.role_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={"new_role": role},
+    )
+    return ok(out)
+
+
+@bp.post("/users/<user_id>/deactivate")
+@role_required_api(*SUPER_ADMIN_ONLY)
+def deactivate_user_api(user_id: str):
+    if user_id == g.current_user.id:
+        return err("forbidden", "You cannot deactivate your own account.", status=403)
+    if not deactivate_user(user_id):
+        return err("user_unknown", "User not found.", status=404)
+    audit.record(
+        "user.deactivated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+    )
+    return ok({"deactivated": True})
+
+
+@bp.post("/users/<user_id>/revoke-tokens")
+@role_required_api(*SUPER_ADMIN_ONLY)
+def revoke_tokens_api(user_id: str):
+    if not revoke_all_tokens(user_id):
+        return err("user_unknown", "User not found.", status=404)
+    audit.record(
+        "user.tokens_revoked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+    )
+    return ok({"revoked": True})
+
+
+@bp.get("/invitations")
+@role_required_api(*ADMIN_AND_UP)
+def list_invitations_api():
+    rows = list_invitations()
+    return ok(
+        {
+            "invitations": [
+                {
+                    "id": r.id,
+                    "email": r.email,
+                    "role": r.role,
+                    "expires_at": r.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "consumed_at": r.consumed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if r.consumed_at
+                    else None,
+                    "consumed_by_user_id": r.consumed_by_user_id,
+                    "issued_by_user_id": r.issued_by_user_id,
+                    "note": r.note,
+                    "created_at": r.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+                for r in rows
+            ]
+        }
+    )
+
+
+@bp.post("/invitations")
+@role_required_api(*ADMIN_AND_UP)
+def create_invitation():
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    role = body.get("role") or "admin"
+
+    # Only super_admin can mint a super_admin invitation.
+    if role == ROLE_SUPER_ADMIN and g.current_user.role != ROLE_SUPER_ADMIN:
+        return err(
+            "forbidden",
+            "only a super_admin can invite another super_admin",
+            status=403,
+        )
+
+    settings = current_app.config["SETTINGS"]
+    try:
+        record, raw = mint_invitation(
+            settings,
+            email=email,
+            role=role,
+            issued_by_user_id=g.current_user.id,
+            note=body.get("note"),
+        )
+    except InvitationError as e:
+        return err(e.code, e.message, status=400)
+
+    public_base = settings.public_base_url.rstrip("/")
+    redeem_url = f"{public_base}/app/invite/{raw}"
+
+    # Try to send the email. If SMTP isn't configured we still return the
+    # token so an admin can deliver it manually.
+    sent = False
+    try:
+        from app.services.email import send_invite_email
+
+        sent = send_invite_email(
+            to=email, role=role, redeem_url=redeem_url, note=body.get("note")
+        )
+    except Exception:
+        current_app.logger.exception("invite email failed")
+
+    audit.record(
+        "user.invited",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="invitation",
+        target_id=record.id,
+        details={"email": email, "role": role, "email_sent": sent},
+    )
+
+    return ok(
+        {
+            "id": record.id,
+            "email": email,
+            "role": role,
+            "redeem_url": redeem_url,
+            "expires_at": record.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "email_sent": sent,
+            # Only returned to the inviter, never persisted in cleartext.
+            "invitation_token": raw,
+        },
+        status=201,
+    )
+
+
+@bp.get("/audit")
+@role_required_api(*ADMIN_AND_UP)
+def audit_api():
+    rows = audit.query(
+        actor_user_id=request.args.get("actor_user_id"),
+        action=request.args.get("action"),
+        target_type=request.args.get("target_type"),
+        target_id=request.args.get("target_id"),
+        limit=int(request.args.get("limit") or 200),
+    )
+    return ok({"events": rows, "count": len(rows)})
 
 
 # ── events ────────────────────────────────────────────────────────────────

@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block title %}Invitations - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.users_page') }}">← Users</a></p>
+<h1>Invitations</h1>
+
+{% if new_invite %}
+<section class="placeholder" style="border-color:#2563eb">
+  <h2>Invite created</h2>
+  <p>{{ new_invite.email }} → role <strong>{{ new_invite.role }}</strong>.
+  Email {% if new_invite.email_sent %}<span class="badge green">sent</span>{% else %}<span class="badge amber">not sent (SMTP not configured) — copy this link manually:</span>{% endif %}</p>
+  <p><code style="word-break:break-all">{{ new_invite.redeem_url }}</code></p>
+</section>
+{% endif %}
+
+<section class="placeholder">
+  <h2>Invite a new user</h2>
+  <form method="post" action="{{ url_for('admin_ui.invitations_create_submit') }}">
+    <label>Email <input type="email" name="email" required></label>
+    <label>Role
+      <select name="role">
+        {% if current_user.role == 'super_admin' %}<option value="super_admin">super_admin</option>{% endif %}
+        <option value="admin" selected>admin</option>
+        <option value="operator">operator (commands only, no firmware/users)</option>
+        <option value="viewer">viewer (read-only)</option>
+      </select>
+    </label>
+    <label>Note <input type="text" name="note" placeholder="why this invite was issued"></label>
+    <button type="submit">Send invite</button>
+  </form>
+</section>
+
+<table>
+  <thead><tr><th>Email</th><th>Role</th><th>Created</th><th>Expires</th><th>State</th></tr></thead>
+  <tbody>
+  {% for i in invitations %}
+  <tr>
+    <td>{{ i.email }}</td>
+    <td><span class="badge">{{ i.role }}</span></td>
+    <td>{{ i.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</td>
+    <td>{{ i.expires_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</td>
+    <td>
+      {% if i.consumed_at %}<span class="badge">used</span>
+      {% else %}<span class="badge green">pending</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

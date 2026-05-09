@@ -13,13 +13,38 @@ from flask import (
     url_for,
 )
 
-from app.middleware.admin_auth import admin_required_ui
+from app.middleware.admin_auth import (
+    admin_required_ui,
+    role_required_ui,
+)
+from app.models.users import (
+    ROLE_ADMIN,
+    ROLE_OPERATOR,
+    ROLE_SUPER_ADMIN,
+    ROLE_VIEWER,
+    ALL_ROLES,
+)
 from app.middleware.rate_limit import limiter
 from app.services.auth import authenticate
 from app.services.commands import enqueue_for_device, enqueue_for_group
 from app.services.devices import get_device_detail, list_devices, update_device
 from app.services.enrollment import list_enrollment_tokens, mint_enrollment_token
+from app.services import audit as audit_service
 from app.services.events import query_events as svc_query_events
+from app.services.invitations import (
+    InvitationError,
+    list_invitations,
+    lookup_pending,
+    mint_invitation,
+    redeem_invitation,
+)
+from app.services.users import (
+    UserError,
+    deactivate_user,
+    list_users as svc_list_users,
+    revoke_all_tokens,
+    update_user_role,
+)
 from app.services.deployments import (
     create_deployment,
     list_deployments as svc_list_deployments,
@@ -83,6 +108,8 @@ def login_page():
 @bp.post("/login")
 @limiter.limit("30 per minute; 200 per hour")
 def login_submit():
+    from datetime import datetime, timezone
+
     email = (request.form.get("email") or "").strip()
     password = request.form.get("password") or ""
     user = authenticate(email, password)
@@ -98,12 +125,19 @@ def login_submit():
         )
     session.clear()
     session["user_id"] = user.id
+    session["iat"] = int(datetime.now(timezone.utc).timestamp())
     session.permanent = True
     return redirect(url_for("admin_ui.index"))
 
 
 @bp.get("/logout")
 def logout():
+    """Sign out of THIS browser session.
+
+    Note: this does NOT invalidate any other JWT or cookie the user may
+    have. Use the explicit "revoke all tokens" action (super-admin only)
+    to log a user out everywhere — see /admin/users.
+    """
     session.clear()
     return redirect(url_for("admin_ui.login_page"))
 
@@ -150,7 +184,12 @@ def device_update_submit(device_id: str):
         "notes": request.form.get("notes") or None,
         "central_management_enabled": "central_management_enabled" in request.form,
     }
-    updated = update_device(device_id, patch)
+    from app.services.devices import UnknownPatchFieldError
+
+    try:
+        updated = update_device(device_id, patch)
+    except UnknownPatchFieldError:
+        abort(400)
     if updated is None:
         abort(404)
     return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
@@ -400,6 +439,174 @@ def create_site_submit():
 def delete_site_submit(site_id: str):
     svc_delete_site(site_id)
     return redirect(url_for("admin_ui.list_sites_page"))
+
+
+# ── users + invitations (super-admin) ───────────────────────────────────
+
+@bp.get("/users")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def users_page():
+    users = svc_list_users()
+    return render_template("users_list.html", **_ctx({"users": users}))
+
+
+@bp.post("/users/<user_id>/role")
+@role_required_ui(ROLE_SUPER_ADMIN)
+def change_user_role_submit(user_id: str):
+    role = request.form.get("role") or ""
+    if role not in ALL_ROLES:
+        abort(400)
+    try:
+        update_user_role(user_id, role)
+    except UserError:
+        abort(400)
+    audit_service.record(
+        "user.role_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={"new_role": role},
+    )
+    return redirect(url_for("admin_ui.users_page"))
+
+
+@bp.post("/users/<user_id>/deactivate")
+@role_required_ui(ROLE_SUPER_ADMIN)
+def deactivate_user_submit(user_id: str):
+    if user_id == g.current_user.id:
+        abort(403)
+    deactivate_user(user_id)
+    audit_service.record(
+        "user.deactivated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+    )
+    return redirect(url_for("admin_ui.users_page"))
+
+
+@bp.get("/invitations")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def invitations_page():
+    invs = list_invitations()
+    return render_template(
+        "invitations_list.html",
+        **_ctx({"invitations": invs, "new_invite": session.pop("_new_invite", None)}),
+    )
+
+
+@bp.post("/invitations")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def invitations_create_submit():
+    settings = current_app.config["SETTINGS"]
+    email = (request.form.get("email") or "").strip()
+    role = request.form.get("role") or "admin"
+    note = (request.form.get("note") or "").strip() or None
+    if role == ROLE_SUPER_ADMIN and g.current_user.role != ROLE_SUPER_ADMIN:
+        abort(403)
+    try:
+        record, raw = mint_invitation(
+            settings,
+            email=email,
+            role=role,
+            issued_by_user_id=g.current_user.id,
+            note=note,
+        )
+    except InvitationError:
+        abort(400)
+    public_base = settings.public_base_url.rstrip("/")
+    redeem_url = f"{public_base}/app/invite/{raw}"
+    try:
+        from app.services.email import send_invite_email
+
+        sent = send_invite_email(to=email, role=role, redeem_url=redeem_url, note=note)
+    except Exception:
+        sent = False
+    audit_service.record(
+        "user.invited",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="invitation",
+        target_id=record.id,
+        details={"email": email, "role": role, "email_sent": sent},
+    )
+    session["_new_invite"] = {
+        "redeem_url": redeem_url,
+        "email": email,
+        "role": role,
+        "email_sent": sent,
+    }
+    return redirect(url_for("admin_ui.invitations_page"))
+
+
+@bp.get("/audit")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def audit_page():
+    rows = audit_service.query(
+        actor_user_id=request.args.get("actor_user_id") or None,
+        action=request.args.get("action") or None,
+        target_type=request.args.get("target_type") or None,
+        limit=int(request.args.get("limit") or 200),
+    )
+    return render_template("audit_list.html", **_ctx({"events": rows}))
+
+
+# ── public invite redeem flow (no auth) ──────────────────────────────────
+
+@bp.get("/invite/<token>")
+def invite_redeem_page(token: str):
+    inv = lookup_pending(token)
+    return render_template(
+        "invite_redeem.html",
+        version=__version__,
+        invitation=inv,
+        token=token,
+        error=None,
+    )
+
+
+@bp.post("/invite/<token>")
+def invite_redeem_submit(token: str):
+    password = request.form.get("password") or ""
+    confirm = request.form.get("password_confirm") or ""
+    display_name = (request.form.get("display_name") or "").strip()
+    if password != confirm:
+        return render_template(
+            "invite_redeem.html",
+            version=__version__,
+            invitation=lookup_pending(token),
+            token=token,
+            error="Passwords do not match.",
+        ), 400
+    try:
+        user = redeem_invitation(
+            token=token, password=password, display_name=display_name
+        )
+    except InvitationError as e:
+        return render_template(
+            "invite_redeem.html",
+            version=__version__,
+            invitation=lookup_pending(token),
+            token=token,
+            error=e.message,
+        ), 400
+
+    audit_service.record(
+        "user.created_via_invite",
+        actor_user_id=user["id"],
+        actor_email_snapshot=user["email"],
+        target_type="user",
+        target_id=user["id"],
+    )
+    # Sign the user in immediately.
+    from datetime import datetime, timezone
+    session.clear()
+    session["user_id"] = user["id"]
+    session["iat"] = int(datetime.now(timezone.utc).timestamp())
+    session.permanent = True
+    return redirect(url_for("admin_ui.index"))
 
 
 @bp.get("/events")

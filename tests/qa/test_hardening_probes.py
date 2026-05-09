@@ -159,8 +159,8 @@ def test_patch_device_with_empty_body_should_be_idempotent(base_url, admin_heade
     assert before["display_name"] == after["display_name"]
 
 
-def test_patch_device_unknown_field_silently_ignored(base_url, admin_headers):
-    """Unknown PATCH fields should be ignored (current code) — confirm + log."""
+def test_patch_device_unknown_field_now_rejected(base_url, admin_headers):
+    """v0.2 — BUG-010 fixed; PATCH with unknown fields returns 400."""
     devs = (
         requests.get(f"{base_url}/api/v1/admin/devices", headers=admin_headers)
         .json()["data"]["devices"]
@@ -171,12 +171,12 @@ def test_patch_device_unknown_field_silently_ignored(base_url, admin_headers):
     r = requests.patch(
         f"{base_url}/api/v1/admin/devices/{dev_id}",
         headers=admin_headers,
-        json={"unknown_field": "should-be-ignored", "is_admin": True},
+        json={"unknown_field": "should-be-rejected", "is_admin": True},
         timeout=10,
     )
-    assert r.status_code == 200
-    # is_admin is not on the device row — but if it WERE applied, that'd be a
-    # privilege-escalation bug. We just confirm the response did not echo it.
+    assert r.status_code == 400
+    msg = r.json()["error"]["message"]
+    assert "unknown_field" in msg or "is_admin" in msg
 
 
 # ── deploy / firmware paths ────────────────────────────────────────────────

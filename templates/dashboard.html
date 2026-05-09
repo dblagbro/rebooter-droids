@@ -19,6 +19,11 @@
     <li><a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a></li>
     <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a></li>
     <li><a href="{{ url_for('admin_ui.events_page') }}">Events</a></li>
+    {% if current_user.role in ('super_admin','admin') %}
+    <li><a href="{{ url_for('admin_ui.users_page') }}">Users</a></li>
+    <li><a href="{{ url_for('admin_ui.invitations_page') }}">Invitations</a></li>
+    <li><a href="{{ url_for('admin_ui.audit_page') }}">Audit log</a></li>
+    {% endif %}
   </ul>
 </section>
 {% endblock %}
