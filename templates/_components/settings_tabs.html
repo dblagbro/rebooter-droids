@@ -11,6 +11,8 @@
      {% if settings_tab == 'network' %}aria-current="page"{% endif %}>Network</a>
   <a href="{{ url_for('admin_ui.settings_auth_page') }}"
      {% if settings_tab == 'auth' %}aria-current="page"{% endif %}>Authentication</a>
+  <a href="{{ url_for('admin_ui.settings_sync_page') }}"
+     {% if settings_tab == 'sync' %}aria-current="page"{% endif %}>Sync</a>
   {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
   <a href="{{ url_for('admin_ui.users_page') }}"
      {% if settings_tab == 'users' %}aria-current="page"{% endif %}>Users</a>
