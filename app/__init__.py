@@ -105,8 +105,7 @@ def create_app() -> Flask:
     from app.blueprints.version import bp as version_bp
     from app.blueprints.auth import bp as auth_bp
     from app.blueprints.device_api import bp as device_api_bp
-    from app.blueprints.admin_api import bp as admin_api_bp
-    from app.blueprints.admin_ui import bp as admin_ui_bp
+    from app.blueprints.admin import admin_api_bp, admin_ui_bp
 
     app.register_blueprint(version_bp, url_prefix="/api/v1")
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
