@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: **2026-05-09 PM** (post v0.4.0).
+Last updated: **2026-05-09 PM** (post v0.4.1).
 
 This is the canonical, ordered backlog for what comes next on
 rebooter-droids. The pause-state doc captures recent history; this
@@ -30,40 +30,39 @@ session. They form the v0.4.1 + v0.4.2 release plan.
 
 ### B2. Admin / super-admin invite via email (30-day token expiry)
 
-- Today the only way to add a user is the operator-only
-  "create user" form. The operator wants admins/super-admins to
-  invite peers via email.
-- Token shape: `{user_id, email, role, expires_at}` signed with the
-  hub's HMAC key. 30-day expiry on every invite.
-- Land at `/auth/accept-invite?token=<...>` — landing page shows the
-  invitee email + role and asks for password.
-- One-time-use: redeemed tokens get marked consumed in DB.
-- Audit hooks: `invite.created`, `invite.consumed`,
-  `invite.expired_or_revoked`.
-- Depends on **B4 (SMTP)** for actually sending the email.
+✅ **Already shipped** — invitations service has been in place since
+v0.2.x (per-user, signed token, single-use, audit-hooked). The
+v0.4.1 cut bumped the default TTL **7 → 30 days** to match the
+operator's instruction. Email body updated to match.
+
+> Status: **DONE.** Operator can keep going through Settings →
+> Invitations as today; recipient gets a fresh 30-day link.
 
 ### B3. Password-reset UI
 
-- Forgot-password link on `/auth/login`.
-- Same SMTP credentials as B2.
-- Same 30-day-default token expiry but defaults to **1 hour** for
-  password reset (security-sensitive).
-- Reuses the audit hooks from B2.
+✅ **Shipped in v0.4.1.** `/app/forgot-password` + `/app/reset-
+password`, 1h TTL, single-use, bumps `tokens_valid_after` on
+consume. "Forgot your password?" link added to the login page.
+Audit hooks: `password_reset.requested` /
+`password_reset.consumed`.
+
+> Status: **DONE.**
 
 ### B4. SMTP from coordinator-hub creds
 
-- Use `dblagbro@earthlink.net` as outgoing.
-- Pull SMTP host/user/pass from the **coordinator hub** the same way
-  the hub itself sends operator notifications. Specifically:
-  - Coordinator-hub stores SMTP config in `hub_settings.smtp.*`.
-  - Rebooter-droids should NOT hard-code these — read from the same
-    backing store, or have the operator paste them once into Settings
-    → Notifications.
-  - First-class admin Settings → Notifications tab with editable
-    fields, a "Send test email" button that posts a one-line test
-    to the logged-in operator's email.
-- Output is a single internal helper `email_service.send(...)` that
-  B2 + B3 + future watchdog notifications all consume.
+✅ **Partially shipped in v0.4.1.** Settings → Notifications tab
+shows env-var SMTP config + a "Send test email" form (audit-
+logged). The single internal helper `email_service.send(...)` is
+already in use by invitations + password-reset.
+
+⏳ **Still open:** *runtime-editable* SMTP settings. Today values
+come from env vars (`REBOOTER_SMTP_*`); the operator wanted them
+seeded from the coordinator-hub at deploy time, **OR** editable
+in the UI. Either of these is a follow-up — not blocking anything.
+
+> Status: **partially DONE; runtime-editable settings deferred to a
+> v0.4.2+ slice when an operator needs to change SMTP without a
+> container recreate.**
 
 ### B5. Get devices online (firmware-team coordination)
 
