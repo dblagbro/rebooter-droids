@@ -182,10 +182,19 @@ def test_patch_device_unknown_field_now_rejected(base_url, admin_headers):
 # ── deploy / firmware paths ────────────────────────────────────────────────
 
 def test_deploy_unknown_release_returns_404(base_url, admin_headers):
+    """v0.2.5+ — when target_count <= 5 the mass-action gate is a no-op
+    and the LookupError surfaces as the 404 we expect. We force the
+    single-device path here so the test exercises only the
+    release-not-found branch, not the gate.
+    """
     r = requests.post(
         f"{base_url}/api/v1/admin/firmware/deployments",
         headers=admin_headers,
-        json={"release_id": "fwr_does-not-exist", "target_type": "all_devices"},
+        json={
+            "release_id": "fwr_does-not-exist",
+            "target_type": "device",
+            "target_id": "dev_does-not-exist-either",
+        },
         timeout=10,
     )
     assert r.status_code == 404
