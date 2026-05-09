@@ -61,8 +61,13 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
     now = datetime.now(timezone.utc)
 
     with session_scope() as session:
+        # Row-level lock to serialise two simultaneous redemption attempts.
+        # Without this, two concurrent register calls both pass the
+        # consumed_at-is-None check and produce two devices.
         et = session.scalar(
-            select(EnrollmentToken).where(EnrollmentToken.token_hash == token_hash)
+            select(EnrollmentToken)
+            .where(EnrollmentToken.token_hash == token_hash)
+            .with_for_update()
         )
         if et is None:
             raise EnrollmentError("enrollment_invalid", "Enrollment token is not recognized.")

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-08
+
+### Fixed
+
+- **BUG-001 (high):** enrollment-token redemption race. Two simultaneous
+  `POST /device/register` calls with the same `enrollment_token` could
+  both succeed, creating two devices for one token. Now serialised via a
+  Postgres row-level `SELECT ... FOR UPDATE` so the loser returns
+  `enrollment_consumed` (409). Surfaced by `tests/qa/test_hardening_probes.py::test_concurrent_enrollment_redemption_only_succeeds_once`.
+- **BUG-002 (high):** concurrent firmware upload of the same `(version, channel)`
+  used to produce a `500 internal_error`. The IntegrityError is now caught
+  and translated to a clean `400 validation_failed` ("firmware …
+  already exists") and the blob from the losing upload is cleaned up.
+- **BUG-003 (medium):** `GET /api/v1/admin/devices/` (trailing slash) returned
+  404 because Flask 3 defaults to `strict_slashes=True`. We now set
+  `app.url_map.strict_slashes = False` so trailing slashes match.
+
 ## [0.1.2] - 2026-05-08
 
 ### Changed
