@@ -26,3 +26,16 @@ tr:hover td { background: #11141a; }
 .badge.green { background: #064e3b; color: #6ee7b7; }
 .badge.red { background: #5a2222; color: #fca5a5; }
 .badge.amber { background: #5a3d1c; color: #fcd34d; }
+.topline { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+.stat { display: block; background: #161a21; border: 1px solid #222; border-radius: 6px; padding: 1rem 1.1rem; color: inherit; text-decoration: none; }
+.stat:hover { border-color: #444; }
+.stat .num { font-size: 1.9rem; font-weight: 700; color: #fff; }
+.stat .label { color: #8a8f99; font-size: 0.85rem; margin: 0.25rem 0 0.4rem; }
+.stat .sub { color: #c8cdd6; font-size: 0.8rem; }
+.dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin: 0 .15rem 0 .15rem; vertical-align: middle; }
+.dot.green { background: #6ee7b7; }
+.dot.red { background: #fca5a5; }
+.activity-feed { list-style: none; padding: 0; margin: 0; max-height: 400px; overflow-y: auto; }
+.activity-feed li { display: flex; gap: .6rem; align-items: center; padding: .5rem 0; border-bottom: 1px solid #1f232a; }
+.activity-feed li:last-child { border-bottom: none; }

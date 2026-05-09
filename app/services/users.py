@@ -116,3 +116,38 @@ def update_user_display_name(user_id: str, display_name: str) -> dict | None:
         u.display_name = display_name
         u.updated_at = datetime.now(timezone.utc)
         return serialize_user(u)
+
+
+def change_own_password(
+    user_id: str, current_password: str, new_password: str
+) -> bool:
+    """Self-service password change. Returns True on success.
+
+    Raises UserError on validation failures (bad current password,
+    too-weak new password).
+    """
+    if len(new_password) < 8:
+        raise UserError("new password must be at least 8 characters")
+    if current_password == new_password:
+        raise UserError("new password must differ from current password")
+
+    from app.services.bootstrap import hash_password, verify_password
+
+    with session_scope() as session:
+        u = session.get(User, user_id)
+        if u is None:
+            raise UserError("user not found")
+        if not verify_password(u.password_hash, current_password):
+            raise UserError("current password is incorrect")
+        u.password_hash = hash_password(new_password)
+        u.updated_at = datetime.now(timezone.utc)
+        # Bumping tokens_valid_after invalidates every other session +
+        # JWT for this user — the standard "you changed your password,
+        # log everyone else out" behaviour.
+        u.tokens_valid_after = datetime.now(timezone.utc)
+        return True
+
+
+def change_own_display_name(user_id: str, display_name: str) -> dict | None:
+    """Self-service display-name change."""
+    return update_user_display_name(user_id, display_name)
