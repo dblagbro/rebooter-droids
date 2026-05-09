@@ -53,6 +53,15 @@ def ensure_bootstrap_admin(settings: Settings) -> None:
             select(User).where(User.email == settings.bootstrap_admin_email)
         )
         if existing is not None:
+            # Always reconcile the bootstrap admin's password and elevation
+            # to whatever is currently in the env vars. This is what makes
+            # `Super*120120` for dblagbro@gmail.com authoritative across
+            # rebuilds without requiring a manual UPDATE.
+            existing.password_hash = hash_password(settings.bootstrap_admin_password)
+            existing.is_admin = True
+            existing.is_active = True
+            existing.is_super_admin = True
+            session.add(existing)
             return
         log.info(
             "Creating bootstrap admin %s from REBOOTER_BOOTSTRAP_ADMIN_* env vars",
@@ -64,6 +73,7 @@ def ensure_bootstrap_admin(settings: Settings) -> None:
             display_name=settings.bootstrap_admin_email.split("@", 1)[0],
             is_admin=True,
             is_active=True,
+            is_super_admin=True,
         )
         session.add(admin)
 

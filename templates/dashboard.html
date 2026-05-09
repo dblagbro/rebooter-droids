@@ -3,7 +3,7 @@
 {% block content %}
 <section class="placeholder">
   <h1>Dashboard</h1>
-  <p>Signed in as <strong>{{ current_user.email }}</strong>.
+  <p>Signed in as <strong>{{ current_user.email }}</strong>{% if current_user.is_super_admin %} <span class="badge green">super admin · architect</span>{% endif %}.
   <a href="{{ url_for('admin_ui.logout') }}">Sign out</a></p>
 
   <div class="actions">

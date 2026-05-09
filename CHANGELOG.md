@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-08
+
+### Added
+
+- `users.is_super_admin` boolean column. The bootstrap admin is now marked
+  as super admin / architect.
+- `GET /api/v1/auth/me` now returns `is_super_admin`.
+- Dashboard surfaces a "super admin · architect" badge for the architect
+  account.
+
+### Changed
+
+- The startup bootstrap step now reconciles the bootstrap admin's password
+  and elevation flags on every boot from `REBOOTER_BOOTSTRAP_ADMIN_*` env
+  vars, instead of only inserting on first run. Rotating the env var is
+  now sufficient to rotate the architect password.
+
 ## [0.1.0] - 2026-05-08
 
 ### Added
