@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-05-09
+
+### Added — server-side session table (R7-shadow of REMEDIATION-PLAN-2026-05)
+
+- New `user_sessions` table. Every UI cookie login + every JWT
+  access/refresh issuance writes a row at the moment of issuance.
+- JWT payloads now include a `jti` claim, tying each token to a
+  session row. The cookie session also carries an `sid` (jti) value
+  so a future enforce path can correlate the cookie back to its row.
+- `revoke_all_tokens()` now bulk-revokes every active session row for
+  the user (in addition to the existing `tokens_valid_after` bump).
+- UI logout (`GET /app/logout`) and API logout (`POST /api/v1/auth/logout`)
+  mark the cookie session row revoked so a leaked cookie can't be
+  replayed once the enforce switch flips.
+
+### Why "shadow mode"
+
+This release **does NOT yet reject any request based on session
+state**. It populates the table; the request authoriser still relies
+on the existing `tokens_valid_after` cutoff. A future minor will
+flip the enforce switch behind a `REBOOTER_SESSIONS_ENFORCE` setting
+once the table has been observed live for at least one minor and
+operator confidence is established.
+
+### Closes (when enforce flips)
+
+- BUG-005 (signed-cookie revocation gap). Today's "revoke everywhere"
+  invalidates JWTs but leaves Flask signed cookies usable for up to
+  31 days. Once enforce flips, the new session-row check rejects any
+  cookie whose row was marked `revoked_at`, regardless of cookie
+  expiry.
+
+### Operational
+
+- Idempotent table create via the existing boot-time
+  `Base.metadata.create_all()` advisory-lock path. No manual
+  migration required.
+- The session-write path is best-effort: a DB write failure logs but
+  does NOT block the login.
+
 ## [0.2.9] - 2026-05-09
 
 ### Added — per-record audit slice (R3 of REMEDIATION-PLAN-2026-05)
