@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: **2026-05-09 PM** (post v0.4.1).
+Last updated: **2026-05-09 PM** (post v0.4.2).
 
 This is the canonical, ordered backlog for what comes next on
 rebooter-droids. The pause-state doc captures recent history; this
@@ -79,20 +79,25 @@ in the UI. Either of these is a follow-up — not blocking anything.
 
 These were on the backlog before v0.4.0 and remain queued.
 
-### B6. Watchdog probe runtime (v0.4.1+, P4 iteration 2)
+### B6. Watchdog probe runtime (v0.4.2)
 
-- v0.4.0 ships data-model + UI + sentence render only. The probe
-  runtime that actually fires the rules is the next slice.
-- Components:
-  - APScheduler job per enabled rule, cadence = window_seconds.
-  - Per-rule probe dispatcher (one function per probe-kind).
-  - Inserts rows into `watchdog_probe_events` on each result.
-  - Threshold-cross logic + cooldown enforcement.
-  - Action dispatcher: cycle / hold_off / notify_only.
-- Surfaces:
-  - Per-rule event log on the rule detail page.
-  - "Probe now" + "Simulate trigger" buttons.
-  - Status inbox attention items for `watchdog.firing`.
+✅ **Shipped in v0.4.2.** APScheduler 10-second tick + probe
+dispatcher (internet/tcp/ping(→tcp:80)/http/dns) + state machine
+(failure/recovery streaks, cooldown) + action dispatch
+(cycle/hold_off/notify_only) + probe-now diagnostic + per-rule
+event log inline on the list page.
+
+⏳ **Still queued (smaller v0.4.3+ items):**
+
+- Native ICMP ping probes (today the runtime falls back to TCP-80).
+- `gateway` probe — no-op until device firmware reports its LAN
+  gateway in heartbeat.
+- Tag-as-target dispatch — shape exists; resolution stubbed.
+- Status inbox attention item for `watchdog.firing`.
+
+> Status: **DONE.** Operators can create rules and they fire on
+> threshold. Cooldown + recovery work. Operator-stop available via
+> `REBOOTER_WATCHDOG_DISABLED=1`.
 
 ### B7. Maintenance windows + portal-wide maintenance mode (v0.4.1+)
 
