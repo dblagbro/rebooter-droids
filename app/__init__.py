@@ -70,6 +70,9 @@ def create_app() -> Flask:
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["SESSION_COOKIE_HTTPONLY"] = True
+    # Be lenient about trailing slashes — clients (and humans) often add or
+    # omit them; Flask 3's default returns 404 instead of redirecting.
+    app.url_map.strict_slashes = False
     app.wsgi_app = ProxyFix(
         PrefixMiddleware(app.wsgi_app), x_for=1, x_proto=1, x_host=1, x_prefix=1
     )
