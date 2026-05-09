@@ -30,6 +30,15 @@ def admin_creds():
 
 @pytest.fixture(scope="session")
 def admin_token(base_url, admin_creds) -> str:
+    """Bearer JWT for the bootstrap admin. Session-scoped — one
+    login per suite run.
+
+    Tests that mutate auth state on the bootstrap admin
+    (`/api/v1/auth/logout`, password-reset consume, revoke-all)
+    MUST use the `disposable_admin_session` fixture instead — that
+    one gives back a freshly-provisioned admin user whose token
+    bumps don't affect this shared session token (BUG-021).
+    """
     email, pw = admin_creds
     r = requests.post(
         f"{base_url}/api/v1/auth/login",
@@ -43,6 +52,74 @@ def admin_token(base_url, admin_creds) -> str:
 @pytest.fixture
 def admin_headers(admin_token):
     return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest.fixture
+def disposable_admin_session(base_url, admin_token):
+    """v0.4.4 — fresh admin user + logged-in requests.Session.
+
+    Provisions a brand-new admin via the admin API, returns a
+    requests.Session that's already authenticated as that user via
+    cookie + JWT. After the test, attempts to delete the user
+    (cleanup is best-effort).
+
+    Use this in tests that call /api/v1/auth/logout, redeem a
+    password-reset, or otherwise bump the user's
+    `tokens_valid_after` — those mutations would corrupt the
+    shared bootstrap-admin token used by the rest of the suite.
+    """
+    import secrets
+
+    email = f"qa-isolated-{secrets.token_hex(6)}@voipguru.org"
+    password = "qa-test-Pa55*" + secrets.token_hex(4)
+
+    # Create the user via the bootstrap admin's bearer token.
+    create = requests.post(
+        f"{base_url}/api/v1/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "email": email,
+            "password": password,
+            "display_name": "QA Isolated",
+            "role": "admin",
+        },
+        timeout=10,
+    )
+    if create.status_code not in (200, 201):
+        pytest.skip(f"could not provision disposable admin: {create.status_code} {create.text}")
+
+    user_id = create.json()["data"]["id"]
+
+    # Log them in via the same JSON path the suite uses.
+    sess = requests.Session()
+    login = sess.post(
+        f"{base_url}/api/v1/auth/login",
+        json={"email": email, "password": password},
+        timeout=10,
+    )
+    if login.status_code != 200:
+        pytest.skip(f"could not log in disposable admin: {login.status_code} {login.text}")
+    token = login.json()["data"]["access_token"]
+    sess.headers.update({"Authorization": f"Bearer {token}"})
+
+    yield {
+        "session": sess,
+        "email": email,
+        "password": password,
+        "token": token,
+        "user_id": user_id,
+    }
+
+    # Best-effort cleanup. The user might already be gone if the
+    # test deleted them; ignore failures.
+    try:
+        requests.delete(
+            f"{base_url}/api/v1/admin/users/{user_id}",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            timeout=10,
+        )
+    except Exception:
+        pass
 
 
 @pytest.fixture
