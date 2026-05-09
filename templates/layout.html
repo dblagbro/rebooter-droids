@@ -21,6 +21,9 @@
       <a href="{{ url_for('admin_ui.users_page') }}">Users</a>
       <a href="{{ url_for('admin_ui.audit_page') }}">Audit</a>
       {% endif %}
+      {% if current_user is defined %}
+      <a href="{{ url_for('admin_ui.me_page') }}">Profile</a>
+      {% endif %}
     </nav>
     <span class="version">v{{ version }}</span>
   </header>

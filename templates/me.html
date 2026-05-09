@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% block title %}My profile - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>My profile</h1>
+
+{% if flash_msg %}
+  {% set kind, msg = flash_msg %}
+  <p class="{% if kind == 'error' %}error{% else %}badge green{% endif %}">{{ msg }}</p>
+{% endif %}
+
+<section class="placeholder">
+  <h2>Identity</h2>
+  <ul>
+    <li>Email: <strong>{{ current_user.email }}</strong></li>
+    <li>Role: <span class="badge">{{ current_user.role }}</span>{% if current_user.is_super_admin %} <span class="badge green">super admin · architect</span>{% endif %}</li>
+    <li>Display name: <strong>{{ current_user.display_name }}</strong></li>
+    <li>Account created: {{ current_user.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') if current_user.created_at else '—' }}</li>
+    <li>Last login: {{ current_user.last_login_at.strftime('%Y-%m-%dT%H:%M:%SZ') if current_user.last_login_at else '—' }}</li>
+  </ul>
+</section>
+
+<section class="placeholder">
+  <h2>Change display name</h2>
+  <form method="post" action="{{ url_for('admin_ui.me_display_name_submit') }}">
+    <label>Display name <input type="text" name="display_name" value="{{ current_user.display_name }}" required></label>
+    <button type="submit">Save</button>
+  </form>
+</section>
+
+<section class="placeholder">
+  <h2>Change password</h2>
+  <p class="muted">Changing your password signs you out of every other session and JWT.</p>
+  <form method="post" action="{{ url_for('admin_ui.me_password_submit') }}">
+    <label>Current password <input type="password" name="current_password" required></label>
+    <label>New password (8+ chars) <input type="password" name="new_password" minlength="8" required></label>
+    <label>Confirm new password <input type="password" name="new_password_confirm" minlength="8" required></label>
+    <button type="submit">Change password</button>
+  </form>
+</section>
+
+<section class="placeholder">
+  <h2>Sessions</h2>
+  <p class="muted">"Sign out everywhere" invalidates every active session and JWT for your account, including this one. Useful if you suspect a credential leak.</p>
+  <form method="post" action="{{ url_for('admin_ui.me_revoke_everywhere_submit') }}" onsubmit="return confirm('Sign out everywhere? You will need to log in again.');">
+    <button type="submit">Sign out everywhere</button>
+  </form>
+</section>
+{% endblock %}

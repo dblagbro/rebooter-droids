@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-09
+
+### Added — operator dashboard + self-service profile
+
+- **Real dashboard** — replaces the sparse nav-link list with stat
+  cards (devices total/online/offline, devices with pending commands,
+  groups + sites, firmware releases, 24h event count) and a unified
+  recent-activity feed merging admin actions, device events, and
+  issued commands in chronological order.
+- **`/app/me` self-service profile** — every authenticated user can
+  edit their own display name, change their own password (verifies
+  current password, 8-char minimum), and "sign out everywhere"
+  (revoke all their own sessions + JWTs). Changing the password
+  automatically signs the user out of every other session.
+- Profile link added to nav, plus a "profile · sign out" hint in the
+  dashboard top line.
+
 ## [0.2.3] - 2026-05-09
 
 ### Added — UI affordances for shipped APIs
