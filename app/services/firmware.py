@@ -12,16 +12,28 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.db import session_scope
-from app.models import FirmwareRelease
+from app.models import FirmwareRelease, FirmwareReleaseMirror
+from app.models.firmware_mirrors import (
+    MIRROR_KIND_LOCAL,
+    MIRROR_STATUS_LIVE,
+)
 
 ALLOWED_CHANNELS = ("dev", "beta", "stable")
+# v0.3.9 (RFC-002 P1): the special channel-pointer filename. Each
+# channel's `latest.bin` is overwritten on every upload so that
+# operators (and the bootstrap firmware per RFC-005) can fetch
+# `<channel>/latest.bin` without knowing the exact version.
+CHANNEL_POINTER_FILENAME = "latest.bin"
 
 
 def _iso(dt) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
 
 
-def serialize_release(r: FirmwareRelease) -> dict:
+def serialize_release(r: FirmwareRelease, mirrors: list[dict] | None = None) -> dict:
+    """v0.3.9: optional `mirrors` argument carries the
+    per-(release, kind) FirmwareReleaseMirror rows so the admin
+    UI can show the mirror status table per release."""
     return {
         "id": r.id,
         "version": r.version,
@@ -32,13 +44,34 @@ def serialize_release(r: FirmwareRelease) -> dict:
         "size_bytes": r.size_bytes,
         "release_notes": r.release_notes,
         "created_at": _iso(r.created_at),
+        "mirrors": mirrors or [],
+    }
+
+
+def _serialize_mirror(m: FirmwareReleaseMirror) -> dict:
+    return {
+        "id": m.id,
+        "kind": m.kind,
+        "url": m.url,
+        "status": m.status,
+        "verified_sha256": m.verified_sha256,
+        "last_probed_at": _iso(m.last_probed_at),
+        "last_error": m.last_error,
+        "created_at": _iso(m.created_at),
     }
 
 
 def list_releases() -> list[dict]:
     with session_scope() as session:
         rows = list(session.scalars(select(FirmwareRelease).order_by(FirmwareRelease.created_at.desc())))
-        return [serialize_release(r) for r in rows]
+        # Per-release mirror rows.
+        mirrors_by_release: dict[str, list[dict]] = {}
+        for m in session.scalars(select(FirmwareReleaseMirror)):
+            mirrors_by_release.setdefault(m.release_id, []).append(_serialize_mirror(m))
+        return [
+            serialize_release(r, mirrors=mirrors_by_release.get(r.id, []))
+            for r in rows
+        ]
 
 
 def _sha256_of_path(path: str) -> str:
@@ -99,7 +132,50 @@ def upload_release(
             os.unlink(tmp_path)
         raise
 
-    download_url = f"{settings.firmware_public_base.rstrip('/')}/{final_name}"
+    # v0.3.9 (RFC-002 P1): also publish under the per-channel
+    # subdirectory and update the channel-pointer file. Operator-
+    # facing URL stays at the flat layout for backwards-compat with
+    # devices already in the field; the per-channel paths are the
+    # new surface RFC-005 needs for the bootstrap-pull-latest flow.
+    channel_dir = firmware / channel
+    channel_dir.mkdir(parents=True, exist_ok=True)
+    # Explicit chmod: container default umask creates dirs as 0o750
+    # which blocks the nginx container's user from traversing in.
+    # 0o755 matches the parent firmware_dir's mode.
+    try:
+        os.chmod(channel_dir, 0o755)
+    except OSError:
+        pass
+    per_channel_path = channel_dir / final_name
+    try:
+        # Copy (don't symlink) for Docker-bind-mount portability.
+        shutil.copyfile(final_path, per_channel_path)
+        os.chmod(per_channel_path, 0o644)
+    except OSError:
+        # Per-channel publish is best-effort in v0.3.9; the canonical
+        # flat-layout file is the source of truth. Log but don't fail
+        # the upload.
+        import logging
+        logging.getLogger(__name__).exception(
+            "per-channel publish failed for %s", final_name
+        )
+
+    base = settings.firmware_public_base.rstrip("/")
+    download_url = f"{base}/{final_name}"
+    per_channel_url = f"{base}/{channel}/{final_name}"
+    # v0.3.9: the channel pointer is a Flask 302-redirect endpoint,
+    # NOT a static file. Static `latest.bin` files would collide
+    # with nginx's open_file_cache (a global 60s inode cache).
+    # The redirect queries the DB on every hit, so it's always
+    # fresh. The public-base URL is /rebooter/firmware/<file>; we
+    # derive the API root by swapping the trailing /firmware for
+    # /api/v1/firmware. This is a thin string transformation; if
+    # the operator changes the public-base shape, the contract
+    # needs updating in lockstep.
+    api_root = base
+    if base.endswith("/firmware"):
+        api_root = base[: -len("/firmware")] + "/api/v1/firmware"
+    pointer_url = f"{api_root}/{channel}/latest"
 
     record = FirmwareRelease(
         version=version,
@@ -116,15 +192,43 @@ def upload_release(
         with session_scope() as session:
             session.add(record)
             session.flush()
-            out = serialize_release(record)
+            release_id = record.id
+            # v0.3.9: record local-mirror rows for the canonical, per-channel,
+            # and channel-pointer URLs. Each is serving the same SHA-256;
+            # status=live since we just wrote them.
+            now = datetime.now(timezone.utc)
+            for kind, url in (
+                (MIRROR_KIND_LOCAL, download_url),
+                (f"{MIRROR_KIND_LOCAL}_per_channel", per_channel_url),
+                (f"{MIRROR_KIND_LOCAL}_channel_pointer", pointer_url),
+            ):
+                session.add(FirmwareReleaseMirror(
+                    release_id=release_id,
+                    kind=kind,
+                    url=url,
+                    status=MIRROR_STATUS_LIVE,
+                    verified_sha256=actual_sha,
+                    last_probed_at=now,
+                    created_at=now,
+                ))
+            session.flush()
+            mirrors_serialized = [
+                _serialize_mirror(m)
+                for m in session.scalars(
+                    select(FirmwareReleaseMirror)
+                    .where(FirmwareReleaseMirror.release_id == release_id)
+                )
+            ]
+            out = serialize_release(record, mirrors=mirrors_serialized)
     except IntegrityError:
         # A concurrent upload claimed the same (version, channel) first.
-        # Clean up the firmware blob we already moved into place.
-        if final_path.exists():
-            try:
-                final_path.unlink()
-            except OSError:
-                pass
+        # Clean up the firmware blobs we already wrote.
+        for p in (final_path, per_channel_path, pointer_path):
+            if p.exists():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
         raise ValueError(
             f"firmware {final_name} already exists; bump version or delete first"
         )
@@ -132,13 +236,39 @@ def upload_release(
 
 
 def delete_release(release_id: str, settings: Settings) -> bool:
+    """Hard-delete the FirmwareRelease + its FirmwareReleaseMirror
+    rows (cascade) + on-disk artifacts (canonical + per-channel).
+    The channel pointer is a Flask redirect, so it self-updates."""
     with session_scope() as session:
         r = session.get(FirmwareRelease, release_id)
         if r is None:
             return False
-        firmware = Path(settings.firmware_dir) / r.filename
-        if firmware.exists():
-            firmware.unlink()
+        firmware = Path(settings.firmware_dir)
+        canonical = firmware / r.filename
+        per_channel = firmware / r.channel / r.filename
+        for p in (canonical, per_channel):
+            if p.exists():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
         session.delete(r)
         session.flush()
         return True
+
+
+def latest_in_channel(channel: str) -> FirmwareRelease | None:
+    """v0.3.9: backing query for the channel-pointer redirect endpoint.
+    Returns the most-recently-created release in this channel, or None."""
+    if channel not in ALLOWED_CHANNELS:
+        return None
+    with session_scope() as session:
+        r = session.scalar(
+            select(FirmwareRelease)
+            .where(FirmwareRelease.channel == channel)
+            .order_by(FirmwareRelease.created_at.desc())
+            .limit(1)
+        )
+        if r is not None:
+            session.expunge(r)
+        return r
