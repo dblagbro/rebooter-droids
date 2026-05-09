@@ -59,6 +59,31 @@ def settings_auth_page():
     )
 
 
+@admin_ui_bp.get("/settings/sync")
+@admin_required_ui
+def settings_sync_page():
+    """v0.3.6 (P0 of RFC-004): stub Sync tab.
+
+    Today's deployment is single-hub (one rebooter-droids container,
+    one Postgres, two URLs proxying to it). True multi-hub sync is
+    designed in `docs/RFC-004-multi-hub-sync.md` and not yet
+    implemented. This page exists so the operator's mental model
+    has a UI surface to land on.
+    """
+    import os
+
+    return render_template(
+        "settings/sync.html",
+        **_ctx(
+            {
+                "active": "settings",
+                "settings_tab": "sync",
+                "hub_role": os.environ.get("REBOOTER_HUB_ROLE", "single"),
+            }
+        ),
+    )
+
+
 _THEME_COOKIE = "rebooter_theme"
 
 
