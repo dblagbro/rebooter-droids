@@ -61,8 +61,8 @@ def test_forgot_password_post_unknown_email_is_non_disclosing(base_url):
         allow_redirects=False,
     )
     assert r.status_code == 200
-    # Masked echo of the input email so the user can sanity-check.
-    assert "qa041" in r.text
+    # Masked echo: first 3 chars of the local-part are kept.
+    assert "qa0***@example.invalid" in r.text
     assert "we've emailed" in r.text or "if an account exists" in r.text.lower()
     # NEVER says "no such user".
     assert "no such" not in r.text.lower()
@@ -133,7 +133,9 @@ def test_reset_password_post_mismatched_passwords_rejects(base_url):
         allow_redirects=False,
     )
     assert r.status_code == 200
-    assert "don't match" in r.text or "do not match" in r.text.lower()
+    # Apostrophe gets HTML-escaped by Jinja autoescape, so check for
+    # the unambiguous "match or are empty" suffix.
+    assert "match or are empty" in r.text
 
 
 # ── Settings → Notifications ─────────────────────────────────────────────
