@@ -191,3 +191,28 @@ def firmware_assignment():
             "force": a["force"],
         }
     )
+
+
+# v0.3.8 (RFC-005 P1): device reports it had to fall back from
+# slot B → slot C after a failed update. Body shape per
+# RFC-005 §5.2.
+@bp.post("/failsafe")
+@device_auth_required
+def failsafe_report():
+    from app.services import failsafe as failsafe_service
+
+    device = g.current_device
+    body = request.get_json(silent=True) or {}
+    failed_version = (body.get("failed_version") or "").strip() or None
+    fallback_to_version = (body.get("fallback_to_version") or "").strip() or None
+    reason = (body.get("reason") or "other").strip()
+    details = body.get("details") if isinstance(body.get("details"), dict) else None
+
+    result = failsafe_service.record(
+        device_id=device.id,
+        failed_version=failed_version,
+        fallback_to_version=fallback_to_version,
+        reason=reason,
+        details=details,
+    )
+    return ok(result, status=201)

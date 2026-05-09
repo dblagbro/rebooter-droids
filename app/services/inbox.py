@@ -27,6 +27,10 @@ Attention item kinds (R-DSH-3):
                                signal so an operator can see "this device IS
                                trying but I need to re-enrol it" without
                                diving into /app/unregistered-devices)
+  - `device_failsafe`        — device fell back from slot B → slot C after a
+                               failed firmware update (v0.3.8 / RFC-005 P1).
+                               Severity: critical — a failsafe means an
+                               update we pushed didn't boot on a real device.
   - `firmware_update_seen`   — device booted on new firmware version
 
 Each item carries a stable `id` (composite of kind + target) so a
@@ -58,6 +62,12 @@ ENROLLMENT_PENDING_WINDOW_SECONDS = 60 * 60 # < 1 h since registration
 # avoids noise from a single transient bad request.
 DEVICE_AUTH_REJECTED_LOOKBACK_MINUTES = 60
 DEVICE_AUTH_REJECTED_MIN_HITS = 3
+
+# v0.3.8 device_failsafe:
+# Look back 24 h. Any failsafe in this window surfaces — these are
+# already strongly-shaped events from device firmware so we don't
+# need a hit-count threshold to filter noise.
+DEVICE_FAILSAFE_LOOKBACK_HOURS = 24
 
 # v0.3.7: source IPs that are NEVER real devices. Filter them out
 # of the attention feed so the operator doesn't see machine-
@@ -107,6 +117,7 @@ def health_and_attention(limit: int = 50) -> dict:
                 "devices_never": 0,
                 "enrollments_pending": 0,
                 "auth_rejected": 0,
+                "failsafe": 0,
             },
         }
 
@@ -257,6 +268,56 @@ def _compute(limit: int = 50) -> dict:
         # Best-effort: never let a tracker query failure crash Status.
         log.exception("inbox.device_auth_rejected query failed")
 
+    # v0.3.8: device_failsafe items.
+    # Each row in device_failsafe_events from the last
+    # DEVICE_FAILSAFE_LOOKBACK_HOURS hours becomes a critical-severity
+    # attention item. A failsafe is a strong signal — an update we
+    # pushed didn't boot on a real device.
+    failsafe_count = 0
+    try:
+        from app.services import failsafe as failsafe_service
+
+        # Look up display_name per device once for nicer titles.
+        device_name_by_id: dict[str, str] = {}
+        with session_scope() as fname_session:
+            for d in fname_session.scalars(select(Device)):
+                device_name_by_id[d.id] = d.display_name or d.id
+
+        for fs in failsafe_service.list_recent(
+            limit=20,
+            since_hours=DEVICE_FAILSAFE_LOOKBACK_HOURS,
+        ):
+            failsafe_count += 1
+            dev_id = fs["device_id"]
+            dev_name = device_name_by_id.get(dev_id, dev_id)
+            failed = fs.get("failed_version") or "?"
+            fallback = fs.get("fallback_to_version") or "?"
+            reason = fs.get("reason") or "?"
+            attention.append(
+                {
+                    "kind": "device_failsafe",
+                    "id": f"device_failsafe:{fs['id']}",
+                    "severity": "critical",
+                    "title": (
+                        f"Firmware failsafe: {failed} → {fallback} "
+                        f"(reason: {reason})"
+                    ),
+                    "device_id": dev_id,
+                    "device_name": dev_name,
+                    "since": fs["received_at"],
+                    "hint": (
+                        "The device fell back from a just-updated firmware "
+                        "to its known-good previous version. Check the "
+                        "device-detail page for the diagnostic blob and "
+                        "consider rolling back the firmware deployment "
+                        "until the failure is understood."
+                    ),
+                    "rank": 80,  # higher than offline_long=60
+                }
+            )
+    except Exception:
+        log.exception("inbox.device_failsafe query failed")
+
     attention.sort(key=lambda x: (-x["rank"], x.get("since") or ""), reverse=False)
     attention = attention[:limit]
 
@@ -267,6 +328,7 @@ def _compute(limit: int = 50) -> dict:
         + devices_never
         + enrollments_pending
         + auth_rejected_count
+        + failsafe_count
     )
 
     if devices_total == 0:
@@ -312,5 +374,6 @@ def _compute(limit: int = 50) -> dict:
             "devices_never": devices_never,
             "enrollments_pending": enrollments_pending,
             "auth_rejected": auth_rejected_count,
+            "failsafe": failsafe_count,
         },
     }
