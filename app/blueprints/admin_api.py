@@ -33,6 +33,7 @@ from app.services.users import (
 )
 from app.middleware.response import err, ok
 from app.services.commands import enqueue_for_device, enqueue_for_group
+from app.services import mass_action
 from app.services.devices import (
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
@@ -371,6 +372,27 @@ def send_group_command(group_id: str):
     cmd_type = body.get("type")
     if not cmd_type:
         return err("validation_failed", "type is required", status=400)
+
+    target_count = mass_action.count_group_members(group_id)
+    try:
+        mass_action.validate(
+            target_count=target_count,
+            expected_typed_value=cmd_type,
+            confirmation_level=body.get("confirmation_level"),
+            confirmation_typed_value=body.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        return err(
+            "confirmation_required",
+            str(e),
+            status=409,
+            extra={
+                "target_count": e.target_count,
+                "required_level": e.required_level,
+                "expected_typed_value": e.expected_typed_value,
+            },
+        )
+
     try:
         cmds = enqueue_for_group(
             group_id=group_id,
@@ -381,9 +403,23 @@ def send_group_command(group_id: str):
         )
     except ValueError as e:
         return err("validation_failed", str(e), status=400)
+    audit.record(
+        "group.mass_command_issued",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="group",
+        target_id=group_id,
+        details={
+            "type": cmd_type,
+            "target_count": target_count,
+            "fan_out_count": len(cmds),
+            "confirmation_level": mass_action.required_level(target_count),
+        },
+    )
     return ok(
         {
             "fan_out_count": len(cmds),
+            "target_count": target_count,
             "command_ids": [c.id for c in cmds],
         },
         status=201,
@@ -449,6 +485,32 @@ def create_firmware_deployment():
         return err("validation_failed", "release_id is required", status=400)
     target_type = (body.get("target_type") or "").strip()
     target_id = body.get("target_id")
+
+    if target_type == "all_devices":
+        target_count = mass_action.count_all_active_devices()
+    elif target_type == "group" and target_id:
+        target_count = mass_action.count_group_members(target_id)
+    else:
+        target_count = 1
+    try:
+        mass_action.validate(
+            target_count=target_count,
+            expected_typed_value="deploy_firmware",
+            confirmation_level=body.get("confirmation_level"),
+            confirmation_typed_value=body.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        return err(
+            "confirmation_required",
+            str(e),
+            status=409,
+            extra={
+                "target_count": e.target_count,
+                "required_level": e.required_level,
+                "expected_typed_value": e.expected_typed_value,
+            },
+        )
+
     try:
         out = create_deployment(
             release_id=release_id,
@@ -462,7 +524,50 @@ def create_firmware_deployment():
         return err("not_found", "Release or target not found.", status=404)
     except ValueError as e:
         return err("validation_failed", str(e), status=400)
-    return ok(out, status=201)
+    audit.record(
+        "firmware.mass_deployment_issued",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="firmware_deployment",
+        target_id=release_id,
+        details={
+            "release_id": release_id,
+            "target_type": target_type,
+            "target_id": target_id,
+            "target_count": target_count,
+            "force": bool(body.get("force") or False),
+            "confirmation_level": mass_action.required_level(target_count),
+        },
+    )
+    return ok({**out, "target_count": target_count}, status=201)
+
+
+# ── unregistered-heartbeat visibility (v0.2.5) ──────────────────────────
+
+@bp.get("/unregistered-devices")
+@admin_required_api
+def list_unregistered_attempts_api():
+    from app.services import unregistered as unreg_service
+
+    since_minutes_raw = request.args.get("since_minutes")
+    since_minutes: int | None = None
+    if since_minutes_raw:
+        try:
+            since_minutes = int(since_minutes_raw)
+        except ValueError:
+            return err("validation_failed", "since_minutes must be an integer", status=400)
+    limit_raw = request.args.get("limit")
+    try:
+        limit = int(limit_raw) if limit_raw else 200
+    except ValueError:
+        return err("validation_failed", "limit must be an integer", status=400)
+    rows = unreg_service.list_recent(limit=limit, since_minutes=since_minutes)
+    return ok(
+        {
+            "attempts": rows,
+            "active_60min": unreg_service.count_active(since_minutes=60),
+        }
+    )
 
 
 # ── sites ─────────────────────────────────────────────────────────────────

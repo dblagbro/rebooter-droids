@@ -39,3 +39,9 @@ tr:hover td { background: #11141a; }
 .activity-feed { list-style: none; padding: 0; margin: 0; max-height: 400px; overflow-y: auto; }
 .activity-feed li { display: flex; gap: .6rem; align-items: center; padding: .5rem 0; border-bottom: 1px solid #1f232a; }
 .activity-feed li:last-child { border-bottom: none; }
+.flashes { margin-bottom: 1rem; }
+.flash { padding: 0.6rem 0.9rem; border-radius: 4px; margin-bottom: 0.4rem; font-size: 0.92rem; }
+.flash.flash-error { background: #2a1313; border: 1px solid #5a2222; color: #fca5a5; }
+.flash.flash-warning { background: #2a200d; border: 1px solid #6a4a14; color: #fcd34d; }
+.flash.flash-info, .flash.flash-message { background: #102438; border: 1px solid #214e7a; color: #93c5fd; }
+.flash.flash-success { background: #0c2a1d; border: 1px solid #14532d; color: #86efac; }

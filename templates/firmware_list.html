@@ -37,24 +37,28 @@
       <td><code style="font-size:0.75rem">{{ r.sha256[:16] }}…</code></td>
       <td>{{ r.created_at }}</td>
       <td>
-        <form method="post" action="{{ url_for('admin_ui.firmware_deploy_submit') }}">
+        <form method="post" action="{{ url_for('admin_ui.firmware_deploy_submit') }}"
+              onsubmit="return confirmFirmwareDeploy(this);">
           <input type="hidden" name="release_id" value="{{ r.id }}">
+          <input type="hidden" name="confirmation_level" value="">
+          <input type="hidden" name="confirmation_typed_value" value="">
           <select name="target_type">
-            <option value="all_devices">all devices</option>
-            <option value="device">device…</option>
+            <option value="all_devices" data-count="{{ all_active_devices_count }}">all devices ({{ all_active_devices_count }})</option>
+            <option value="device" data-count="1">device…</option>
             <option value="group">group…</option>
           </select>
           <select name="target_id">
             <option value="">—</option>
-            {% for d in devices %}<option value="{{ d.id }}">dev: {{ d.display_name or d.id }}</option>{% endfor %}
-            {% for g in groups %}<option value="{{ g.id }}">grp: {{ g.name }}</option>{% endfor %}
+            {% for d in devices %}<option value="{{ d.id }}" data-count="1">dev: {{ d.display_name or d.id }}</option>{% endfor %}
+            {% for g in groups %}<option value="{{ g.id }}" data-count="{{ g.member_count or 0 }}">grp: {{ g.name }} ({{ g.member_count or 0 }})</option>{% endfor %}
           </select>
           <label><input type="checkbox" name="force"> force</label>
           <button type="submit">Deploy</button>
         </form>
       </td>
       <td>
-        <form method="post" action="{{ url_for('admin_ui.firmware_delete_submit', release_id=r.id) }}">
+        <form method="post" action="{{ url_for('admin_ui.firmware_delete_submit', release_id=r.id) }}"
+              onsubmit="return confirm('Delete firmware release {{ r.version }}?');">
           <button type="submit">Delete</button>
         </form>
       </td>
@@ -65,6 +69,7 @@
 {% else %}
 <p class="muted">No firmware releases yet.</p>
 {% endif %}
+<script src="{{ url_for('static', filename='js/mass_action.js') }}"></script>
 
 <h2>Deployments</h2>
 {% if deployments %}

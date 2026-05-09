@@ -7,20 +7,35 @@
 
 <section class="placeholder">
   <h2>Send command to all members</h2>
+  <p class="muted" style="margin-top:0">
+    Group has <strong>{{ group.member_count }}</strong> member(s).
+    {% if group.member_count > 20 %}
+    <span class="badge red">large fan-out — typed confirmation required</span>
+    {% elif group.member_count > 5 %}
+    <span class="badge amber">simple confirmation required</span>
+    {% endif %}
+  </p>
   <div class="actions">
     {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
-    <form method="post" action="{{ url_for('admin_ui.group_send_command_submit', group_id=group.id) }}">
+    <form method="post" action="{{ url_for('admin_ui.group_send_command_submit', group_id=group.id) }}"
+          onsubmit="return confirmMassAction(this, {{ group.member_count }}, '{{ t }}');">
       <input type="hidden" name="type" value="{{ t }}">
+      <input type="hidden" name="confirmation_level" value="">
+      <input type="hidden" name="confirmation_typed_value" value="">
       <button type="submit">{{ t }}</button>
     </form>
     {% endfor %}
   </div>
-  <form method="post" action="{{ url_for('admin_ui.group_send_command_submit', group_id=group.id) }}">
+  <form method="post" action="{{ url_for('admin_ui.group_send_command_submit', group_id=group.id) }}"
+        onsubmit="return confirmMassAction(this, {{ group.member_count }}, 'relay_cycle');">
     <input type="hidden" name="type" value="relay_cycle">
+    <input type="hidden" name="confirmation_level" value="">
+    <input type="hidden" name="confirmation_typed_value" value="">
     <label>relay_cycle — power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
     <button type="submit">Fan out relay_cycle</button>
   </form>
 </section>
+<script src="{{ url_for('static', filename='js/mass_action.js') }}"></script>
 
 <section class="placeholder">
   <h2>Members</h2>
