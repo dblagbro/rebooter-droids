@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-09
+
+### Added
+
+- **Fallback URL is live**: `https://www2.voipguru.org/rebooter/`
+  serves the same API and admin UI as the primary
+  `https://www.voipguru.org/rebooter/`. Firmware clients should
+  configure both URLs (primary first) and fall back per
+  `docs/DEVICE_INTEGRATION.md`.
+- Until v0.3 ships node-2 with its own Postgres, www2 is a transparent
+  HTTPS proxy to www1 — same backend, same data, dual front-doors.
+  Firmware blobs are served directly from the shared NAS on either
+  node, no extra hop.
+- Full QA suite (86 tests) green against **both** URLs.
+
+### Changed
+
+- `tests/qa/test_v02_rbac_invites.py::test_invitation_mint_returns_redeem_url`
+  no longer asserts that the invite redeem URL host matches the
+  request host — the backend always emits the canonical primary
+  public base URL, by design.
+
 ## [0.2.0] - 2026-05-09
 
 ### Added — RBAC, invites, audit
