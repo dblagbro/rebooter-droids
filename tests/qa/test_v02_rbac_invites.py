@@ -32,7 +32,11 @@ def test_invitation_mint_returns_redeem_url(base_url, admin_headers):
     )
     assert r.status_code == 201
     d = r.json()["data"]
-    assert d["redeem_url"].startswith(base_url + "/app/invite/inv_")
+    # The backend always emits the canonical (primary) public base URL,
+    # not the request's host. That's intentional so invite emails land
+    # on www1 even if the admin minted them through www2's fallback.
+    assert "/app/invite/inv_" in d["redeem_url"]
+    assert d["redeem_url"].startswith("https://")
     assert d["expires_at"]
 
 

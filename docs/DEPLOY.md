@@ -151,6 +151,26 @@ When node-2 lands (v0.3+), inter-node sync happens via dedicated
 internal HTTPS endpoints on the `rebooter-droids` container —
 not via DB replication or shared storage of the cluster directory.
 
+## Fallback URL (live in v0.2.1)
+
+`https://www2.voipguru.org/rebooter/` is wired as a transparent
+fallback to the primary `https://www.voipguru.org/rebooter/`. The
+nginx config that does this is in **tmrwww02's**
+`/home/dblagbro/docker/config/nginx/nginx.conf`, in the
+`server_name www2.voipguru.org;` block. It looks like:
+
+- `^~ /rebooter/firmware/` → `alias /mnt/s/code/rebooter-droids/data/firmware/`
+  (RAID6 is shared, so blobs are served directly with no proxy hop).
+- `= /rebooter/` and `= /rebooter` → 302 to `/rebooter/app/`
+- `^~ /rebooter/` → `proxy_pass https://192.168.18.11$request_uri`
+  with `Host: www.voipguru.org` so tmrwww01's nginx routes it to the
+  rebooter-droids container.
+
+Until v0.3 launches node-2's own Postgres, www2 is **not** an
+independent deployment — it's a second front door to the same backend.
+That still buys: DNS-level redundancy, separate TLS path, and a real
+URL for firmware fallback testing today.
+
 ## Multi-node deployment plan (v0.3+)
 
 Two nodes:
