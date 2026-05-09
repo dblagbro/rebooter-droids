@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-05-09
+
+### Added — first-class QA-fixture isolation (R2 of REMEDIATION-PLAN-2026-05)
+
+- New `is_qa_fixture: bool` column on `devices` (default `false`).
+  Idempotent boot-time `ALTER TABLE ADD COLUMN IF NOT EXISTS` keeps
+  existing instances upgrade-safe — no manual migration required.
+- Device registration auto-detects QA fixtures by display-name /
+  enrollment-token-hint / enrollment-token-note prefix
+  (`QA `, `qa-`, `qa_`, `test-`, `playwright`). Tests can also send
+  an explicit `qa_fixture: true` in the register payload to be
+  unambiguous.
+- Devices list page and admin API gain a `show_qa_fixtures` toggle.
+  In v0.2.8 the **default is "show"** so operators see the new
+  toggle without data disappearing under them; v0.2.9 will flip the
+  default to "hide" with a one-time info banner.
+- Device-list rows render a small `QA` badge next to the display
+  name when `is_qa_fixture = true`, so operators can spot fixtures
+  even with the toggle on.
+- Admin-API device serialiser returns `is_qa_fixture` so any
+  consumer (mobile app, hub helper) can apply its own filter.
+
+### Notes for the QA team
+
+- Existing v027 tests continue to pass without modification — every
+  test that creates a device uses a `QA …` display-name prefix, so
+  they get auto-tagged on register.
+- New `tests/qa/test_v028_fixture_isolation.py` regression-locks the
+  contract: every QA-suite-created device is flagged; the
+  `?show_qa_fixtures=0` URL hides them; the badge renders.
+
 ## [0.2.7] - 2026-05-09
 
 ### Fixed — UI no longer conflates "never heartbeated" with "offline"

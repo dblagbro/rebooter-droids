@@ -10,6 +10,10 @@
     <option value="active" {% if filters.status == 'active' %}selected{% endif %}>active</option>
     <option value="disabled" {% if filters.status == 'disabled' %}selected{% endif %}>disabled</option>
   </select>
+  <label class="muted" style="display:inline-flex;align-items:center;gap:.35rem">
+    <input type="checkbox" name="show_qa_fixtures" value="1" {% if filters.show_qa_fixtures %}checked{% endif %}>
+    show QA fixtures
+  </label>
   <button type="submit">Filter</button>
   <a class="badge" href="{{ url_for('admin_ui.enrollment_tokens_page') }}">+ Enroll a device</a>
 </form>
@@ -31,7 +35,10 @@
   <tbody>
   {% for d in devices %}
     <tr>
-      <td><a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a></td>
+      <td>
+        <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
+        {% if d.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
+      </td>
       <td><span class="badge">{{ d.registration_state }}</span></td>
       <td>
         {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>

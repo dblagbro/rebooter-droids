@@ -52,6 +52,10 @@ class Device(Base):
         default_now=False, nullable=True
     )
 
+    is_qa_fixture: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()
 
