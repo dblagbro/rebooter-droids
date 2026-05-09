@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block title %}Auth settings - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>Authentication</h2>
+  <p class="muted">Session idle timeout, TOTP MFA enrolment, and Google + GitHub OIDC sign-in. Server-side <code>user_sessions</code> table is in shadow mode (v0.2.10) and the enforce flip is gated on the P5 RBAC migration.</p>
+  {% set empty_title = "Coming in P5 of the redesign" %}
+  {% set empty_body = "TOTP enrolment, OIDC sign-in, password-reset magic-link, and the session-enforce flip ship together in P5 alongside site-as-scope migration." %}
+  {% include "_components/empty_state.html" %}
+</div>
+{% endblock %}

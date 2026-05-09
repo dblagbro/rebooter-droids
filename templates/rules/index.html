@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block title %}Rules - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Rules</h1>
+  <p class="v3-page-sub">Watchdog rules, schedules, and notifications.</p>
+</div>
+
+{% set empty_title = "No watchdog rules yet" %}
+{% set empty_body = "Watchdog rules monitor an internet connection or a host, and automatically power-cycle a device when the check fails. The full rule builder is coming in P4 of the redesign — see docs/webui-redesign-plan.md." %}
+{% include "_components/empty_state.html" %}
+
+<div class="v3-card" style="margin-top:1.5rem">
+  <h2>What's coming</h2>
+  <ul class="muted">
+    <li><strong>Plain-English builder</strong> — express a rule as one human sentence ("If 192.168.1.1 fails ping 3× in 5 min, cycle Office Modem, wait 90 s, retry 3×").</li>
+    <li><strong>Probe types</strong> — internet · ping · TCP · HTTP · DNS · gateway · custom.</li>
+    <li><strong>Failure / recovery thresholds</strong>, cooldowns, maintenance windows, and escalation actions.</li>
+    <li><strong>Per-rule probe-event log</strong> with last-trigger reason.</li>
+    <li><strong>Schedules + notifications</strong> share the same trigger/action machinery.</li>
+  </ul>
+</div>
+{% endblock %}

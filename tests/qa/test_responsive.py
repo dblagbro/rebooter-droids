@@ -84,14 +84,22 @@ def test_mobile_stat_grid_collapses_to_one_column(mobile_logged_in_page):
 
 
 def test_mobile_topbar_nav_links_reachable(mobile_logged_in_page):
-    """All top-level nav links must remain in the DOM and reachable
-    after the mobile layout collapse — even if they live inside a
-    horizontal scroll strip."""
+    """v0.3.0 P1: the redesigned nav is a 5-item set
+    (Status / Devices / Rules / History / Settings) split across a
+    desktop top-nav (`.topnav`, hidden on mobile via CSS) and a
+    mobile bottom-tab bar (`.bottomnav`, visible at ≤640px). Both
+    are present in the DOM at every breakpoint so we assert that
+    each renders all 5 destinations."""
     p = mobile_logged_in_page
-    nav_count = p.locator(".topbar nav a").count()
-    assert nav_count >= 6, (
-        f"expected at least 6 nav links visible on mobile, got {nav_count} — "
-        f"the topbar collapse may have hidden links instead of scroll-stripping"
+    top_nav_count = p.locator(".topnav a").count()
+    bottom_nav_count = p.locator(".bottomnav a").count()
+    assert top_nav_count == 5, (
+        f"expected 5 desktop top-nav links, got {top_nav_count} — "
+        f"the v0.3.0 redesign has Status/Devices/Rules/History/Settings"
+    )
+    assert bottom_nav_count == 5, (
+        f"expected 5 mobile bottom-nav links, got {bottom_nav_count} — "
+        f"the v0.3.0 redesign has Status/Devices/Rules/History/Settings"
     )
 
 

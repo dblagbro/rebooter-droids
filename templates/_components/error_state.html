@@ -1,0 +1,11 @@
+{# Error state component
+ # Usage: caller sets `error_title` and `error_body`, optionally
+ # `error_retry_href`.
+ #}
+<div class="v3-card" role="alert">
+  <h2 style="color: var(--red-fg)">{{ error_title or "Something went wrong" }}</h2>
+  <p>{{ error_body }}</p>
+  {% if error_retry_href %}
+    <a class="btn btn-secondary" href="{{ error_retry_href }}">Retry</a>
+  {% endif %}
+</div>
