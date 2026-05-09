@@ -12,7 +12,7 @@
 </form>
 
 {% if events %}
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th><th>Details</th></tr></thead>
   <tbody>
   {% for e in events %}
@@ -26,7 +26,7 @@
   </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% else %}
 <p class="muted">No audit events match.</p>
 {% endif %}

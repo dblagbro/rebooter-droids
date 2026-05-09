@@ -45,3 +45,81 @@ tr:hover td { background: #11141a; }
 .flash.flash-warning { background: #2a200d; border: 1px solid #6a4a14; color: #fcd34d; }
 .flash.flash-info, .flash.flash-message { background: #102438; border: 1px solid #214e7a; color: #93c5fd; }
 .flash.flash-success { background: #0c2a1d; border: 1px solid #14532d; color: #86efac; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Responsive overflow wrapper for tables. Templates apply
+   <div class="table-wrap"><table>...</table></div> so wide tables
+   horizontal-scroll inside their wrapper instead of forcing the whole
+   page to scroll on narrow screens. Desktop unaffected.
+   ─────────────────────────────────────────────────────────────────────── */
+.table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-wrap > table { min-width: 600px; margin-top: 0; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Tablet — 1024px and below.
+   Tighten outer padding, allow nav to wrap so the topbar doesn't push
+   the version off-screen on iPad-class devices.
+   ─────────────────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  main { padding: 1.25rem 1.25rem; }
+  .topbar { gap: 1rem; flex-wrap: wrap; padding: 0.65rem 1rem; }
+  .topbar nav { gap: 0.75rem; flex-wrap: wrap; }
+  .topline { gap: 0.75rem; margin-bottom: 1rem; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Phone — 640px and below.
+   - Topbar collapses: brand+version on row 1, nav on row 2 stacked.
+   - Nav becomes a horizontal-scroll strip so all links remain reachable
+     without JS (a CSS-only drawer could be added later but a scroll
+     strip needs zero behavioral changes).
+   - Forms span the full width within main.
+   - Stat grid stacks to 1 column.
+   - Activity feed cap height shrinks so it doesn't dominate the screen.
+   - Tables get smaller inner padding so .table-wrap holds more columns
+     on a 375px viewport before requiring scroll.
+   ─────────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  main { padding: 1rem 0.85rem; }
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.6rem 0.85rem;
+  }
+  .topbar .brand { display: inline-block; }
+  .topbar nav {
+    order: 2;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    padding-bottom: 0.15rem;
+    gap: 0.85rem;
+  }
+  .topbar nav a { flex: 0 0 auto; }
+  .version { order: 0; align-self: flex-end; font-size: 0.78rem; }
+
+  form input { max-width: 100%; }
+  button { width: 100%; max-width: 320px; }
+
+  .stat-grid { grid-template-columns: 1fr; gap: 0.6rem; }
+  .stat .num { font-size: 1.6rem; }
+
+  .activity-feed { max-height: 260px; }
+  th, td { padding: 0.45rem 0.55rem; font-size: 0.92rem; }
+
+  .topline { flex-direction: column; align-items: flex-start; }
+  .actions { flex-wrap: wrap; }
+  .actions form, .actions button, .actions a { flex: 0 1 auto; }
+
+  .placeholder, .auth { padding: 1rem; }
+}
+
+/* Tap-target accessibility: WCAG 2.5.5 minimum 24×24 effective area for
+   inline links sitting inside dense tables/feeds. Only kicks in for
+   touch input devices so desktop hover affordances stay tight. */
+@media (hover: none) and (pointer: coarse) {
+  .topbar nav a { padding: 0.35rem 0.25rem; }
+  .activity-feed li a, table a { display: inline-block; min-height: 24px; }
+}

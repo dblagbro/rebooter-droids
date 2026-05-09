@@ -24,7 +24,7 @@
 
 <h2>Existing tokens</h2>
 {% if tokens %}
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>ID</th><th>Hint</th><th>Note</th><th>Created</th><th>Expires</th><th>State</th></tr></thead>
   <tbody>
   {% for t in tokens %}
@@ -43,7 +43,7 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% else %}
   <p class="muted">No tokens minted yet.</p>
 {% endif %}

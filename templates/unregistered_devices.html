@@ -19,7 +19,7 @@
 </form>
 
 {% if rows %}
-<table>
+<div class="table-wrap"><table>
   <thead>
     <tr>
       <th>Last seen</th>
@@ -52,7 +52,7 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 <p class="muted" style="font-size:.85rem; margin-top:1.5rem">
   Aggregation rolls up at the (device_id, IP, endpoint) tuple level. The table
   is rolling-capped — oldest rows are pruned when total exceeds 5000.
