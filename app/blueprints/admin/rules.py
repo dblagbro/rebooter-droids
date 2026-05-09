@@ -1,26 +1,230 @@
-"""Rules — watchdog rules + schedules + notification rules.
+"""Rules — watchdog rules (v0.4.0 first slice).
 
-v0.3.0 P1 ships only the route + an empty-state page; the data
-model and rule-builder UX land in P4 of the redesign plan
-(`docs/webui-redesign-plan.md` §9).
+v0.4.0 ships data-model + CRUD + plain-English render. The probe
+runtime that actually executes rules and writes
+watchdog_probe_events is queued for v0.4.1+.
 
-The route exists in P1 so the new top-nav has a real destination
-and the layout's `url_for("admin_ui.rules_page")` resolves.
+UI: list at /app/rules, create form, per-row enable/disable +
+delete actions. No edit page yet (delete-and-recreate is the
+flow); advanced JSON editor + per-rule event log + probe-now /
+simulate buttons land in subsequent slices.
 """
 
 from __future__ import annotations
 
-from flask import render_template
+from flask import abort, flash, g, redirect, render_template, request, url_for
 
-from app.blueprints.admin import admin_ui_bp
+from app.blueprints.admin import admin_ui_bp, admin_api_bp
 from app.blueprints.admin._common import _ctx
-from app.middleware.admin_auth import admin_required_ui
+from app.middleware.admin_auth import (
+    ADMIN_AND_UP,
+    WRITE_ROLES,
+    admin_required_api,
+    admin_required_ui,
+    role_required_api,
+    role_required_ui,
+)
+from app.middleware.response import err, ok
+from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
+from app.services import audit as audit_service
+from app.services.devices import list_devices as svc_list_devices
+from app.services.groups import list_groups as svc_list_groups
+from app.services.watchdog import (
+    WatchdogValidationError,
+    create_rule as svc_create_rule,
+    delete_rule as svc_delete_rule,
+    list_rules as svc_list_rules,
+    set_enabled as svc_set_enabled,
+)
 
+
+# ── UI ─────────────────────────────────────────────────────────────────────
 
 @admin_ui_bp.get("/rules")
 @admin_required_ui
 def rules_page():
+    rules = svc_list_rules()
+    devices = svc_list_devices(include_qa_fixtures=False)
+    groups = svc_list_groups()
     return render_template(
         "rules/index.html",
-        **_ctx({"active": "rules"}),
+        **_ctx({
+            "active": "rules",
+            "rules": rules,
+            "devices": devices,
+            "groups": groups,
+        }),
     )
+
+
+@admin_ui_bp.post("/rules")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_create_submit():
+    name = (request.form.get("name") or "").strip()
+    probe_kind = (request.form.get("probe_kind") or "").strip()
+    probe_arg = (request.form.get("probe_arg") or "").strip()
+    target_kind = (request.form.get("target_kind") or "").strip()
+    target_id = (request.form.get("target_id") or "").strip()
+    action_kind = (request.form.get("action_kind") or "cycle").strip()
+
+    # Build the probe JSON shape from the form's two-input pattern.
+    probe: dict
+    if probe_kind == "internet":
+        probe = {"kind": "internet"}
+    elif probe_kind == "ping":
+        probe = {"kind": "ping", "host": probe_arg}
+    elif probe_kind == "tcp":
+        host, _, port = probe_arg.partition(":")
+        probe = {"kind": "tcp", "host": host, "port": int(port or 0)}
+    elif probe_kind == "http":
+        probe = {"kind": "http", "url": probe_arg}
+    elif probe_kind == "dns":
+        probe = {"kind": "dns", "hostname": probe_arg}
+    elif probe_kind == "gateway":
+        probe = {"kind": "gateway"}
+    else:
+        flash("Unsupported probe kind.", "error")
+        return redirect(url_for("admin_ui.rules_page"))
+
+    target: dict
+    if target_kind in ("device", "group"):
+        target = {"kind": target_kind, "id": target_id}
+    elif target_kind == "tag":
+        target = {"kind": "tag", "tag": target_id}
+    else:
+        flash("Pick a target.", "error")
+        return redirect(url_for("admin_ui.rules_page"))
+
+    action: dict
+    if action_kind == "cycle":
+        action = {
+            "kind": "cycle",
+            "power_off_seconds": int(request.form.get("power_off_seconds") or 5),
+            "post_reboot_holdoff_seconds": int(
+                request.form.get("post_reboot_holdoff_seconds") or 180
+            ),
+        }
+    elif action_kind == "hold_off":
+        action = {"kind": "hold_off"}
+    elif action_kind == "notify_only":
+        action = {"kind": "notify_only"}
+    else:
+        flash("Unsupported action.", "error")
+        return redirect(url_for("admin_ui.rules_page"))
+
+    try:
+        rule = svc_create_rule(
+            name=name,
+            probe=probe,
+            target=target,
+            action=action,
+            failure_threshold=int(request.form.get("failure_threshold") or 3),
+            recovery_threshold=int(request.form.get("recovery_threshold") or 2),
+            window_seconds=int(request.form.get("window_seconds") or 60),
+            cooldown_seconds=int(request.form.get("cooldown_seconds") or 300),
+            created_by_user_id=g.current_user.id,
+        )
+    except WatchdogValidationError as e:
+        flash(str(e), "error")
+        return redirect(url_for("admin_ui.rules_page"))
+
+    audit_service.record(
+        "watchdog_rule.created",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule["id"],
+        details={"name": name, "reason": "operator"},
+    )
+    flash(f"Rule created: {rule['sentence']}", "info")
+    return redirect(url_for("admin_ui.rules_page"))
+
+
+@admin_ui_bp.post("/rules/<rule_id>/toggle")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_set_enabled_submit(rule_id: str):
+    enabled = (request.form.get("enabled") or "").lower() in ("1", "true", "on")
+    svc_set_enabled(rule_id, enabled)
+    audit_service.record(
+        "watchdog_rule.enabled_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule_id,
+        details={"enabled": enabled, "reason": "operator"},
+    )
+    return redirect(url_for("admin_ui.rules_page"))
+
+
+@admin_ui_bp.post("/rules/<rule_id>/delete")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_delete_submit(rule_id: str):
+    if svc_delete_rule(rule_id):
+        audit_service.record(
+            "watchdog_rule.deleted",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="watchdog_rule",
+            target_id=rule_id,
+            details={"reason": "operator"},
+        )
+    return redirect(url_for("admin_ui.rules_page"))
+
+
+# ── API ────────────────────────────────────────────────────────────────────
+
+@admin_api_bp.get("/rules")
+@admin_required_api
+def list_rules_api():
+    return ok(svc_list_rules())
+
+
+@admin_api_bp.post("/rules")
+@role_required_api(*ADMIN_AND_UP)
+def create_rule_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        rule = svc_create_rule(
+            name=body.get("name", ""),
+            probe=body.get("probe") or {},
+            target=body.get("target") or {},
+            action=body.get("action") or {},
+            failure_threshold=body.get("failure_threshold", 3),
+            recovery_threshold=body.get("recovery_threshold", 2),
+            window_seconds=body.get("window_seconds", 60),
+            cooldown_seconds=body.get("cooldown_seconds", 300),
+            max_retries=body.get("max_retries", 3),
+            retry_delay_seconds=body.get("retry_delay_seconds", 60),
+            escalation=body.get("escalation"),
+            maintenance_windows=body.get("maintenance_windows"),
+            description=body.get("description"),
+            site_id=body.get("site_id"),
+            created_by_user_id=g.current_user.id,
+        )
+    except WatchdogValidationError as e:
+        return err("validation_failed", str(e), status=400)
+    audit_service.record(
+        "watchdog_rule.created",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule["id"],
+        details={"name": rule["name"], "reason": "operator"},
+    )
+    return ok(rule, status=201)
+
+
+@admin_api_bp.delete("/rules/<rule_id>")
+@role_required_api(*ADMIN_AND_UP)
+def delete_rule_api(rule_id: str):
+    if not svc_delete_rule(rule_id):
+        return err("rule_unknown", "Watchdog rule not found.", status=404)
+    audit_service.record(
+        "watchdog_rule.deleted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule_id,
+        details={"reason": "operator"},
+    )
+    return ok({"deleted": True})
