@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-09
+
+### Added — Password reset + Notifications tab + 30-day invite default
+
+- **Password-reset flow.** New `password_resets` table; new
+  `/app/forgot-password` and `/app/reset-password` pages. Tokens
+  default to **1 h TTL** (configurable via
+  `REBOOTER_PASSWORD_RESET_TTL_SECONDS`). On consume,
+  `tokens_valid_after` is bumped so every existing session/JWT
+  for that user is invalidated. "Forgot your password?" link added
+  to the login page.
+- **Settings → Notifications** tab. Read-only display of env-var
+  SMTP config + a "Send test email" form.
+- **Invitation default TTL: 7 → 30 days** (operator-requested).
+  Override via `REBOOTER_INVITATION_TTL_SECONDS`. Invite email body
+  updated to match.
+- **Email service additions:** `send_password_reset_email`,
+  `send_test_email`.
+
+### Audit hooks
+
+- `password_reset.requested` (logged for every attempt, including
+  non-existent emails, so the operator sees enumeration probes).
+- `password_reset.consumed` (per-user, includes IP).
+- `smtp.test_sent` (per-test, includes target email + ok flag).
+
+### Compatibility
+
+- All v0.4.0 routes preserved.
+- `password_resets` table created via `Base.metadata.create_all()`
+  — no migration step.
+- SMTP behavior unchanged when not configured: invitations still
+  succeed (link surfaces in the admin console); password-reset
+  request silently succeeds-shaped (the email simply never arrives).
+
 ## [0.4.0] - 2026-05-09
 
 ### Added — Watchdog rules first slice (P4 of webui-redesign-plan)
