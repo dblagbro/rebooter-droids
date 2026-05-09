@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-09
+
+### Added — Status page + device list/detail restructure (P2 of webui-redesign)
+
+- **Status page** (`/app/`) replaces the v0.2.x stat-grid dashboard
+  with an attention-feed-shaped landing.
+  - Single-glance health verdict: **all-clear / attention / degraded
+    / unknown** (R-DSH-2). The `unknown` state never crashes the
+    page — telemetry failures fall through cleanly.
+  - **Attention feed** ranked by severity × recency
+    (R-DSH-3). Item kinds: `device_offline_short`,
+    `device_offline_long`, `device_never`, `enrollment_pending`.
+    Each item carries a stable id so a future ack-action can
+    dedupe.
+  - Plain-language all-clear statement when nothing is wrong
+    (R-DSH-9).
+  - Manual emergency controls card (open devices, enrol, groups,
+    firmware) (R-DSH-8).
+  - Recent-activity feed below the fold links into the new
+    History page.
+- **New service**: `app/services/inbox.py` with
+  `health_and_attention()` — single DB hit returns verdict + items
+  + totals so the Status page renders consistently.
+- **Saved-filter chips on Devices** (R-DEV-4):
+  - `Offline > 24 h` · `Never heartbeated` · `Has pending commands`
+    · `QA fixtures only`
+  - URL round-trip via repeated `?chip=...` query params
+    (R-DEV-5). Multiple chips compose with AND semantics.
+  - Service-layer support in `app/services/devices.list_devices`.
+  - Same chip param on `/api/v1/admin/devices` for API consumers.
+- **Mobile card layout** for the devices list (R-DEV-3).
+  Breakpoint ≤ 640 px renders devices as stacked cards with the
+  primary action reachable without horizontal scroll. Desktop
+  unchanged (table layout).
+- **Central-vs-local cue** (R-DEV-2): a `local-only` badge on
+  devices that opt out of central management, plus a `central`
+  badge on devices that opt in. Closes the v0.2.x failure mode
+  where local-only devices were rendered as if they were
+  unhealthy.
+- **Open-this-device's-local-UI** link on device-detail (R-DEV-11)
+  when the local IP is known.
+- **Device detail tab strip** (R-DEV-7): Overview / Power /
+  Watchdog / Schedule / Audit / Events / Settings. Watchdog +
+  Schedule are stubs in v0.3.1 with empty states pointing at P4.
+- **Enrollment wizard** at `/app/devices/new` (R-DEV-6):
+  one-step minting + display of the token + the firmware-side
+  configuration block (central_base_url, secondary_base_url,
+  enrollment_token). QR-code support deferred to v0.3.2.
+- New CSS surfaces: `.v3-verdict-{all-clear,attention,degraded,unknown}`,
+  `.v3-attention-list`, `.v3-chips` + `.v3-chip-active`,
+  `.v3-device-card`, `.v3-tabbar`. All theme-token-driven so
+  they work in light, dark, and system modes.
+
+### Test coverage
+
+- New `tests/qa/test_v031_status_and_devices.py`.
+- All v0.2.x and v0.3.0 buckets remain green against live.
+
+### Compatibility
+
+- All v0.3.0 routes and behaviour preserved. The old
+  `dashboard.html` template is no longer rendered (the handler
+  now renders `status.html`); no template change is breaking.
+- All existing endpoint names (`admin_ui.*`, `admin_api.*`)
+  preserved.
+- No schema change. No new env vars.
+
 ## [0.3.0] - 2026-05-09
 
 ### Added — design system + layout + navigation foundation (Phase 1 of webui-redesign-plan)

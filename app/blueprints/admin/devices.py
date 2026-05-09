@@ -45,12 +45,16 @@ def list_devices_page():
     # (include_qa_fixtures=True) so operators see the new toggle without
     # data disappearing under them; v0.2.9 will flip the default to hide.
     show_qa = _show_qa_fixtures(request.args.get("show_qa_fixtures"), default=True)
+    # v0.3.1 (P2): saved-filter chips. Multiple via repeated `?chip=...`
+    # query params; URL round-trips so a saved view is shareable.
+    chips = tuple(request.args.getlist("chip"))
     devices = svc_list_devices(
         site_id=request.args.get("site_id"),
         group_id=request.args.get("group_id"),
         search=request.args.get("search"),
         status=request.args.get("status"),
         include_qa_fixtures=show_qa,
+        chips=chips,
     )
     return render_template(
         "devices_list.html",
@@ -61,6 +65,7 @@ def list_devices_page():
                     "search": request.args.get("search", ""),
                     "status": request.args.get("status", ""),
                     "show_qa_fixtures": show_qa,
+                    "chips": list(chips),
                 },
             }
         ),
@@ -162,12 +167,14 @@ def device_send_command(device_id: str):
 @admin_required_api
 def list_devices():
     show_qa = _show_qa_fixtures(request.args.get("show_qa_fixtures"), default=True)
+    chips = tuple(request.args.getlist("chip"))
     devices = svc_list_devices(
         site_id=request.args.get("site_id"),
         group_id=request.args.get("group_id"),
         search=request.args.get("search"),
         status=request.args.get("status"),
         include_qa_fixtures=show_qa,
+        chips=chips,
     )
     return ok({"devices": devices, "total": len(devices)})
 

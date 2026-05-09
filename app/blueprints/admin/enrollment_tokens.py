@@ -41,6 +41,36 @@ def enrollment_tokens_create():
     return redirect(url_for("admin_ui.enrollment_tokens_page"))
 
 
+# v0.3.1 (P2): friendlier "+ Enrol a device" wizard at /app/devices/new.
+@admin_ui_bp.get("/devices/new")
+@admin_required_ui
+def enroll_device_wizard():
+    new_token = session.pop("_new_enrollment_token", None)
+    return render_template(
+        "devices/new.html",
+        **_ctx({"new_token": new_token}),
+    )
+
+
+@admin_ui_bp.post("/devices/new")
+@admin_required_ui
+def enroll_device_wizard_submit():
+    settings = current_app.config["SETTINGS"]
+    record, raw_secret = mint_enrollment_token(
+        settings,
+        issued_by_user_id=g.current_user.id,
+        display_name_hint=(request.form.get("display_name_hint") or "").strip() or None,
+        note=(request.form.get("note") or "qa-friendly enrolment").strip() or None,
+    )
+    session["_new_enrollment_token"] = {
+        "id": record.id,
+        "enrollment_token": raw_secret,
+        "expires_at": record.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "display_name_hint": record.display_name_hint,
+    }
+    return redirect(url_for("admin_ui.enroll_device_wizard"))
+
+
 # ── API ────────────────────────────────────────────────────────────────────
 
 @admin_api_bp.post("/enrollment-tokens")
