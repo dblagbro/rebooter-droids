@@ -1,0 +1,95 @@
+{% extends "layout.html" %}
+{% block title %}Status - Rebooter-Droids{% endblock %}
+{% block content %}
+
+{# ── verdict banner ─────────────────────────────────────────────────── #}
+<section class="v3-verdict v3-verdict-{{ inbox.verdict }}" role="status">
+  <div class="v3-verdict-icon" aria-hidden="true">
+    {% if inbox.verdict == 'all-clear' %}✓{% elif inbox.verdict == 'attention' %}!{% elif inbox.verdict == 'degraded' %}⚠{% else %}?{% endif %}
+  </div>
+  <div class="v3-verdict-body">
+    <h1 class="v3-verdict-title">{{ inbox.verdict_label }}</h1>
+    <p class="v3-verdict-msg">{{ inbox.verdict_message }}</p>
+  </div>
+</section>
+
+{# ── attention feed ──────────────────────────────────────────────────── #}
+{% if inbox.attention %}
+<section class="v3-attention" aria-label="Attention items">
+  <h2 class="v3-section-title">Needs attention</h2>
+  <ul class="v3-attention-list">
+  {% for item in inbox.attention %}
+    <li class="v3-attention-item v3-sev-{{ item.severity }}">
+      <div class="v3-attention-summary">
+        <strong>{{ item.title }}</strong>
+        <a href="{{ url_for('admin_ui.device_detail_page', device_id=item.device_id) }}" class="v3-attention-target">
+          {{ item.device_name }}
+        </a>
+      </div>
+      {% if item.since %}<div class="v3-attention-since muted">since {{ item.since }}</div>{% endif %}
+      {% if item.hint %}<div class="v3-attention-hint muted">{{ item.hint }}</div>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{# ── totals row ─────────────────────────────────────────────────────── #}
+<section aria-label="Fleet totals">
+  <div class="stat-grid">
+    <a class="stat" href="{{ url_for('admin_ui.list_devices_page') }}">
+      <div class="num">{{ inbox.totals.devices_online }}</div>
+      <div class="label">online</div>
+      <div class="sub muted">of {{ inbox.totals.devices_total }} real fleet</div>
+    </a>
+    <a class="stat" href="{{ url_for('admin_ui.list_devices_page') }}?chip=offline_24h">
+      <div class="num">{{ inbox.totals.devices_offline_long }}</div>
+      <div class="label">offline &gt; 24 h</div>
+      <div class="sub muted">long-stale</div>
+    </a>
+    <a class="stat" href="{{ url_for('admin_ui.list_devices_page') }}?chip=never">
+      <div class="num">{{ inbox.totals.devices_never }}</div>
+      <div class="label">never heartbeated</div>
+      <div class="sub muted">enrolled, no first contact</div>
+    </a>
+    <a class="stat" href="{{ url_for('admin_ui.rules_page') }}">
+      <div class="num">0</div>
+      <div class="label">active rules</div>
+      <div class="sub muted">watchdogs ship in P4</div>
+    </a>
+  </div>
+</section>
+
+{# ── emergency controls ─────────────────────────────────────────────── #}
+<section class="v3-card">
+  <h2 class="v3-section-title">Manual controls</h2>
+  <p class="muted" style="margin-top:0">Cycle, deploy, or enrol — every dangerous action goes through the mass-action confirmation gate (v0.2.5+).</p>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('admin_ui.list_devices_page') }}">Open devices</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_ui.enrollment_tokens_page') }}">+ Enrol a device</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_ui.list_groups_page') }}">Groups</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware releases</a>
+  </div>
+</section>
+
+{# ── activity feed (below the fold) ─────────────────────────────────── #}
+<section class="v3-card">
+  <h2 class="v3-section-title">Recent activity</h2>
+  {% if feed %}
+  <ul class="activity-feed">
+  {% for f in feed %}
+    <li>
+      <span class="badge">{{ f.kind }}</span>
+      <span class="muted" style="font-size:.85rem">{{ f.at }}</span>
+      <span>{{ f.actor }} — {{ f.summary }}</span>
+    </li>
+  {% endfor %}
+  </ul>
+  <p class="muted" style="margin-top:0.75rem">
+    <a href="{{ url_for('admin_ui.history_page') }}">Full history →</a>
+  </p>
+  {% else %}
+  <p class="muted">No recent activity.</p>
+  {% endif %}
+</section>
+{% endblock %}

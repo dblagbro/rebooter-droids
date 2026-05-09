@@ -52,8 +52,22 @@ def list_devices(
     status: str | None = None,
     offline_threshold_seconds: int = 180,
     include_qa_fixtures: bool = True,
+    chips: tuple[str, ...] | list[str] | None = None,
 ) -> list[dict]:
+    """v0.3.1 (P2): saved-filter `chips` arg accepts a list of named
+    filter shortcuts that are AND-composed with the other filters.
+    Recognised chips:
+      - "offline_24h"   — last_heartbeat_at older than 24 h (had history)
+      - "never"         — last_heartbeat_at IS NULL
+      - "pending_cmds"  — has a command in pending/accepted/running state
+      - "qa_fixtures"   — only QA-fixture-tagged rows (overrides
+                          include_qa_fixtures=False to *show* them)
+
+    Unrecognised chip names are silently ignored so a stale URL
+    doesn't 500.
+    """
     now = datetime.now(timezone.utc)
+    chips = tuple(c for c in (chips or ()) if c)
     with session_scope() as session:
         stmt = select(Device)
         if site_id:
@@ -62,8 +76,36 @@ def list_devices(
             stmt = stmt.where(Device.registration_state == "active")
         if status == "disabled":
             stmt = stmt.where(Device.registration_state == "disabled")
-        if not include_qa_fixtures:
+
+        # Saved-filter chips (R-DEV-4).
+        from datetime import timedelta as _td
+
+        if "qa_fixtures" in chips:
+            # Show ONLY QA fixtures — overrides the include flag.
+            stmt = stmt.where(Device.is_qa_fixture.is_(True))
+        elif not include_qa_fixtures:
             stmt = stmt.where(Device.is_qa_fixture.is_(False))
+
+        if "offline_24h" in chips:
+            cutoff_24h = now - _td(hours=24)
+            stmt = stmt.where(
+                Device.last_heartbeat_at.is_not(None),
+                Device.last_heartbeat_at < cutoff_24h,
+            )
+
+        if "never" in chips:
+            stmt = stmt.where(Device.last_heartbeat_at.is_(None))
+
+        if "pending_cmds" in chips:
+            from sqlalchemy import exists
+
+            stmt = stmt.where(
+                exists().where(
+                    (Command.device_id == Device.id)
+                    & (Command.status.in_(("pending", "accepted", "running")))
+                )
+            )
+
         if search:
             like = f"%{search.lower()}%"
             from sqlalchemy import or_, func

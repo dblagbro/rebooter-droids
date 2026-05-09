@@ -2,11 +2,42 @@
 {% block title %}{{ device.display_name or device.id }} - Rebooter-Droids{% endblock %}
 {% block content %}
 <p><a href="{{ url_for('admin_ui.list_devices_page') }}">← Devices</a></p>
-<h1>{{ device.display_name or device.id }}</h1>
-<p class="muted">{{ device.id }} · {{ device.hardware_model or 'unknown model' }} · firmware {{ device.firmware_version or '—' }}</p>
 
-<section class="placeholder">
-  <h2>Heartbeat</h2>
+<div class="v3-page-header">
+  <h1>{{ device.display_name or device.id }}</h1>
+  <p class="v3-page-sub">
+    <code>{{ device.id }}</code>
+    · {{ device.hardware_model or 'unknown model' }}
+    · firmware {{ device.firmware_version or '—' }}
+    {% if device.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
+    {% if device.central_management_enabled %}
+      <span class="badge">central</span>
+    {% else %}
+      <span class="badge" title="opts out — local-only is healthy">local-only</span>
+    {% endif %}
+  </p>
+  {% if device.local_ip %}
+    <p class="muted">
+      Local UI: <a href="http://{{ device.local_ip }}/" target="_blank" rel="noopener">{{ device.local_ip }}</a>
+      <span style="font-size:.85rem">— opens the device's on-board web UI on your LAN.</span>
+    </p>
+  {% endif %}
+</div>
+
+{# ── tab strip / table-of-contents ──────────────────────────────────── #}
+<nav class="v3-tabbar" aria-label="Device sections">
+  <a href="#overview">Overview</a>
+  <a href="#power">Power</a>
+  <a href="#watchdog">Watchdog</a>
+  <a href="#schedule">Schedule</a>
+  <a href="#audit">Audit</a>
+  <a href="#events">Events</a>
+  <a href="#settings">Settings</a>
+</nav>
+
+{# ── overview ───────────────────────────────────────────────────────── #}
+<section class="v3-card" id="overview">
+  <h2>Overview · Heartbeat</h2>
   {% if device.latest_heartbeat %}
     <p>Last seen <strong>{{ device.latest_heartbeat.received_at }}</strong></p>
     <ul>
@@ -24,13 +55,14 @@
   {% endif %}
 </section>
 
-<section class="placeholder">
-  <h2>Send command</h2>
+{# ── power ──────────────────────────────────────────────────────────── #}
+<section class="v3-card" id="power">
+  <h2>Power</h2>
   <div class="actions">
     {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
     <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}">
       <input type="hidden" name="type" value="{{ t }}">
-      <button type="submit">{{ t }}</button>
+      <button type="submit"{% if t in ('relay_off', 'device_restart') %} class="btn-danger"{% endif %}>{{ t }}</button>
     </form>
     {% endfor %}
   </div>
@@ -38,12 +70,10 @@
     <input type="hidden" name="type" value="relay_cycle">
     <label>relay_cycle — power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
     <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
-    <button type="submit">Send relay_cycle</button>
+    <button type="submit" class="btn-danger">Send relay_cycle</button>
   </form>
-</section>
 
-<section class="placeholder">
-  <h2>Pending commands</h2>
+  <h3 style="margin-top:1.5rem">Pending commands</h3>
   {% if device.pending_commands %}
   <div class="table-wrap"><table>
     <thead><tr><th>Type</th><th>Status</th><th>Created</th><th>Expires</th></tr></thead>
@@ -58,23 +88,28 @@
   {% endif %}
 </section>
 
-<section class="placeholder">
-  <h2>Recent events</h2>
-  {% if device.recent_events %}
-  <div class="table-wrap"><table>
-    <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
-    <tbody>
-    {% for e in device.recent_events %}
-      <tr><td>{{ e.timestamp }}</td><td>{{ e.type }}</td><td>{{ e.message or '' }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  {% else %}
-    <p class="muted">No events yet.</p>
-  {% endif %}
+{# ── watchdog (P4 stub) ─────────────────────────────────────────────── #}
+<section class="v3-card" id="watchdog">
+  <h2>Watchdog</h2>
+  {% set empty_title = "No watchdog rules targeting this device" %}
+  {% set empty_body = "When watchdog rules ship in P4, every rule that includes this device will appear here with its last-trigger reason and a quick re-arm/disable affordance." %}
+  {% set empty_cta_label = "Manage rules" %}
+  {% set empty_cta_href = url_for('admin_ui.rules_page') %}
+  {% include "_components/empty_state.html" %}
 </section>
 
-<section class="placeholder">
+{# ── schedule (P4 stub) ─────────────────────────────────────────────── #}
+<section class="v3-card" id="schedule">
+  <h2>Schedule</h2>
+  {% set empty_title = "No schedules targeting this device" %}
+  {% set empty_body = "Recurring power cycles (e.g. nightly modem reboots) ship in P4 alongside watchdog rules." %}
+  {% set empty_cta_label = "Manage schedules" %}
+  {% set empty_cta_href = url_for('admin_ui.rules_page') %}
+  {% include "_components/empty_state.html" %}
+</section>
+
+{# ── audit (v0.2.9) ─────────────────────────────────────────────────── #}
+<section class="v3-card" id="audit">
   <h2>Audit history</h2>
   {% if device.audit_history %}
   <div class="table-wrap"><table>
@@ -97,8 +132,26 @@
   {% endif %}
 </section>
 
-<section class="placeholder">
-  <h2>Edit metadata</h2>
+{# ── events ─────────────────────────────────────────────────────────── #}
+<section class="v3-card" id="events">
+  <h2>Recent events</h2>
+  {% if device.recent_events %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for e in device.recent_events %}
+      <tr><td>{{ e.timestamp }}</td><td>{{ e.type }}</td><td>{{ e.message or '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+    <p class="muted">No events yet.</p>
+  {% endif %}
+</section>
+
+{# ── settings ───────────────────────────────────────────────────────── #}
+<section class="v3-card" id="settings">
+  <h2>Settings</h2>
   <form method="post" action="{{ url_for('admin_ui.device_update_submit', device_id=device.id) }}">
     <label>Display name <input type="text" name="display_name" value="{{ device.display_name or '' }}"></label>
     <label>Site
@@ -116,10 +169,10 @@
 </section>
 
 {% if current_user.role in ('super_admin','admin') %}
-<section class="placeholder" style="border-color:#5a2222">
-  <h2 style="color:#fca5a5">Danger zone</h2>
+<section class="v3-card" style="border-color: var(--red-fg)" id="danger">
+  <h2 style="color: var(--red-fg)">Danger zone</h2>
   <form method="post" action="{{ url_for('admin_ui.device_delete_submit', device_id=device.id) }}" onsubmit="return confirm('Delete device {{ device.display_name or device.id }} permanently? Heartbeats, commands, events, and group memberships are all removed.');">
-    <button type="submit">Delete device</button>
+    <button type="submit" class="btn-danger">Delete device</button>
   </form>
 </section>
 {% endif %}

@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% block title %}Enrol a device - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.list_devices_page') }}">← Devices</a></p>
+
+<div class="v3-page-header">
+  <h1>Enrol a device</h1>
+  <p class="v3-page-sub">Mint a one-time enrollment token, then point a freshly-flashed device at this portal.</p>
+</div>
+
+{% if new_token %}
+{# ── token issued — show the operator the secret ONCE ─────────────────── #}
+<section class="v3-card" style="border-color: var(--green-fg)">
+  <h2>Enrollment token issued</h2>
+  <p class="muted" style="margin-top:0">Copy this now. It is shown <strong>once</strong> and never again. Expires at {{ new_token.expires_at }}.</p>
+  <pre style="background: var(--bg-input); padding: var(--space-3); border-radius: var(--radius-sm); overflow-x: auto; word-break: break-all; white-space: pre-wrap"><code>{{ new_token.enrollment_token }}</code></pre>
+
+  <h3 style="margin-top:1.5rem">Hand it to the device</h3>
+  <p>On the device's local web UI (or the firmware's onboarding flow), set:</p>
+  <pre style="background: var(--bg-input); padding: var(--space-3); border-radius: var(--radius-sm); overflow-x: auto"><code>central_base_url:    https://www.voipguru.org/rebooter
+secondary_base_url:  https://www2.voipguru.org/rebooter
+enrollment_token:    {{ new_token.enrollment_token }}</code></pre>
+
+  <p class="muted" style="font-size:0.9rem">
+    Tip: the firmware tries the primary URL first, then the secondary if the primary is unreachable.
+    Once the device successfully registers it gets a long-lived bearer token and you can throw this enrollment token away.
+  </p>
+
+  <div class="actions">
+    <a class="btn" href="{{ url_for('admin_ui.list_devices_page') }}">Done</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_ui.enroll_device_wizard') }}">Enrol another</a>
+  </div>
+</section>
+{% else %}
+{# ── new wizard form ─────────────────────────────────────────────────── #}
+<section class="v3-card">
+  <h2>Step 1 · Identify the device</h2>
+  <p class="muted">A display-name hint makes the device easier to recognise after it registers; the device may override it during register if its firmware sends its own.</p>
+  <form method="post" action="{{ url_for('admin_ui.enroll_device_wizard_submit') }}">
+    <label>Display name hint
+      <input type="text" name="display_name_hint" placeholder="e.g. Office Modem" autofocus>
+    </label>
+    <label>Note (optional)
+      <input type="text" name="note" placeholder="e.g. installed 2026-05-09 by Alice">
+    </label>
+    <button type="submit">Mint enrollment token</button>
+  </form>
+</section>
+
+<section class="v3-card">
+  <h2>What happens next</h2>
+  <ol>
+    <li><strong>Mint a token</strong> — the portal issues a one-shot enrollment secret (default lifetime: 24 h).</li>
+    <li><strong>Configure the device</strong> — paste the token plus the central URL into the device's onboarding flow (firmware web UI on the LAN, or via serial bring-up).</li>
+    <li><strong>First heartbeat</strong> — once the device registers, the portal swaps the enrollment token for a long-lived device bearer token. The enrollment token can then be discarded.</li>
+    <li><strong>You're done</strong> — the device shows up on the Devices list and on the Status page.</li>
+  </ol>
+  <p class="muted" style="font-size:0.9rem">
+    QR-code support and a one-tap-firmware-config flow are queued for v0.3.2.
+  </p>
+</section>
+{% endif %}
+{% endblock %}
