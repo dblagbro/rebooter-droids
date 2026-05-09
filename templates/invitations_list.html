@@ -31,7 +31,7 @@
 </section>
 
 <table>
-  <thead><tr><th>Email</th><th>Role</th><th>Created</th><th>Expires</th><th>State</th></tr></thead>
+  <thead><tr><th>Email</th><th>Role</th><th>Created</th><th>Expires</th><th>State</th><th></th></tr></thead>
   <tbody>
   {% for i in invitations %}
   <tr>
@@ -42,6 +42,13 @@
     <td>
       {% if i.consumed_at %}<span class="badge">used</span>
       {% else %}<span class="badge green">pending</span>
+      {% endif %}
+    </td>
+    <td>
+      {% if not i.consumed_at %}
+      <form method="post" action="{{ url_for('admin_ui.invitations_cancel_submit', invitation_id=i.id) }}" onsubmit="return confirm('Cancel pending invitation for {{ i.email }}? The link in their email will stop working.');" style="margin:0">
+        <button type="submit">Cancel</button>
+      </form>
       {% endif %}
     </td>
   </tr>

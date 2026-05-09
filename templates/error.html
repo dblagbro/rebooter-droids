@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ code }} — Rebooter-Droids</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Rebooter-Droids</a>
+  </header>
+  <main>
+    <section class="placeholder">
+      <h1>{{ code }} — {{ message }}</h1>
+      <p class="muted">If you got here from a link in the app, it may have been removed or renamed.</p>
+      <p><a href="/">Back to dashboard</a></p>
+    </section>
+  </main>
+</body>
+</html>

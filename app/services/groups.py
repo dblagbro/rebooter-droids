@@ -119,3 +119,14 @@ def remove_member(group_id: str, device_id: str) -> bool:
         session.delete(existing)
         session.flush()
         return True
+
+
+def delete_group(group_id: str) -> bool:
+    """Hard-delete a group + all of its memberships (cascade)."""
+    with session_scope() as session:
+        g = session.get(Group, group_id)
+        if g is None:
+            return False
+        session.delete(g)
+        session.flush()
+        return True

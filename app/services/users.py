@@ -103,3 +103,16 @@ def revoke_all_tokens(user_id: str) -> bool:
         u.tokens_valid_after = datetime.now(timezone.utc)
         u.updated_at = datetime.now(timezone.utc)
         return True
+
+
+def update_user_display_name(user_id: str, display_name: str) -> dict | None:
+    display_name = (display_name or "").strip()
+    if not display_name:
+        raise UserError("display_name is required")
+    with session_scope() as session:
+        u = session.get(User, user_id)
+        if u is None:
+            return None
+        u.display_name = display_name
+        u.updated_at = datetime.now(timezone.utc)
+        return serialize_user(u)

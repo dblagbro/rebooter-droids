@@ -4,6 +4,8 @@
 <p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
 <h1>Groups</h1>
 
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
 <section class="placeholder">
   <h2>Create a group</h2>
   <form method="post" action="{{ url_for('admin_ui.create_group_submit') }}">
