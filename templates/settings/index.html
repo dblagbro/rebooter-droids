@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block title %}Settings - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+  <p class="v3-page-sub">System, network, authentication, users, firmware, and theme.</p>
+</div>
+
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>Overview</h2>
+  <p class="muted">Choose a section above. Many of the settings surfaces are still placeholders in v0.3.0 — the system / network / auth / backup / API token / webhook screens land in P5 and P6 of <code>docs/webui-redesign-plan.md</code>.</p>
+  <ul>
+    <li><a href="{{ url_for('admin_ui.settings_system_page') }}">System</a> — portal name, retention, maintenance mode</li>
+    <li><a href="{{ url_for('admin_ui.settings_network_page') }}">Network</a> — public URL, secondary URL, CORS allowlist</li>
+    <li><a href="{{ url_for('admin_ui.settings_auth_page') }}">Authentication</a> — session timeout, MFA, OIDC</li>
+    {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+    <li><a href="{{ url_for('admin_ui.users_page') }}">Users</a> — role management</li>
+    <li><a href="{{ url_for('admin_ui.invitations_page') }}">Invitations</a> — invite + redeem flow</li>
+    {% endif %}
+    <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a> — releases + deployments</li>
+    <li><a href="{{ url_for('admin_ui.settings_theme_page') }}">Theme</a> — light · dark · system</li>
+    <li><a href="{{ url_for('admin_ui.me_page') }}">Profile</a> — your account</li>
+  </ul>
+</div>
+{% endblock %}

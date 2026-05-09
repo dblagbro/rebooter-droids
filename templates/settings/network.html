@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block title %}Network settings - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>Network</h2>
+  <p class="muted">Public URL, secondary URL, and the strict CORS allowlist (<code>REBOOTER_CORS_ALLOWED_ORIGINS</code>) shipped in v0.2.11.</p>
+  {% set empty_title = "Coming in P6 of the redesign" %}
+  {% set empty_body = "The CORS allowlist is currently env-var-driven. The editable UI lands with the broader settings surface in P6." %}
+  {% include "_components/empty_state.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block title %}System settings - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>System</h2>
+  <p class="muted">Portal name, branding, retention windows, timezone defaults, and the maintenance-mode toggle.</p>
+  {% set empty_title = "Coming in P5 of the redesign" %}
+  {% set empty_body = "These knobs are env-var driven today; the editable UI surface lands with the broader RBAC + auth foundation work. Track progress in docs/webui-redesign-plan.md §9 (P5)." %}
+  {% include "_components/empty_state.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{# Settings tab strip — used on every /app/settings/* page.
+ # Caller sets `settings_tab` to one of:
+ #   overview / system / network / auth / users / firmware / theme
+ #}
+<nav class="v3-tabs" aria-label="Settings sections">
+  <a href="{{ url_for('admin_ui.settings_page') }}"
+     {% if settings_tab == 'overview' %}aria-current="page"{% endif %}>Overview</a>
+  <a href="{{ url_for('admin_ui.settings_system_page') }}"
+     {% if settings_tab == 'system' %}aria-current="page"{% endif %}>System</a>
+  <a href="{{ url_for('admin_ui.settings_network_page') }}"
+     {% if settings_tab == 'network' %}aria-current="page"{% endif %}>Network</a>
+  <a href="{{ url_for('admin_ui.settings_auth_page') }}"
+     {% if settings_tab == 'auth' %}aria-current="page"{% endif %}>Authentication</a>
+  {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+  <a href="{{ url_for('admin_ui.users_page') }}"
+     {% if settings_tab == 'users' %}aria-current="page"{% endif %}>Users</a>
+  <a href="{{ url_for('admin_ui.invitations_page') }}"
+     {% if settings_tab == 'invitations' %}aria-current="page"{% endif %}>Invitations</a>
+  {% endif %}
+  <a href="{{ url_for('admin_ui.list_firmware_page') }}"
+     {% if settings_tab == 'firmware' %}aria-current="page"{% endif %}>Firmware</a>
+  <a href="{{ url_for('admin_ui.settings_theme_page') }}"
+     {% if settings_tab == 'theme' %}aria-current="page"{% endif %}>Theme</a>
+  <a href="{{ url_for('admin_ui.me_page') }}"
+     {% if settings_tab == 'profile' %}aria-current="page"{% endif %}>Profile</a>
+</nav>
