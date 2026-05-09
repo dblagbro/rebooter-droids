@@ -40,7 +40,7 @@
 <section class="placeholder">
   <h2>Members</h2>
   {% if group.members %}
-  <table>
+  <div class="table-wrap"><table>
     <thead><tr><th>Name</th><th>State</th><th>Last heartbeat</th><th></th></tr></thead>
     <tbody>
     {% for m in group.members %}
@@ -56,7 +56,7 @@
       </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <p class="muted">No members yet.</p>
   {% endif %}

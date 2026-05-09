@@ -42,14 +42,14 @@
 <section class="placeholder">
   <h2>Pending commands</h2>
   {% if device.pending_commands %}
-  <table>
+  <div class="table-wrap"><table>
     <thead><tr><th>Type</th><th>Status</th><th>Created</th><th>Expires</th></tr></thead>
     <tbody>
     {% for c in device.pending_commands %}
       <tr><td>{{ c.type }}</td><td>{{ c.status }}</td><td>{{ c.created_at }}</td><td>{{ c.expires_at }}</td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
     <p class="muted">No pending commands.</p>
   {% endif %}
@@ -58,14 +58,14 @@
 <section class="placeholder">
   <h2>Recent events</h2>
   {% if device.recent_events %}
-  <table>
+  <div class="table-wrap"><table>
     <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
     <tbody>
     {% for e in device.recent_events %}
       <tr><td>{{ e.timestamp }}</td><td>{{ e.type }}</td><td>{{ e.message or '' }}</td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
     <p class="muted">No events yet.</p>
   {% endif %}

@@ -16,7 +16,7 @@
 </section>
 
 {% if groups %}
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>Name</th><th>Members</th><th>Description</th><th>Created</th></tr></thead>
   <tbody>
   {% for g in groups %}
@@ -28,7 +28,7 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% else %}
 <p class="muted">No groups yet.</p>
 {% endif %}

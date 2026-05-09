@@ -27,7 +27,7 @@
 
 <h2>Releases</h2>
 {% if releases %}
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Channel</th><th>SHA256</th><th>Created</th><th>Deploy</th><th></th></tr></thead>
   <tbody>
   {% for r in releases %}
@@ -65,7 +65,7 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% else %}
 <p class="muted">No firmware releases yet.</p>
 {% endif %}
@@ -73,7 +73,7 @@
 
 <h2>Deployments</h2>
 {% if deployments %}
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>When</th><th>Release</th><th>Target</th><th>Progress</th></tr></thead>
   <tbody>
   {% for d in deployments %}
@@ -91,7 +91,7 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% else %}
 <p class="muted">No deployments yet.</p>
 {% endif %}
