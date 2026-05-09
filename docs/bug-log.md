@@ -198,3 +198,206 @@ Statuses: `open · fixed-in-vX.Y.Z · wontfix · monitoring · suspected`.
   `/app/unregistered-devices` plus a dashboard tile and nav badge with
   60-min count. API at `GET /api/v1/admin/unregistered-devices`.
   Rolling cap of 5000 rows; oldest 10% pruned on overflow.
+
+---
+
+## Findings from 2026-05-09 PM deep regression (post v0.4.2)
+
+Triggered by operator question "why no devices show online?" plus a
+demand for a senior-SDET-style deep regression sweep. Documented in
+order found.
+
+### BUG-021 — Test suite is non-isolated; one logout poisons the session-scoped admin token
+
+- **Severity:** high (test infrastructure / CI flakiness)
+- **Area:** `tests/qa/conftest.py::admin_token` (scope="session"),
+  `tests/qa/test_v037_stale_cookie_no_loop.py`,
+  `tests/qa/test_hardening_probes.py`
+- **Status:** **open**
+- **Repro:** `python3 -m pytest tests/qa/` — 34 tests fail. Re-run
+  the same files in isolation: only 7 fail.
+- **Cause:** `admin_token` fixture is `scope="session"` and shared
+  across every test that needs admin auth. Several tests
+  (`test_v037_stale_cookie_no_loop`, `test_logout_does_not_revoke...`,
+  invitation-redeem flow) call `POST /api/v1/auth/logout` for the
+  bootstrap admin. The logout handler calls `revoke_all_tokens(user_id)`
+  which bumps `users.tokens_valid_after`. Every previously-issued JWT
+  with `iat < tokens_valid_after` then 401s for the rest of the run.
+  Tests that come afterwards (alphabetically — `test_v02_rbac_invites`,
+  `test_v028_fixture_isolation`, `test_v029_per_record_audit`,
+  half of `test_ui_flows`) cascade-fail with `KeyError: 'data'`
+  because they read `r.json()["data"]` from a 401-bodied error envelope.
+- **Evidence:** isolated-file run: 1 real failure
+  (`test_invitation_redeem_creates_user_and_signs_in` — different
+  cookie name, BUG-026). Full-suite run: 34 failures with same root.
+- **Recommended fix:** drop `admin_token` to `scope="function"` (and
+  rename uses) OR allocate a separate test user (`qa-admin@…`) whose
+  tokens_valid_after bumps don't touch the bootstrap admin's. The
+  latter is cleaner because test_v037 *needs* a logout flow to assert
+  on, but that user shouldn't be the same one the rest of the suite
+  authenticates as.
+
+### BUG-022 — No "Sign out" link in the persistent header
+
+- **Severity:** high (operator UX / security hygiene)
+- **Area:** `templates/layout.html` (header `topbar-actions`)
+- **Status:** **open**
+- **Repro:**
+  1. Log in as super-admin.
+  2. Look at the top header on any page (`/app/`, `/app/devices`,
+     anywhere).
+  3. There is no "Sign out" or "Log out" link visible.
+- **Expected:** the most-frequent terminal action (sign out) is
+  reachable in one click from every page. Industry-standard UX
+  pattern.
+- **Actual:** the header shows `Rebooter` brand, the 5-tab nav, the
+  version chip, and `@me` (a barely-discoverable text link to the
+  Profile page). The operator must click `@me`, find the Sign out
+  link inside Profile, and click that.
+- **Evidence:**
+  ```
+  $ grep -rn "Sign out\|/logout" templates/
+  templates/me.html: …  (only)
+  ```
+  Confirmed via Playwright walkthrough: header HTML contains no
+  logout reference.
+- **Cause:** v0.3.0 redesign collapsed the header to 5 nav items +
+  version + `@me`. The original header had a user-menu
+  dropdown with Sign out; the redesign removed it and the link
+  was relegated to Profile.
+- **Recommended fix:** add `<a href="{{ url_for('admin_ui.logout') }}"
+  class="signout">Sign out</a>` to `topbar-actions` in
+  `templates/layout.html`. Keep the Profile link too. Mirror in
+  `bottomnav` for mobile (or keep mobile via Settings → Profile,
+  acceptable since mobile pattern is well-understood).
+
+### BUG-023 — No super-admin role badge in the persistent header
+
+- **Severity:** medium (operator awareness / blast-radius hint)
+- **Area:** `templates/layout.html`
+- **Status:** **open**
+- **Repro:** log in as super-admin. The header gives no visual
+  indication of the elevated role. A super-admin can mass-action
+  the entire fleet; they should see the role indicator constantly.
+- **Expected:** a small `<span class="badge red">super admin</span>`
+  (or similar) in the top-right area, visible on every page.
+- **Actual:** no role indicator anywhere in the header; only on the
+  Profile page.
+- **Recommended fix:** in `topbar-actions`, render
+  `{% if current_user.role == 'super_admin' %}<span class="badge red">super admin</span>{% endif %}`.
+
+### BUG-024 — Smoke / regression tests stale after v0.3.x redesign
+
+- **Severity:** medium (false alarms during release validation)
+- **Area:** `tests/qa/test_ui_flows.py`,
+  `tests/qa/test_v02_rbac_invites.py`
+- **Status:** **open**
+- **Detail:** Several tests assume v0.2.x UI shapes that v0.3.x
+  intentionally replaced:
+  - `test_login_logout_round_trip` asserts page title contains
+    `"Dashboard"` — title is now `"Status - Rebooter-Droids"`
+    (v0.3.1 R-DSH-1 status-page replacement).
+  - `test_dashboard_shows_super_admin_badge` looks for "super admin"
+    in body — **will pass once BUG-023 lands**, currently fails
+    because the badge was never re-added.
+  - `test_back_button_after_logout_does_not_resurrect_session` waits
+    for a `Sign out` link — same root as BUG-022.
+  - `test_invitation_redeem_creates_user_and_signs_in` checks for
+    cookie name `'session'` — actual name is `'rebooter_session'`
+    (v0.3.3 cookie-domain rework).
+- **Recommended fix:**
+  1. Update the four named tests to match the v0.3+ UI shapes.
+  2. After BUG-022 and BUG-023 land, re-validate the badge + sign-out
+     assertions.
+  3. Add a release-checklist item: "after a UI redesign, sweep
+     `tests/qa/test_ui_flows.py` and the v0.2.x-named tests for
+     stale assertions."
+
+### BUG-025 — `test_login_rate_limit_kicks_in` needs ≥80s timeout
+
+- **Severity:** low (test config)
+- **Area:** `tests/qa/test_hardening_probes.py::test_login_rate_limit_kicks_in`,
+  pyproject.toml pytest timeout config
+- **Status:** **open**
+- **Detail:** The test fires 35 login attempts, sleeps 60 s for the
+  rate-limit window to clear, then probes once more. Total wall
+  time is ~62 s, exceeding the default `--timeout=60`. Rate limit
+  itself works correctly (verified independently — 30×401 + 5×429
+  in a fresh window).
+- **Recommended fix:** mark the test
+  `@pytest.mark.timeout(120)` or move the sleep-and-recheck step
+  into a separate test that runs only on a `--longrun` flag.
+
+### BUG-026 — Invitation-redeem test asserts wrong cookie name
+
+- **Severity:** low (stale test)
+- **Area:** `tests/qa/test_v02_rbac_invites.py:65`
+- **Status:** **open**
+- **Detail:** Asserts `'session' in cookies`; actual cookie is
+  `'rebooter_session'` (v0.3.3 cookie-domain rework).
+- **Recommended fix:** change the assertion to
+  `'rebooter_session' in s.cookies`.
+
+### BUG-027 — Central host cannot reach lab device subnet directly
+
+- **Severity:** medium (operability / diagnostic blind spot)
+- **Area:** infrastructure / network topology
+- **Status:** **environmental** (no code change can fix; document)
+- **Detail:** The container running rebooter-droids sits on
+  192.168.18.0/24 (default gw 192.168.18.1). The lab devices are
+  on 192.168.1.0/24. From this host, RIGHT NOW (2026-05-09 23:01 UTC):
+  - 192.168.1.67 — TCP-80 timeout
+  - 192.168.1.225 — TCP-80 timeout
+  - 192.168.1.207 — TCP-80 connection refused (host up, no http)
+  - 192.168.1.30 — TCP-80 timeout
+- **Operator-relevant consequence:** any "is the device reachable?"
+  diagnostic added to the central UI will be blind to the actual
+  device-side state. The firmware team's "all 4 HTTP OK" report
+  from earlier today was per their own probe inside the device
+  subnet; from central's network position those devices are not
+  reachable.
+- **Recommended:**
+  1. **Don't** ship a "ping device from central" feature — it would
+     produce false negatives constantly.
+  2. **Do** ship a "device → central reachability beacon" — let the
+     device push a tiny "I tried to reach you from <my LAN IP> at
+     <UTC>" event regardless of registration state, recorded in the
+     unregistered-attempts table. Then central UI can show "we last
+     heard from this device-claimed-id N seconds ago, even though
+     it has no valid token."
+  3. **Document** this network split in `docs/architecture.md` so a
+     future operator doesn't ask the same question.
+
+### BUG-028 — Settings → Authentication tab title doesn't reflect tab
+
+- **Severity:** low (UX polish)
+- **Area:** `templates/settings/auth.html`
+- **Status:** **open**
+- **Detail:** Other settings tabs (System, Network, Sync,
+  Notifications, Theme) render their tab name in the page `<title>`
+  ("System settings - Rebooter-Droids", etc.). The Authentication
+  tab renders just "Authentication - Rebooter-Droids" (no
+  "settings" qualifier). Trivial.
+- **Recommended fix:** update the `{% block title %}` line in
+  `templates/settings/auth.html` to "Authentication settings - Rebooter-Droids".
+
+### BUG-029 — Operator complaint "no devices online" is environmental
+
+- **Severity:** environmental (no code change)
+- **Area:** firmware + LAN ops
+- **Status:** **answered** (see RCA + this doc)
+- **Detail:** As of 2026-05-09 22:50 UTC, the only row in `devices`
+  is `dev_01KR7AN84ECMZDC0CA6A0D94HD` — `is_qa_fixture=true`,
+  display_name "QA Device 23744", last_heartbeat_at 21:35:23 UTC
+  (~75 minutes stale). **There are zero real devices in the system.**
+  Per the RCA + firmware-team correspondence: the central server is
+  healthy; the four lab devices are either local-only by design (3 of
+  4) or have firmware-side poll-transport failure (1 of 4 on
+  192.168.1.67). Per BUG-027, central can't even probe their LAN
+  state from its current network position.
+- **Action items emitted:**
+  - The cross-team note
+    `docs/notes/2026-05-09-to-firmware-team-get-devices-online.md`
+    enumerates what we need from the firmware team to unblock device
+    bring-up.
+  - **B5** in `docs/BACKLOG.md` tracks this as the unblocker.
