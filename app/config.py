@@ -28,6 +28,7 @@ class Settings:
     smtp_helo: str
     session_idle_timeout_seconds: int
     cors_allowed_origins: tuple[str, ...]
+    cookie_domain: str | None
 
 
 @lru_cache
@@ -78,4 +79,11 @@ def load_settings() -> Settings:
             for o in os.environ.get("REBOOTER_CORS_ALLOWED_ORIGINS", "").split(",")
             if o.strip()
         ),
+        # v0.3.3 (P3.1): set to e.g. ".voipguru.org" so the session
+        # cookie carries across www → www2 subdomains. Default None =
+        # host-scoped (the v0.3.2 behaviour). The cookie name is
+        # always rebooter_session in v0.3.3+ — a unique name avoids
+        # collisions with peer apps on shared subdomains using the
+        # Flask default `session`.
+        cookie_domain=(os.environ.get("REBOOTER_COOKIE_DOMAIN", "").strip() or None),
     )
