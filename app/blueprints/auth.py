@@ -86,5 +86,6 @@ def me():
             "email": u.email,
             "display_name": u.display_name,
             "is_admin": u.is_admin,
+            "is_super_admin": getattr(u, "is_super_admin", False),
         }
     )

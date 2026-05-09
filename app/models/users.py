@@ -21,6 +21,9 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_super_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
 
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()
