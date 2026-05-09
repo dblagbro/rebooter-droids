@@ -37,6 +37,7 @@
   <a href="#watchdog">Watchdog</a>
   <a href="#schedule">Schedule</a>
   <a href="#audit">Audit</a>
+  <a href="#failsafe">Failsafe</a>
   <a href="#events">Events</a>
   <a href="#settings">Settings</a>
 </nav>
@@ -185,6 +186,50 @@
   </p>
   {% else %}
     <p class="muted">No audit events recorded for this device yet.</p>
+  {% endif %}
+</section>
+
+{# ── failsafe (v0.3.8 / RFC-005 P1) ──────────────────────────────────── #}
+<section class="v3-card" id="failsafe">
+  <h2>Firmware failsafe events</h2>
+  {% if device.failsafe_events %}
+  <p class="muted" style="margin-top:0">
+    Each row is a slot B → slot C fallback the device reported. A
+    failsafe means a firmware update we pushed didn't boot on this
+    device; the device automatically reverted to its last-known-good
+    image. Per RFC-005, the device keeps retrying until central pushes
+    a fixed version.
+  </p>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>When</th>
+      <th>Failed version</th>
+      <th>Fell back to</th>
+      <th>Reason</th>
+      <th>Diagnostic</th>
+    </tr></thead>
+    <tbody>
+    {% for f in device.failsafe_events %}
+      <tr>
+        <td>{{ f.received_at }}</td>
+        <td><code>{{ f.failed_version or '—' }}</code></td>
+        <td><code>{{ f.fallback_to_version or '—' }}</code></td>
+        <td><span class="badge red">{{ f.reason }}</span></td>
+        <td>
+          {% if f.details %}
+            <details><summary class="muted">show</summary>
+              <pre style="font-size:0.8rem; max-width:400px; overflow:auto">{{ f.details | tojson(indent=2) }}</pre>
+            </details>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  {% set empty_title = "No failsafe events recorded" %}
+  {% set empty_body = "If this device falls back from a failed firmware update, the report will appear here. Self-healing OTA per RFC-005 — designed to never need a serial re-flash." %}
+  {% include "_components/empty_state.html" %}
   {% endif %}
 </section>
 

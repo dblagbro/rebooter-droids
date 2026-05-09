@@ -235,6 +235,14 @@ def get_device_detail(device_id: str) -> dict | None:
         out["audit_history"] = audit_service.query(
             target_type="device", target_id=device_id, limit=25
         )
+
+        # v0.3.8 (RFC-005 P1): per-device failsafe history. Last 25
+        # B → C fallback events from the device.
+        from app.services import failsafe as failsafe_service
+
+        out["failsafe_events"] = failsafe_service.list_for_device(
+            device_id, limit=25
+        )
         return out
 
 

@@ -668,6 +668,12 @@ tr:hover td { background: var(--bg-elev-2); }
 }
 .v3-sev-warn { border-left: 3px solid var(--amber-fg); padding-left: var(--space-3); }
 .v3-sev-info { border-left: 3px solid var(--info-fg); padding-left: var(--space-3); }
+.v3-sev-critical {
+  border-left: 4px solid var(--red-fg);
+  padding-left: var(--space-3);
+  background: var(--red-bg);
+  margin-left: -3px;
+}
 
 
 /* ────────────────────────────── filter chips (P2) ────────────────────── */
