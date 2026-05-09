@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-05-09
+
+### Added — strict CORS allowlist (R8-CORS of REMEDIATION-PLAN-2026-05)
+
+- `/api/v1/*` now honours a strict origin allowlist for cross-origin
+  browser requests. Operators opt in via the new
+  `REBOOTER_CORS_ALLOWED_ORIGINS` env var (comma-separated exact
+  origins like `https://app.example.com`).
+- Default allowlist is **empty** — behaviour is unchanged for every
+  existing deployment. The new setting is purely additive.
+- When an `Origin` header matches an allowed entry, the response
+  carries:
+  - `Access-Control-Allow-Origin: <echoed-origin>`
+  - `Access-Control-Allow-Credentials: true`
+  - `Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`
+  - `Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With`
+  - `Access-Control-Max-Age: 600`
+  - `Vary: Origin`
+- `OPTIONS` preflight requests against `/api/v1/*` from an allowed
+  origin return `204` with the same headers. Disallowed origins fall
+  through to the route handler (which generally 404s preflight, the
+  cleanest signal to a browser to abort the actual request).
+
+### Why hand-rolled
+
+- The policy is narrow (one URL prefix, exact-match allowlist,
+  credentials-on, fixed method/header set). Adding Flask-CORS for
+  this is more surface than we need.
+- One file (`app/middleware/cors.py`) is easy to audit.
+
+### Operational
+
+- `docker-compose.yml` updated to forward `REBOOTER_CORS_ALLOWED_ORIGINS`
+  from the host environment. Set it on a per-deployment basis when a
+  mobile app or cross-origin SPA needs to consume the API.
+
 ## [0.2.10] - 2026-05-09
 
 ### Added — server-side session table (R7-shadow of REMEDIATION-PLAN-2026-05)

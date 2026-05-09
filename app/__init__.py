@@ -91,6 +91,10 @@ def create_app() -> Flask:
     init_engine(settings)
     init_rate_limit(app)
 
+    from app.middleware.cors import init_cors
+
+    init_cors(app, settings.cors_allowed_origins)
+
     from app.services.bootstrap import run_startup_bootstrap
     try:
         run_startup_bootstrap(settings)

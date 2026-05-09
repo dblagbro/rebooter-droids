@@ -27,6 +27,7 @@ class Settings:
     smtp_from: str
     smtp_helo: str
     session_idle_timeout_seconds: int
+    cors_allowed_origins: tuple[str, ...]
 
 
 @lru_cache
@@ -71,5 +72,10 @@ def load_settings() -> Settings:
             os.environ.get(
                 "REBOOTER_SESSION_IDLE_TIMEOUT_SECONDS", str(60 * 60 * 24 * 2)
             )
+        ),
+        cors_allowed_origins=tuple(
+            o.strip()
+            for o in os.environ.get("REBOOTER_CORS_ALLOWED_ORIGINS", "").split(",")
+            if o.strip()
         ),
     )
