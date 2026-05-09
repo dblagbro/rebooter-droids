@@ -245,10 +245,15 @@ def test_rules_page_renders_form_and_advertises_runtime_pending(
     assert "http" in body
     # Action-kind options
     assert "power-cycle" in body or "cycle" in body
-    # Operator-visible heads-up that runtime hasn't shipped yet
-    assert "DO NOT fire" in body or "do not fire yet" in body.lower()
-    # Coming-soon section so operators know what's queued
-    assert "coming in v0.4.1" in body.lower() or "v0.4.1+" in body
+    # The runtime shipped in v0.4.2 — page advertises the cadence
+    # explanation instead of the original "rules-do-not-fire" notice.
+    assert (
+        "10-second tick" in body
+        or "DO NOT fire" in body  # back-compat with v0.4.0/.1 deploys
+        or "do not fire yet" in body.lower()
+    )
+    # Coming-soon section is still present (different items now)
+    assert "coming next" in body.lower() or "v0.4.1+" in body or "queued" in body.lower()
 
 
 def test_rules_page_lists_created_rule_with_sentence(base_url, shell_session):
