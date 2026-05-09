@@ -36,6 +36,17 @@ def login():
     session["user_id"] = user.id
     session["iat"] = int(datetime.now(timezone.utc).timestamp())
     session.permanent = True
+    # v0.2.10 shadow-mode: record cookie + JWT sessions server-side.
+    from app.services import sessions as sessions_service
+
+    cookie_jti = sessions_service.new_jti()
+    session["sid"] = cookie_jti
+    sessions_service.record(
+        user_id=user.id,
+        kind=sessions_service.KIND_COOKIE,
+        jti=cookie_jti,
+        ttl_seconds=60 * 60 * 24 * 31,
+    )
 
     access = issue_access_token(settings, user.id)
     refresh = issue_refresh_token(settings, user.id)
@@ -58,12 +69,20 @@ def login():
 @bp.post("/logout")
 def logout():
     user_id = session.get("user_id")
+    sid = session.get("sid")
     session.clear()
     if user_id:
         try:
             from app.services.users import revoke_all_tokens
 
             revoke_all_tokens(user_id)
+        except Exception:
+            pass
+    if sid:
+        try:
+            from app.services import sessions as sessions_service
+
+            sessions_service.revoke_one(sid)
         except Exception:
             pass
     return ok({"logged_out": True})

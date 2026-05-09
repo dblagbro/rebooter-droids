@@ -43,6 +43,18 @@ def login_submit():
     session["user_id"] = user.id
     session["iat"] = int(datetime.now(timezone.utc).timestamp())
     session.permanent = True
+    # v0.2.10 shadow-mode: record this cookie session server-side so a
+    # future enforce path can revoke it independently of cookie expiry.
+    from app.services import sessions as sessions_service
+
+    jti = sessions_service.new_jti()
+    session["sid"] = jti
+    sessions_service.record(
+        user_id=user.id,
+        kind=sessions_service.KIND_COOKIE,
+        jti=jti,
+        ttl_seconds=60 * 60 * 24 * 31,  # match Flask permanent-session lifetime
+    )
     return redirect(url_for("admin_ui.index"))
 
 
@@ -53,6 +65,17 @@ def logout():
     Note: this does NOT invalidate any other JWT or cookie the user may
     have. Use the explicit "revoke all tokens" action (super-admin only)
     on /app/users to log a user out everywhere.
+
+    v0.2.10 shadow-mode: also marks this cookie session row revoked so
+    the future enforce path can short-circuit any leaked cookie.
     """
+    sid = session.get("sid")
     session.clear()
+    if sid:
+        try:
+            from app.services import sessions as sessions_service
+
+            sessions_service.revoke_one(sid)
+        except Exception:
+            pass
     return redirect(url_for("admin_ui.login_page"))
