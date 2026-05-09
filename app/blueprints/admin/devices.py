@@ -41,11 +41,16 @@ from app.services.sites import list_sites as svc_list_sites_only
 @admin_ui_bp.get("/devices")
 @admin_required_ui
 def list_devices_page():
+    # v0.2.8: QA-fixture toggle. Default in v0.2.8 is to *show* fixtures
+    # (include_qa_fixtures=True) so operators see the new toggle without
+    # data disappearing under them; v0.2.9 will flip the default to hide.
+    show_qa = _show_qa_fixtures(request.args.get("show_qa_fixtures"), default=True)
     devices = svc_list_devices(
         site_id=request.args.get("site_id"),
         group_id=request.args.get("group_id"),
         search=request.args.get("search"),
         status=request.args.get("status"),
+        include_qa_fixtures=show_qa,
     )
     return render_template(
         "devices_list.html",
@@ -55,10 +60,17 @@ def list_devices_page():
                 "filters": {
                     "search": request.args.get("search", ""),
                     "status": request.args.get("status", ""),
+                    "show_qa_fixtures": show_qa,
                 },
             }
         ),
     )
+
+
+def _show_qa_fixtures(raw: str | None, default: bool) -> bool:
+    if raw is None:
+        return default
+    return raw.lower() in ("1", "true", "yes", "on")
 
 
 @admin_ui_bp.get("/devices/<device_id>")
@@ -149,11 +161,13 @@ def device_send_command(device_id: str):
 @admin_api_bp.get("/devices")
 @admin_required_api
 def list_devices():
+    show_qa = _show_qa_fixtures(request.args.get("show_qa_fixtures"), default=True)
     devices = svc_list_devices(
         site_id=request.args.get("site_id"),
         group_id=request.args.get("group_id"),
         search=request.args.get("search"),
         status=request.args.get("status"),
+        include_qa_fixtures=show_qa,
     )
     return ok({"devices": devices, "total": len(devices)})
 

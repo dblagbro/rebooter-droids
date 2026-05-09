@@ -36,6 +36,10 @@ def ensure_schema() -> bool:
     short-circuit if `users` existed, which meant new tables added in a
     later release silently never got created on existing databases. Run
     every startup; it's cheap.
+
+    create_all() does NOT issue ALTER TABLE for new columns on tables that
+    already exist — _ensure_columns() handles those one-by-one with
+    ADD COLUMN IF NOT EXISTS.
     """
     engine = get_engine()
     with engine.begin() as conn:
@@ -48,9 +52,26 @@ def ensure_schema() -> bool:
             if fresh:
                 log.info("Bootstrapping schema — running Base.metadata.create_all()")
             Base.metadata.create_all(bind=conn)
+            _ensure_columns(conn)
             return fresh
         finally:
             conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _SCHEMA_LOCK_KEY})
+
+
+# Idempotent ADD COLUMN steps for columns added after a table's first ship.
+# Each entry is (table, column_name, column_ddl). Postgres only.
+_PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("devices", "is_qa_fixture", "BOOLEAN NOT NULL DEFAULT FALSE"),  # v0.2.8
+)
+
+
+def _ensure_columns(conn) -> None:
+    from sqlalchemy import text
+
+    for table, column, ddl in _PENDING_COLUMNS:
+        conn.execute(
+            text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
+        )
 
 
 def ensure_bootstrap_admin(settings: Settings) -> None:
