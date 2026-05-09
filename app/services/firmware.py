@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.db import session_scope
@@ -109,10 +110,22 @@ def upload_release(
         created_by_user_id=issued_by_user_id,
         created_at=datetime.now(timezone.utc),
     )
-    with session_scope() as session:
-        session.add(record)
-        session.flush()
-        out = serialize_release(record)
+    try:
+        with session_scope() as session:
+            session.add(record)
+            session.flush()
+            out = serialize_release(record)
+    except IntegrityError:
+        # A concurrent upload claimed the same (version, channel) first.
+        # Clean up the firmware blob we already moved into place.
+        if final_path.exists():
+            try:
+                final_path.unlink()
+            except OSError:
+                pass
+        raise ValueError(
+            f"firmware {final_name} already exists; bump version or delete first"
+        )
     return out
 
 
