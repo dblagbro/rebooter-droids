@@ -92,6 +92,51 @@ def get_rule(rule_id: str) -> dict | None:
         return serialize_rule(r, sentence=sentence)
 
 
+def list_recent_events(rule_id: str, limit: int = 50) -> list[dict]:
+    """v0.4.2: latest probe events for a rule, newest first."""
+    from app.models import WatchdogProbeEvent
+
+    with session_scope() as session:
+        rows = list(
+            session.scalars(
+                select(WatchdogProbeEvent)
+                .where(WatchdogProbeEvent.rule_id == rule_id)
+                .order_by(WatchdogProbeEvent.at.desc())
+                .limit(limit)
+            )
+        )
+        return [
+            {
+                "id": r.id,
+                "at": _iso(r.at),
+                "outcome": r.outcome,
+                "details": r.details or {},
+            }
+            for r in rows
+        ]
+
+
+def probe_now(rule_id: str) -> dict | None:
+    """v0.4.2: synchronously run a single probe for the rule, log it,
+    and return the resulting event (does NOT advance state machine
+    or fire actions — operator-facing diagnostic only)."""
+    from app.services.watchdog_runtime import _run_probe, _record_event
+
+    with session_scope() as session:
+        rule = session.get(WatchdogRule, rule_id)
+        if rule is None:
+            return None
+        try:
+            outcome, details = _run_probe(rule)
+        except Exception as e:
+            outcome, details = "probe_error", {"error": str(e)}
+        details = {**(details or {}), "via": "probe_now"}
+        now = datetime.now(timezone.utc)
+        _record_event(session, rule, outcome, details, now)
+        session.flush()
+        return {"outcome": outcome, "details": details, "at": _iso(now)}
+
+
 class WatchdogValidationError(ValueError):
     pass
 

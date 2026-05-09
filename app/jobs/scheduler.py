@@ -6,6 +6,7 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.services.commands import expire_overdue_commands
+from app.services.watchdog_runtime import tick as watchdog_tick
 
 log = logging.getLogger(__name__)
 _scheduler: BackgroundScheduler | None = None
@@ -17,6 +18,16 @@ def _expire_job():
         log.info("expired %d overdue command(s)", n)
 
 
+def _watchdog_job():
+    try:
+        stats = watchdog_tick()
+    except Exception:
+        log.exception("watchdog tick crashed")
+        return
+    if stats.get("probed") or stats.get("fired") or stats.get("errors"):
+        log.info("watchdog tick: %s", stats)
+
+
 def start() -> None:
     """Start the in-process scheduler. Guarded so only one Gunicorn worker runs jobs."""
     global _scheduler
@@ -26,6 +37,7 @@ def start() -> None:
         return
     sched = BackgroundScheduler(daemon=True, timezone="UTC")
     sched.add_job(_expire_job, "interval", seconds=30, id="expire_commands")
+    sched.add_job(_watchdog_job, "interval", seconds=10, id="watchdog_tick")
     sched.start()
     _scheduler = sched
-    log.info("APScheduler started: expire_commands every 30s")
+    log.info("APScheduler started: expire_commands every 30s, watchdog_tick every 10s")

@@ -81,7 +81,7 @@
 
     <button type="submit">Create rule</button>
   </form>
-  <p class="muted" style="font-size:.85rem">v0.4.0 ships the data-model + plain-English render. The probe runtime that actually executes rules + writes events lands in v0.4.1+. Rules created here are stored but DO NOT fire yet.</p>
+  <p class="muted" style="font-size:.85rem">Rules created here run on a 10-second tick. Each rule is probed at its window_seconds cadence; failure_threshold consecutive failures fire the action; recovery_threshold consecutive successes re-arm. See "recent events" under each rule for the live audit log.</p>
 </section>
 {% endif %}
 
@@ -108,6 +108,9 @@
       <td class="muted" style="font-size:.85rem">{{ r.created_at }}</td>
       {% if can_edit %}
       <td style="white-space:nowrap">
+        <form method="post" action="{{ url_for('admin_ui.rules_probe_now_submit', rule_id=r.id) }}" style="display:inline">
+          <button type="submit" class="btn-secondary" title="Run a single probe now (diagnostic — does NOT advance state or fire actions)">Probe now</button>
+        </form>
         <form method="post" action="{{ url_for('admin_ui.rules_set_enabled_submit', rule_id=r.id) }}" style="display:inline">
           <input type="hidden" name="enabled" value="{{ '0' if r.enabled else '1' }}">
           <button type="submit" class="btn-secondary">{{ 'Disable' if r.enabled else 'Enable' }}</button>
@@ -119,6 +122,25 @@
       </td>
       {% endif %}
     </tr>
+    {% if r.recent_events %}
+    <tr>
+      <td colspan="{{ 4 if can_edit else 3 }}" style="background:rgba(255,255,255,0.02); padding:.4rem 1rem">
+        <details>
+          <summary class="muted" style="cursor:pointer; font-size:.85rem">
+            recent events ({{ r.recent_events|length }}){% if r.last_outcome %} · last: <strong>{{ r.last_outcome }}</strong>{% endif %}
+          </summary>
+          <ul style="margin:.5rem 0 0; padding-left:1.2rem; font-size:.8rem; list-style:none">
+            {% for e in r.recent_events %}
+              <li style="margin:.2rem 0">
+                <code>{{ e.at }}</code> ·
+                <span class="badge {% if e.outcome in ('success','recovery') %}green{% elif e.outcome in ('action_fired','failure') %}red{% endif %}">{{ e.outcome }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      </td>
+    </tr>
+    {% endif %}
   {% endfor %}
   </tbody>
 </table></div>
@@ -129,14 +151,13 @@
 {% endif %}
 
 <div class="v3-card" style="margin-top:1.5rem">
-  <h2>What's coming in v0.4.1+</h2>
+  <h2>What's coming next</h2>
   <ul class="muted">
-    <li><strong>Probe runtime</strong> — APScheduler job that executes each enabled rule at a cadence derived from window_seconds.</li>
-    <li><strong>Per-rule probe-event log</strong> with last-trigger reason.</li>
-    <li><strong>Probe-now</strong> + <strong>Simulate trigger</strong> buttons for testing.</li>
     <li><strong>Maintenance windows</strong> + <strong>portal-wide maintenance mode</strong> (suspend all rules during planned reboots).</li>
     <li><strong>Schedules</strong> — recurring power cycles + maintenance-mode windows.</li>
-    <li><strong>Notifications</strong> — fire on rule trigger via email / webhook / Web Push (gated on the email-SMTP work in v0.4.1).</li>
+    <li><strong>Notifications</strong> — fire-on-trigger via SMTP (already wired) / webhook / Web Push.</li>
+    <li><strong>Tag-as-target</strong> dispatch (currently shaped, not enforced).</li>
+    <li><strong>Native ICMP ping</strong> probes (today the runtime falls back to a TCP-port-80 probe).</li>
   </ul>
 </div>
 {% endblock %}
