@@ -32,7 +32,25 @@
   <tbody>
   {% for r in releases %}
     <tr>
-      <td><a href="{{ r.download_url }}">{{ r.version }}</a></td>
+      <td>
+        <a href="{{ r.download_url }}">{{ r.version }}</a>
+        {% if r.mirrors %}
+          <details style="display:inline; margin-left:.5rem">
+            <summary class="muted" style="cursor:pointer; font-size:.85rem">
+              {{ r.mirrors|length }} mirror{{ '' if r.mirrors|length == 1 else 's' }}
+            </summary>
+            <ul style="margin:.4rem 0 0; padding-left:1.2rem; font-size:.85rem">
+              {% for m in r.mirrors %}
+                <li>
+                  <span class="badge {% if m.status == 'live' %}green{% elif m.status == 'failed' %}red{% endif %}">{{ m.status }}</span>
+                  <code>{{ m.kind }}</code>
+                  <a href="{{ m.url }}" target="_blank" rel="noopener">{{ m.url }}</a>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+      </td>
       <td><span class="badge">{{ r.channel }}</span></td>
       <td><code style="font-size:0.75rem">{{ r.sha256[:16] }}…</code></td>
       <td>{{ r.created_at }}</td>
