@@ -1,34 +1,56 @@
 <!doctype html>
-<html lang="en">
+{# rebooter-droids — v0.3.0 P1 layout
+ # 5-item nav (Status / Devices / Rules / History / Settings).
+ # Top nav on desktop (≥768px); bottom-tab bar on mobile.
+ # Theme picker via data-theme on <html>; persists in cookie.
+ #
+ # The {{ active }} context variable is set by each blueprint's
+ # render context to one of: 'status', 'devices', 'rules',
+ # 'history', 'settings'. Pages that don't set it (login, invite
+ # redeem) just render with no nav highlight.
+ #}
+<html lang="en" data-theme="{{ request.cookies.get('theme', 'system') }}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
   <title>{% block title %}Rebooter-Droids{% endblock %}</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <script>
+    // Apply theme synchronously to avoid a flash of mis-themed UI.
+    (function () {
+      try {
+        var t = document.cookie.split('; ').find(function (r) { return r.startsWith('theme='); });
+        if (t) document.documentElement.setAttribute('data-theme', t.split('=')[1]);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="{{ url_for('admin_ui.index') }}">Rebooter-Droids</a>
-    <nav>
-      <a href="{{ url_for('admin_ui.index') }}">Dashboard</a>
-      <a href="{{ url_for('admin_ui.list_devices_page') }}">Devices</a>
-      <a href="{{ url_for('admin_ui.list_groups_page') }}">Groups</a>
-      <a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a>
-      <a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a>
-      <a href="{{ url_for('admin_ui.events_page') }}">Events</a>
-      <a href="{{ url_for('admin_ui.unregistered_devices_page') }}">Unregistered{% if unregistered_active and unregistered_active > 0 %} <span class="badge red">{{ unregistered_active }}</span>{% endif %}</a>
-      {% if current_user is defined and current_user.role in ('super_admin','admin') %}
-      <a href="{{ url_for('admin_ui.users_page') }}">Users</a>
-      <a href="{{ url_for('admin_ui.audit_page') }}">Audit</a>
-      {% endif %}
-      {% if current_user is defined %}
-      <a href="{{ url_for('admin_ui.me_page') }}">Profile</a>
-      {% endif %}
+{% if current_user is defined and current_user %}
+  <header class="topbar" role="banner">
+    <a class="brand" href="{{ url_for('admin_ui.index') }}">Rebooter</a>
+    <nav class="topnav" role="navigation" aria-label="Primary">
+      <a href="{{ url_for('admin_ui.index') }}"
+         {% if active == 'status' %}aria-current="page"{% endif %}>Status</a>
+      <a href="{{ url_for('admin_ui.list_devices_page') }}"
+         {% if active == 'devices' %}aria-current="page"{% endif %}>Devices</a>
+      <a href="{{ url_for('admin_ui.rules_page') }}"
+         {% if active == 'rules' %}aria-current="page"{% endif %}>Rules</a>
+      <a href="{{ url_for('admin_ui.history_page') }}"
+         {% if active == 'history' %}aria-current="page"{% endif %}>History</a>
+      <a href="{{ url_for('admin_ui.settings_page') }}"
+         {% if active == 'settings' %}aria-current="page"{% endif %}>Settings</a>
     </nav>
-    <span class="version">v{{ version }}</span>
+    <div class="topbar-actions">
+      <span class="version" title="rebooter-droids version">v{{ version }}</span>
+      <a href="{{ url_for('admin_ui.me_page') }}" class="muted" aria-label="Profile">@me</a>
+    </div>
   </header>
-  <main>
+{% endif %}
+
+  <main role="main">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flashes">
@@ -40,5 +62,35 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+
+{% if current_user is defined and current_user %}
+  <nav class="bottomnav" role="navigation" aria-label="Mobile primary">
+    <a href="{{ url_for('admin_ui.index') }}"
+       {% if active == 'status' %}aria-current="page"{% endif %}>
+      <span class="ico" aria-hidden="true">●</span>
+      <span>Status</span>
+    </a>
+    <a href="{{ url_for('admin_ui.list_devices_page') }}"
+       {% if active == 'devices' %}aria-current="page"{% endif %}>
+      <span class="ico" aria-hidden="true">▭</span>
+      <span>Devices</span>
+    </a>
+    <a href="{{ url_for('admin_ui.rules_page') }}"
+       {% if active == 'rules' %}aria-current="page"{% endif %}>
+      <span class="ico" aria-hidden="true">⏱</span>
+      <span>Rules</span>
+    </a>
+    <a href="{{ url_for('admin_ui.history_page') }}"
+       {% if active == 'history' %}aria-current="page"{% endif %}>
+      <span class="ico" aria-hidden="true">≡</span>
+      <span>History</span>
+    </a>
+    <a href="{{ url_for('admin_ui.settings_page') }}"
+       {% if active == 'settings' %}aria-current="page"{% endif %}>
+      <span class="ico" aria-hidden="true">⚙</span>
+      <span>Settings</span>
+    </a>
+  </nav>
+{% endif %}
 </body>
 </html>

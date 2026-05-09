@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block title %}History - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>History</h1>
+  <p class="v3-page-sub">
+    Unified log feed.
+    {% if source == "audit" %}<span class="badge">source: audit</span>{% endif %}
+    Watchdog events, power events, schedules, and notifications join this view in P6 of the redesign.
+  </p>
+</div>
+
+<form method="get" class="actions">
+  <label class="muted">
+    actor user id
+    <input type="text" name="actor_user_id" value="{{ request.args.get('actor_user_id', '') }}">
+  </label>
+  <label class="muted">
+    action
+    <input type="text" name="action" value="{{ request.args.get('action', '') }}" placeholder="e.g. device.updated">
+  </label>
+  <label class="muted">
+    target type
+    <input type="text" name="target_type" value="{{ request.args.get('target_type', '') }}" placeholder="device · group · user">
+  </label>
+  <label class="muted">
+    target id
+    <input type="text" name="target_id" value="{{ request.args.get('target_id', '') }}">
+  </label>
+  <button type="submit">Filter</button>
+</form>
+
+{% if events %}
+<div class="table-wrap"><table>
+  <thead>
+    <tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th></tr>
+  </thead>
+  <tbody>
+  {% for e in events %}
+    <tr>
+      <td>{{ e.at }}</td>
+      <td>{{ e.actor_email_snapshot or e.actor_user_id or '—' }}</td>
+      <td><code>{{ e.action }}</code></td>
+      <td>
+        {% if e.target_type %}<span class="badge">{{ e.target_type }}</span>{% endif %}
+        {% if e.target_id %}<span class="muted">{{ e.target_id }}</span>{% endif %}
+      </td>
+      <td class="muted">{{ e.ip or '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+  {% set empty_title = "No history events" %}
+  {% set empty_body = "Nothing matches the current filter. Clear it to see recent activity." %}
+  {% include "_components/empty_state.html" %}
+{% endif %}
+{% endblock %}

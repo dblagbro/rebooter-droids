@@ -1,0 +1,16 @@
+{# Empty state component
+ # Usage:
+ # {% include "_components/empty_state.html" with context %}
+ # with the caller having set:
+ #   empty_title  (string, e.g. "No watchdog rules yet")
+ #   empty_body   (string, plain-language, 1-2 lines)
+ #   empty_cta_label  (optional)
+ #   empty_cta_href   (optional)
+ #}
+<div class="v3-empty-state" role="status">
+  <h2>{{ empty_title }}</h2>
+  <p>{{ empty_body }}</p>
+  {% if empty_cta_label and empty_cta_href %}
+    <a class="btn" href="{{ empty_cta_href }}">{{ empty_cta_label }}</a>
+  {% endif %}
+</div>

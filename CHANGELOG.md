@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-09
+
+### Added — design system + layout + navigation foundation (Phase 1 of webui-redesign-plan)
+
+- **New 5-item top navigation:** **Status / Devices / Rules / History
+  / Settings**. Replaces the previous one-link-per-database-concept
+  nav. The nav reflects operator jobs-to-be-done from
+  `docs/webui-redesign-research.md` peer-product analysis (UniFi
+  + WattBox + Tailscale shapes).
+- **Mobile-first layout:** bottom-tab nav at ≤ 640 px viewport;
+  top nav at ≥ 768 px. Both render simultaneously into the same
+  five destinations.
+- **Mobile-first stylesheet** rewrite (`static/css/app.css`).
+  CSS custom properties as theme tokens; light / dark / system
+  themes via `data-theme` attribute on `<html>`.
+- **Theme picker** at `/app/settings/theme` — system / light /
+  dark, persisted as a per-browser cookie (so an operator can
+  keep light at the office and dark at home). FOUC-free via an
+  inline synchronous `<head>` script.
+- **New top-level destinations** (route stubs that compose into
+  later phases):
+  - `GET /app/rules` — watchdog-rule home with empty state and
+    "what's coming" panel pointing at P4.
+  - `GET /app/history` — unified log feed; v0.3.0 implementation
+    renders the existing audit data; expanded into watchdog
+    events + power events + schedule fires + notification sends
+    in P6.
+  - `GET /app/settings` — settings parent with tab strip linking
+    System / Network / Authentication / Users / Invitations /
+    Firmware / Theme / Profile sub-pages. New stub pages for
+    System / Network / Authentication explicitly mark themselves
+    "Coming in P5/P6".
+- **Component library skeleton** at `templates/_components/`
+  with `empty_state.html`, `error_state.html`, `settings_tabs.html`
+  partials. Other phases build on these.
+- **Auto-derived `active` slot** on every page from the URL prefix
+  via `_ctx()` — so the nav highlights the right item without
+  per-blueprint plumbing.
+- **WCAG 2.5.5 touch targets**: minimum 44 × 44 px on every
+  primary button on mobile.
+- **Visible focus rings** on every interactive element.
+- **`viewport-fit=cover`** + `safe-area-inset-bottom` so the
+  bottom-tab bar doesn't collide with iOS home indicators.
+
+### Fixed — pre-existing responsive failures
+
+The seven mobile-overflow failures in `tests/qa/test_responsive.py`
+at 375 px viewport (login, dashboard, devices, events, audit,
+users) are addressed by the mobile-first stylesheet rewrite. They
+were systemic CSS issues, not page-specific bugs. Running the
+suite against the new shell confirms the contracts.
+
+### Notes
+
+- All existing URLs continue to resolve. No bookmarks broken.
+- All existing endpoint names preserved (`admin_ui.*`,
+  `admin_api.*`) so every `url_for(...)` in the codebase
+  resolves. Templates were not touched outside `layout.html`.
+- The `dashboard.html` template continues to render at `/app/`
+  in v0.3.0 — its restructure into a true Inbox / Status feed
+  is Phase 2 (P2) of the redesign plan.
+- `/app/audit` continues to serve its current page; in P6 it
+  redirects to `/app/history`.
+- No schema change. No new env vars. No backend behaviour change.
+
+### Changelog of design intent
+
+This is the foundation phase that the brief calls Phase 1 — design
+system, layout, navigation. P2 (Status feed + device list/detail
+restructure), P3 (power-controls + safety + lockout flag), P4
+(watchdog-rule builder), P5 (RBAC + auth foundation), P6 (history
++ notifications + settings), and P7 (polish) ship in subsequent
+versions per `docs/webui-redesign-plan.md` §9.
+
 ## [0.2.11] - 2026-05-09
 
 ### Added — strict CORS allowlist (R8-CORS of REMEDIATION-PLAN-2026-05)

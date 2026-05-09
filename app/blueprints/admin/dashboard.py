@@ -18,6 +18,7 @@ def index():
         "dashboard.html",
         **_ctx(
             {
+                "active": "status",
                 "stats": dash_service.stats(),
                 "feed": dash_service.recent_activity(limit=25),
             }

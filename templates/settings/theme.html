@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block title %}Theme - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>Theme</h2>
+  <p class="muted">Light, dark, or follow the operating system's preference.</p>
+  <form method="post" action="{{ url_for('admin_ui.settings_theme_submit') }}">
+    <label>
+      <input type="radio" name="theme" value="system"
+        {% if current_theme == 'system' %}checked{% endif %}>
+      <strong>System</strong> — match your OS / browser preference
+    </label>
+    <label>
+      <input type="radio" name="theme" value="light"
+        {% if current_theme == 'light' %}checked{% endif %}>
+      <strong>Light</strong>
+    </label>
+    <label>
+      <input type="radio" name="theme" value="dark"
+        {% if current_theme == 'dark' %}checked{% endif %}>
+      <strong>Dark</strong>
+    </label>
+    <button type="submit">Save theme</button>
+  </form>
+  <p class="muted" style="margin-top:1rem; font-size:0.85rem">
+    The theme is a per-browser preference, not per-user, so you can keep light at the office and dark at home.
+  </p>
+</div>
+{% endblock %}
