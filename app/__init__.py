@@ -121,4 +121,63 @@ def create_app() -> Flask:
         from flask import redirect
         return redirect("/app/", code=302)
 
+    @app.get("/favicon.ico")
+    @app.get("/apple-touch-icon.png")
+    @app.get("/apple-touch-icon-precomposed.png")
+    def _icon_alias():
+        # Browsers request these at the conventional root location regardless
+        # of <link rel="icon"> hints. Serve our single ICO for all of them.
+        from flask import send_from_directory
+
+        return send_from_directory(app.static_folder, "favicon.ico")
+
+    @app.get("/robots.txt")
+    def _robots():
+        from flask import Response
+
+        return Response(
+            "User-agent: *\nDisallow: /\n", mimetype="text/plain"
+        )
+
+    @app.errorhandler(404)
+    def _not_found(_e):
+        # JSON envelope for /api/v1/* and any other JSON path; HTML for app/*.
+        from flask import render_template, request as _req, jsonify
+
+        if _req.path.startswith("/api/") or _req.headers.get(
+            "Accept", ""
+        ).startswith("application/json"):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": {"code": "not_found", "message": "Not found."},
+                    }
+                ),
+                404,
+            )
+        try:
+            return render_template("error.html", code=404, message="Page not found"), 404
+        except Exception:
+            return ("<h1>404 — Not found</h1>", 404, {"Content-Type": "text/html"})
+
+    @app.errorhandler(403)
+    def _forbidden(_e):
+        from flask import render_template, request as _req, jsonify
+
+        if _req.path.startswith("/api/"):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": {"code": "forbidden", "message": "Forbidden."},
+                    }
+                ),
+                403,
+            )
+        try:
+            return render_template("error.html", code=403, message="Not allowed"), 403
+        except Exception:
+            return ("<h1>403 — Forbidden</h1>", 403, {"Content-Type": "text/html"})
+
     return app

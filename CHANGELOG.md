@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-09
+
+### Added — UI affordances for shipped APIs
+
+- **Delete a device** (admin+) — danger-zone button on device detail.
+  Cascades credentials, heartbeats, events, commands, group memberships,
+  deployment assignments. Audit-logged.
+- **Delete a group** (admin+) — danger-zone button on group detail.
+  Cascades memberships; member devices kept.
+- **Cancel a pending invitation** (admin+) — button per pending row.
+- **Edit a user's display name** (super-admin) — inline form on /app/users.
+- **Revoke all tokens for a user** (super-admin) — bumps
+  `tokens_valid_after`. If the super-admin revokes their own tokens,
+  this session is also ended.
+- **Assign a device to a site** (admin+) — site dropdown on device-detail.
+
+### Fixed
+
+- **POST /app/groups + POST /app/sites returned 500 on duplicate name**.
+  Now catches `DuplicateNameError`, re-renders the list page with a
+  friendly inline error and HTTP 409.
+- **/rebooter/favicon.ico, apple-touch-icon.png 404** — now aliased
+  to the existing static favicon (browsers request these at the
+  conventional root regardless of `<link rel="icon">`).
+- **/rebooter/robots.txt 404** — now `User-agent: * / Disallow: /`.
+- **Default Flask 404 / 403 pages** — replaced with branded
+  `error.html`. JSON paths still get the envelope `{ ok:false,
+  error:{ code:"not_found"|"forbidden", … } }`.
+
+### Changed
+
+- `device.updated` audit-log entry now records exactly which fields
+  the operator changed.
+
 ## [0.2.2] - 2026-05-09
 
 ### Changed

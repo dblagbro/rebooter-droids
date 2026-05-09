@@ -64,6 +64,19 @@ def list_invitations() -> list[Invitation]:
     return rows
 
 
+def cancel_invitation(invitation_id: str) -> bool:
+    """Hard-delete a pending invitation. No-op if already consumed."""
+    with session_scope() as session:
+        inv = session.get(Invitation, invitation_id)
+        if inv is None:
+            return False
+        if inv.consumed_at is not None:
+            return False  # already used; can't cancel — would corrupt audit chain
+        session.delete(inv)
+        session.flush()
+        return True
+
+
 def lookup_pending(token: str) -> Invitation | None:
     h = _hash(token)
     now = datetime.now(timezone.utc)

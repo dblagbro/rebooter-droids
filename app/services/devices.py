@@ -176,6 +176,22 @@ def get_device_detail(device_id: str) -> dict | None:
 _PATCHABLE = {"display_name", "site_id", "notes", "central_management_enabled"}
 
 
+def delete_device(device_id: str) -> bool:
+    """Hard-delete a device + cascade (credentials, heartbeats, events,
+    commands, deployment_assignments, group memberships).
+
+    Note: the device's enrollment_token row is preserved (consumed_by_device_id
+    becomes NULL via the SET NULL FK rule), so audit history is intact.
+    """
+    with session_scope() as session:
+        d = session.get(Device, device_id)
+        if d is None:
+            return False
+        session.delete(d)
+        session.flush()
+        return True
+
+
 class UnknownPatchFieldError(ValueError):
     def __init__(self, fields: set[str]):
         super().__init__(
