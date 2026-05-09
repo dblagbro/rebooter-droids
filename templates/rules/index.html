@@ -3,21 +3,140 @@
 {% block content %}
 <div class="v3-page-header">
   <h1>Rules</h1>
-  <p class="v3-page-sub">Watchdog rules, schedules, and notifications.</p>
+  <p class="v3-page-sub">Watchdog rules. Probe runtime ships in v0.4.1; v0.4.0 is the data-model + builder slice.</p>
 </div>
 
+{% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+
+{% if can_edit %}
+<section class="v3-card" id="create">
+  <h2>Create a watchdog rule</h2>
+  <form method="post" action="{{ url_for('admin_ui.rules_create_submit') }}">
+    <label>Name <input type="text" name="name" placeholder="e.g. Office modem watchdog" required></label>
+
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>Probe</legend>
+      <label>What to check
+        <select name="probe_kind">
+          <option value="internet">internet — outbound connectivity</option>
+          <option value="ping">ping — host or IP</option>
+          <option value="tcp">tcp — host:port reachable</option>
+          <option value="http">http — URL returns 2xx</option>
+          <option value="dns">dns — resolve a hostname</option>
+          <option value="gateway">gateway — ping the device's LAN gateway</option>
+        </select>
+      </label>
+      <label>Probe target (host / url / hostname / host:port — leave blank for internet/gateway)
+        <input type="text" name="probe_arg" placeholder="e.g. 192.168.1.1 or https://example.com">
+      </label>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>What to do when it fails</legend>
+      <label>Action
+        <select name="action_kind">
+          <option value="cycle">cycle — power-cycle the target</option>
+          <option value="hold_off">hold_off — power off until manually restored</option>
+          <option value="notify_only">notify_only — no power action</option>
+        </select>
+      </label>
+      <label>power_off_seconds (cycle) <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
+      <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>Target</legend>
+      <label>Kind
+        <select name="target_kind">
+          <option value="device">device</option>
+          <option value="group">group</option>
+          <option value="tag">tag (free-form)</option>
+        </select>
+      </label>
+      <label>Target id / tag
+        <select name="target_id">
+          <option value="">— pick a device or group —</option>
+          {% if devices %}
+          <optgroup label="devices">
+            {% for d in devices %}<option value="{{ d.id }}">device: {{ d.display_name or d.id }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if groups %}
+          <optgroup label="groups">
+            {% for g in groups %}<option value="{{ g.id }}">group: {{ g.name }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+        </select>
+      </label>
+      <p class="muted" style="font-size:.85rem">For tag targets, type the tag name in the dropdown after selecting "tag" (browser convention).</p>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>Thresholds</legend>
+      <label>failure_threshold (consecutive failures before firing) <input type="number" name="failure_threshold" value="3" min="1" max="20"></label>
+      <label>recovery_threshold (consecutive successes before re-arming) <input type="number" name="recovery_threshold" value="2" min="1" max="20"></label>
+      <label>window_seconds (between probes) <input type="number" name="window_seconds" value="60" min="10" max="3600"></label>
+      <label>cooldown_seconds (after action, before next attempt) <input type="number" name="cooldown_seconds" value="300" min="0" max="86400"></label>
+    </fieldset>
+
+    <button type="submit">Create rule</button>
+  </form>
+  <p class="muted" style="font-size:.85rem">v0.4.0 ships the data-model + plain-English render. The probe runtime that actually executes rules + writes events lands in v0.4.1+. Rules created here are stored but DO NOT fire yet.</p>
+</section>
+{% endif %}
+
+<h2>Rules</h2>
+{% if rules %}
+<div class="table-wrap"><table>
+  <thead><tr>
+    <th>Rule</th>
+    <th>Status</th>
+    <th>Created</th>
+    {% if can_edit %}<th></th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for r in rules %}
+    <tr>
+      <td>
+        <strong>{{ r.name }}</strong><br>
+        <span class="muted" style="font-size:.85rem">{{ r.sentence }}</span>
+      </td>
+      <td>
+        {% if r.enabled %}<span class="badge green">{{ r.status }}</span>
+        {% else %}<span class="badge">disabled</span>{% endif %}
+      </td>
+      <td class="muted" style="font-size:.85rem">{{ r.created_at }}</td>
+      {% if can_edit %}
+      <td style="white-space:nowrap">
+        <form method="post" action="{{ url_for('admin_ui.rules_set_enabled_submit', rule_id=r.id) }}" style="display:inline">
+          <input type="hidden" name="enabled" value="{{ '0' if r.enabled else '1' }}">
+          <button type="submit" class="btn-secondary">{{ 'Disable' if r.enabled else 'Enable' }}</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_ui.rules_delete_submit', rule_id=r.id) }}" style="display:inline"
+              onsubmit="return confirm('Delete watchdog rule {{ r.name }}?');">
+          <button type="submit" class="btn-danger">Delete</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
 {% set empty_title = "No watchdog rules yet" %}
-{% set empty_body = "Watchdog rules monitor an internet connection or a host, and automatically power-cycle a device when the check fails. The full rule builder is coming in P4 of the redesign — see docs/webui-redesign-plan.md." %}
+{% set empty_body = "Create a rule above. Watchdog rules monitor an internet connection or a host, and when ready (v0.4.1+) automatically power-cycle a device when the check fails." %}
 {% include "_components/empty_state.html" %}
+{% endif %}
 
 <div class="v3-card" style="margin-top:1.5rem">
-  <h2>What's coming</h2>
+  <h2>What's coming in v0.4.1+</h2>
   <ul class="muted">
-    <li><strong>Plain-English builder</strong> — express a rule as one human sentence ("If 192.168.1.1 fails ping 3× in 5 min, cycle Office Modem, wait 90 s, retry 3×").</li>
-    <li><strong>Probe types</strong> — internet · ping · TCP · HTTP · DNS · gateway · custom.</li>
-    <li><strong>Failure / recovery thresholds</strong>, cooldowns, maintenance windows, and escalation actions.</li>
+    <li><strong>Probe runtime</strong> — APScheduler job that executes each enabled rule at a cadence derived from window_seconds.</li>
     <li><strong>Per-rule probe-event log</strong> with last-trigger reason.</li>
-    <li><strong>Schedules + notifications</strong> share the same trigger/action machinery.</li>
+    <li><strong>Probe-now</strong> + <strong>Simulate trigger</strong> buttons for testing.</li>
+    <li><strong>Maintenance windows</strong> + <strong>portal-wide maintenance mode</strong> (suspend all rules during planned reboots).</li>
+    <li><strong>Schedules</strong> — recurring power cycles + maintenance-mode windows.</li>
+    <li><strong>Notifications</strong> — fire on rule trigger via email / webhook / Web Push (gated on the email-SMTP work in v0.4.1).</li>
   </ul>
 </div>
 {% endblock %}
