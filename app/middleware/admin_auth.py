@@ -52,14 +52,28 @@ def _resolve_user_and_iat() -> tuple[object | None, int | None]:
 def _resolve_user(check_token_freshness: bool = True):
     user, iat = _resolve_user_and_iat()
     if user is None:
+        # v0.3.7: defensively clear any stale cookie session so the
+        # next request doesn't loop. Without this, a cookie carrying
+        # a user_id pointing at a deleted-or-deactivated user would
+        # make /app/* redirect to /app/login while /app/login then
+        # redirects back to /app/ (because session.user_id is still
+        # truthy) — ERR_TOO_MANY_REDIRECTS in the browser.
+        if session.get("user_id"):
+            session.clear()
         return None
     if not user.is_active:
+        if session.get("user_id"):
+            session.clear()
         return None
 
     if check_token_freshness and iat is not None:
         cutoff = getattr(user, "tokens_valid_after", None)
         if cutoff is not None and iat < int(cutoff.replace(tzinfo=timezone.utc).timestamp()):
             # Token / cookie was issued before the user's revocation cutoff.
+            # Clear the cookie too — same reason as above; without it,
+            # /app/login would see user_id and redirect back to /app/.
+            if session.get("user_id"):
+                session.clear()
             return None
     return user
 
