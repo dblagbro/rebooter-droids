@@ -1,20 +1,69 @@
 {% extends "layout.html" %}
 {% block title %}Dashboard - Rebooter-Droids{% endblock %}
 {% block content %}
-<section class="placeholder">
-  <h1>Dashboard</h1>
-  <p>Signed in as <strong>{{ current_user.email }}</strong>{% if current_user.is_super_admin %} <span class="badge green">super admin · architect</span>{% endif %}.
-  <a href="{{ url_for('admin_ui.logout') }}">Sign out</a></p>
-
-  <div class="actions">
-    <a class="badge green">{{ online_count }} online</a>
-    <a class="badge red">{{ offline_count }} offline</a>
-    <a class="badge">{{ device_count }} total</a>
+<div class="topline">
+  <div>
+    <h1 style="margin:0">Dashboard</h1>
+    <p class="muted" style="margin:.2rem 0 0">
+      Signed in as <strong>{{ current_user.email }}</strong>{% if current_user.is_super_admin %} <span class="badge green">super admin · architect</span>{% endif %}
+      · <a href="{{ url_for('admin_ui.me_page') }}">profile</a>
+      · <a href="{{ url_for('admin_ui.logout') }}">sign out</a>
+    </p>
   </div>
+  <p class="muted" style="margin:0">stats as of {{ stats.computed_at }}</p>
+</div>
 
+<section class="stat-grid">
+  <a class="stat" href="{{ url_for('admin_ui.list_devices_page') }}">
+    <div class="num">{{ stats.devices_total }}</div>
+    <div class="label">devices</div>
+    <div class="sub">
+      <span class="dot green"></span>{{ stats.devices_online }} online ·
+      <span class="dot red"></span>{{ stats.devices_offline }} offline
+    </div>
+  </a>
+  <div class="stat">
+    <div class="num">{{ stats.devices_with_pending_commands }}</div>
+    <div class="label">devices with pending commands</div>
+    <div class="sub muted">{{ stats.commands_24h }} commands issued in last 24h</div>
+  </div>
+  <a class="stat" href="{{ url_for('admin_ui.list_groups_page') }}">
+    <div class="num">{{ stats.groups_total }}</div>
+    <div class="label">groups</div>
+    <div class="sub muted">{{ stats.sites_total }} site(s)</div>
+  </a>
+  <a class="stat" href="{{ url_for('admin_ui.list_firmware_page') }}">
+    <div class="num">{{ stats.firmware_releases_total }}</div>
+    <div class="label">firmware releases</div>
+  </a>
+  <a class="stat" href="{{ url_for('admin_ui.events_page') }}">
+    <div class="num">{{ stats.events_24h }}</div>
+    <div class="label">device events (24h)</div>
+  </a>
+</section>
+
+<section class="placeholder">
+  <h2 style="margin-top:0">Recent activity</h2>
+  {% if feed %}
+  <ul class="activity-feed">
+  {% for item in feed %}
+    <li>
+      <span class="badge {% if item.kind == 'admin' %}{% elif item.kind == 'device' %}amber{% elif item.kind == 'command' %}green{% endif %}">{{ item.kind }}</span>
+      <code style="font-size:.78rem">{{ item.at }}</code>
+      <span>{{ item.actor }}: {{ item.summary }}</span>
+    </li>
+  {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No activity yet. Once devices register and admins act, this will fill in.</p>
+  {% endif %}
+</section>
+
+<section class="placeholder">
+  <h2 style="margin-top:0">Jump to</h2>
   <ul>
     <li><a href="{{ url_for('admin_ui.list_devices_page') }}">Devices</a></li>
-    <li><a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">Enrollment Tokens</a></li>
+    <li><a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">Enrollment tokens</a></li>
     <li><a href="{{ url_for('admin_ui.list_groups_page') }}">Groups</a></li>
     <li><a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a></li>
     <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a></li>

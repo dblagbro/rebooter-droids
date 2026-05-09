@@ -46,6 +46,8 @@ from app.services.invitations import (
 )
 from app.services.users import (
     UserError,
+    change_own_display_name,
+    change_own_password,
     deactivate_user,
     list_users as svc_list_users,
     revoke_all_tokens,
@@ -93,15 +95,14 @@ def _ctx(extra: dict | None = None) -> dict:
 @bp.get("/")
 @admin_required_ui
 def index():
-    devices = list_devices()
-    online = sum(1 for d in devices if d.get("online"))
+    from app.services import dashboard as dash_service
+
     return render_template(
         "dashboard.html",
         **_ctx(
             {
-                "device_count": len(devices),
-                "online_count": online,
-                "offline_count": len(devices) - online,
+                "stats": dash_service.stats(),
+                "feed": dash_service.recent_activity(limit=25),
             }
         ),
     )
@@ -137,6 +138,86 @@ def login_submit():
     session["iat"] = int(datetime.now(timezone.utc).timestamp())
     session.permanent = True
     return redirect(url_for("admin_ui.index"))
+
+
+# ── self-service profile ────────────────────────────────────────────────
+
+@bp.get("/me")
+@admin_required_ui
+def me_page():
+    return render_template(
+        "me.html",
+        **_ctx({"flash_msg": session.pop("_me_flash", None)}),
+    )
+
+
+@bp.post("/me/display-name")
+@admin_required_ui
+def me_display_name_submit():
+    name = (request.form.get("display_name") or "").strip()
+    if not name:
+        session["_me_flash"] = ("error", "Display name is required.")
+        return redirect(url_for("admin_ui.me_page"))
+    try:
+        change_own_display_name(g.current_user.id, name)
+    except UserError as e:
+        session["_me_flash"] = ("error", str(e))
+        return redirect(url_for("admin_ui.me_page"))
+    audit_service.record(
+        "user.display_name_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=g.current_user.id,
+        details={"new_display_name": name, "self_service": True},
+    )
+    session["_me_flash"] = ("ok", "Display name updated.")
+    return redirect(url_for("admin_ui.me_page"))
+
+
+@bp.post("/me/password")
+@admin_required_ui
+def me_password_submit():
+    current = request.form.get("current_password") or ""
+    new = request.form.get("new_password") or ""
+    confirm = request.form.get("new_password_confirm") or ""
+    if new != confirm:
+        session["_me_flash"] = ("error", "New password and confirmation do not match.")
+        return redirect(url_for("admin_ui.me_page"))
+    try:
+        change_own_password(g.current_user.id, current, new)
+    except UserError as e:
+        session["_me_flash"] = ("error", str(e))
+        return redirect(url_for("admin_ui.me_page"))
+
+    audit_service.record(
+        "user.password_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=g.current_user.id,
+        details={"self_service": True},
+    )
+    # change_own_password bumped tokens_valid_after — kick this session too
+    # so the user re-authenticates with the new password (standard pattern).
+    session.clear()
+    return redirect(url_for("admin_ui.login_page"))
+
+
+@bp.post("/me/revoke-everywhere")
+@admin_required_ui
+def me_revoke_everywhere_submit():
+    revoke_all_tokens(g.current_user.id)
+    audit_service.record(
+        "user.tokens_revoked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=g.current_user.id,
+        details={"self_service": True},
+    )
+    session.clear()
+    return redirect(url_for("admin_ui.login_page"))
 
 
 @bp.get("/logout")
