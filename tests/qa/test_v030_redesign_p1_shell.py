@@ -169,7 +169,9 @@ def test_theme_picker_writes_cookie_on_post(base_url, shell_session):
         allow_redirects=True,
     )
     assert r.status_code == 200
-    assert s.cookies.get("theme") == "dark"
+    # v0.3.3 renamed the theme cookie to rebooter_theme; legacy `theme`
+    # is still readable but no longer written.
+    assert (s.cookies.get("rebooter_theme") or s.cookies.get("theme")) == "dark"
     body = s.get(f"{base_url}/app/settings/theme", timeout=10).text
     # The dark radio is now selected.
     import re
@@ -186,8 +188,9 @@ def test_theme_picker_rejects_invalid_value(base_url, shell_session):
         timeout=10,
         allow_redirects=True,
     )
-    # Server clamps to 'system' for unknown values.
-    assert s.cookies.get("theme") == "system"
+    # Server clamps to 'system' for unknown values. v0.3.3 renamed
+    # to rebooter_theme; legacy `theme` may also still be present.
+    assert (s.cookies.get("rebooter_theme") or s.cookies.get("theme")) == "system"
 
 
 # ── old URLs keep working (no bookmarks broken) ───────────────────────────
