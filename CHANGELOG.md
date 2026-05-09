@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-05-09
+
+### Added — failsafe-event surface (RFC-005 P1 backend)
+
+Receives device-side failsafe reports per RFC-005 §5.2. When a
+device falls back from slot B (just-OTA'd main) → slot C (last-
+known-good) it POSTs to the new endpoint and we surface the
+event prominently.
+
+- **New table:** `device_failsafe_events` with columns
+  `device_id`, `received_at`, `failed_version`,
+  `fallback_to_version`, `reason`, `details` (JSON-shaped, opaque
+  to the backend so future firmware extensions don't require a
+  schema change).
+- **New endpoint:** `POST /api/v1/device/failsafe`
+  (device-token-authenticated). Body shape:
+  ```
+  {
+    "device_id": "...",
+    "failed_version": "0.x.y",
+    "fallback_to_version": "0.x.z",
+    "reason": "boot_failure" | "sha256_mismatch" |
+              "watchdog_reset" | "timeout" | "other",
+    "details": { ... }
+  }
+  ```
+  The `device_id` in the body is informational; we trust the
+  bearer token's device. Best-effort write — never blocks the
+  device's POST.
+- **Status inbox attention items.** New
+  `device_failsafe` kind with severity `critical`. Renders with
+  a red-accent treatment (new `.v3-sev-critical` CSS class).
+  Surfaces every failsafe in the last 24 h. No threshold; a
+  failsafe is a strong signal on its own.
+- **Per-device Failsafe section** on the device-detail page
+  (new tab anchor `#failsafe`). Shows the last 25 failsafe
+  events with the failed/fallback versions, reason, and an
+  expandable diagnostic blob.
+- **`get_device_detail()`** returns `failsafe_events`
+  alongside `audit_history`.
+
+### Why this matters
+
+Pairs with the (firmware-team-side) self-healing OTA design in
+RFC-005. When a firmware update doesn't boot on a real device,
+the device tells central; central tells the operator
+prominently; the operator can then push a fixed version. The
+machinery is "no firmware update can brick a device" — the
+RFC-005 constitutional invariant.
+
+### Compatibility
+
+- All v0.3.7 routes preserved.
+- New table created via `Base.metadata.create_all()` at boot.
+  No manual migration step.
+- The existing inbox shape gains `totals.failsafe` and a new
+  attention-item kind `device_failsafe`. Existing API consumers
+  that iterate `attention` by their existing kind set are
+  unaffected.
+
 ## [0.3.7] - 2026-05-09
 
 ### Fixed — `ERR_TOO_MANY_REDIRECTS` on stale cookie
