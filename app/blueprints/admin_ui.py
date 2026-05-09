@@ -27,12 +27,18 @@ from app.models.users import (
 from app.middleware.rate_limit import limiter
 from app.services.auth import authenticate
 from app.services.commands import enqueue_for_device, enqueue_for_group
-from app.services.devices import get_device_detail, list_devices, update_device
+from app.services.devices import (
+    delete_device as svc_delete_device_ui,
+    get_device_detail,
+    list_devices,
+    update_device,
+)
 from app.services.enrollment import list_enrollment_tokens, mint_enrollment_token
 from app.services import audit as audit_service
 from app.services.events import query_events as svc_query_events
 from app.services.invitations import (
     InvitationError,
+    cancel_invitation as svc_cancel_invitation_ui,
     list_invitations,
     lookup_pending,
     mint_invitation,
@@ -43,8 +49,10 @@ from app.services.users import (
     deactivate_user,
     list_users as svc_list_users,
     revoke_all_tokens,
+    update_user_display_name,
     update_user_role,
 )
+from app.services.sites import list_sites as svc_list_sites_only  # noqa: F401
 from app.services.deployments import (
     create_deployment,
     list_deployments as svc_list_deployments,
@@ -58,6 +66,7 @@ from app.services.groups import list_groups as svc_list_groups_only  # noqa: F40
 from app.services.groups import (
     add_members,
     create_group as svc_create_group,
+    delete_group as svc_delete_group_ui,
     get_group_detail,
     list_groups as svc_list_groups,
     remove_member,
@@ -173,16 +182,21 @@ def device_detail_page(device_id: str):
     detail = get_device_detail(device_id)
     if detail is None:
         abort(404)
-    return render_template("device_detail.html", **_ctx({"device": detail}))
+    sites = svc_list_sites_only()
+    return render_template(
+        "device_detail.html", **_ctx({"device": detail, "sites": sites})
+    )
 
 
 @bp.post("/devices/<device_id>")
 @admin_required_ui
 def device_update_submit(device_id: str):
+    site_id = (request.form.get("site_id") or "").strip()
     patch = {
         "display_name": request.form.get("display_name") or "",
         "notes": request.form.get("notes") or None,
         "central_management_enabled": "central_management_enabled" in request.form,
+        "site_id": site_id or None,
     }
     from app.services.devices import UnknownPatchFieldError
 
@@ -192,7 +206,29 @@ def device_update_submit(device_id: str):
         abort(400)
     if updated is None:
         abort(404)
+    audit_service.record(
+        "device.updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={"fields": [k for k, v in patch.items() if v is not None]},
+    )
     return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+
+
+@bp.post("/devices/<device_id>/delete")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def device_delete_submit(device_id: str):
+    if svc_delete_device_ui(device_id):
+        audit_service.record(
+            "device.deleted",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="device",
+            target_id=device_id,
+        )
+    return redirect(url_for("admin_ui.list_devices_page"))
 
 
 @bp.post("/devices/<device_id>/commands")
@@ -267,14 +303,26 @@ def list_groups_page():
 @bp.post("/groups")
 @admin_required_ui
 def create_group_submit():
+    from app.services.groups import DuplicateNameError as _DupG
+
     name = (request.form.get("name") or "").strip()
     if not name:
         abort(400)
-    svc_create_group(
-        name=name,
-        description=(request.form.get("description") or "").strip() or None,
-        site_id=None,
-    )
+    try:
+        svc_create_group(
+            name=name,
+            description=(request.form.get("description") or "").strip() or None,
+            site_id=None,
+        )
+    except _DupG:
+        groups = svc_list_groups()
+        return (
+            render_template(
+                "groups_list.html",
+                **_ctx({"groups": groups, "error": f"A group named '{name}' already exists."}),
+            ),
+            409,
+        )
     return redirect(url_for("admin_ui.list_groups_page"))
 
 
@@ -310,6 +358,20 @@ def group_add_member_submit(group_id: str):
 def group_remove_member_submit(group_id: str, device_id: str):
     remove_member(group_id, device_id)
     return redirect(url_for("admin_ui.group_detail_page", group_id=group_id))
+
+
+@bp.post("/groups/<group_id>/delete")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def group_delete_submit(group_id: str):
+    if svc_delete_group_ui(group_id):
+        audit_service.record(
+            "group.deleted",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="group",
+            target_id=group_id,
+        )
+    return redirect(url_for("admin_ui.list_groups_page"))
 
 
 @bp.post("/groups/<group_id>/commands")
@@ -427,10 +489,25 @@ def list_sites_page():
 @bp.post("/sites")
 @admin_required_ui
 def create_site_submit():
+    from app.services.sites import DuplicateNameError as _DupS
+
     name = (request.form.get("name") or "").strip()
     if not name:
         abort(400)
-    svc_create_site(name=name, description=(request.form.get("description") or "").strip() or None)
+    try:
+        svc_create_site(
+            name=name,
+            description=(request.form.get("description") or "").strip() or None,
+        )
+    except _DupS:
+        sites = svc_list_sites()
+        return (
+            render_template(
+                "sites_list.html",
+                **_ctx({"sites": sites, "error": f"A site named '{name}' already exists."}),
+            ),
+            409,
+        )
     return redirect(url_for("admin_ui.list_sites_page"))
 
 
@@ -487,6 +564,47 @@ def deactivate_user_submit(user_id: str):
     return redirect(url_for("admin_ui.users_page"))
 
 
+@bp.post("/users/<user_id>/revoke-tokens")
+@role_required_ui(ROLE_SUPER_ADMIN)
+def revoke_tokens_submit(user_id: str):
+    revoke_all_tokens(user_id)
+    audit_service.record(
+        "user.tokens_revoked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+    )
+    # If the architect revoked their OWN tokens, kick them out of this session
+    # too (otherwise they'd be confused about why their cookie still appears
+    # to work for one more request).
+    if user_id == g.current_user.id:
+        session.clear()
+        return redirect(url_for("admin_ui.login_page"))
+    return redirect(url_for("admin_ui.users_page"))
+
+
+@bp.post("/users/<user_id>/display-name")
+@role_required_ui(ROLE_SUPER_ADMIN)
+def change_display_name_submit(user_id: str):
+    name = (request.form.get("display_name") or "").strip()
+    if not name:
+        abort(400)
+    try:
+        update_user_display_name(user_id, name)
+    except UserError:
+        abort(400)
+    audit_service.record(
+        "user.display_name_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={"new_display_name": name},
+    )
+    return redirect(url_for("admin_ui.users_page"))
+
+
 @bp.get("/invitations")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def invitations_page():
@@ -495,6 +613,20 @@ def invitations_page():
         "invitations_list.html",
         **_ctx({"invitations": invs, "new_invite": session.pop("_new_invite", None)}),
     )
+
+
+@bp.post("/invitations/<invitation_id>/cancel")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def invitations_cancel_submit(invitation_id: str):
+    if svc_cancel_invitation_ui(invitation_id):
+        audit_service.record(
+            "invitation.cancelled",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="invitation",
+            target_id=invitation_id,
+        )
+    return redirect(url_for("admin_ui.invitations_page"))
 
 
 @bp.post("/invitations")

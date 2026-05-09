@@ -62,4 +62,13 @@
   <p class="muted">All known devices are already members of this group.</p>
   {% endif %}
 </section>
+
+{% if current_user.role in ('super_admin','admin') %}
+<section class="placeholder" style="border-color:#5a2222">
+  <h2 style="color:#fca5a5">Danger zone</h2>
+  <form method="post" action="{{ url_for('admin_ui.group_delete_submit', group_id=group.id) }}" onsubmit="return confirm('Delete group {{ group.name }} permanently? Member devices are not deleted, just removed from this group. Pending group commands are kept on the per-device queue.');">
+    <button type="submit">Delete group</button>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

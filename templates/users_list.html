@@ -7,11 +7,21 @@
 <p><a href="{{ url_for('admin_ui.invitations_page') }}">Invite a new user →</a></p>
 
 <table>
-  <thead><tr><th>Email</th><th>Role</th><th>Active</th><th>Created</th><th>Last login</th><th>Actions</th></tr></thead>
+  <thead><tr><th>Email</th><th>Display name</th><th>Role</th><th>Active</th><th>Last login</th><th>Actions</th></tr></thead>
   <tbody>
   {% for u in users %}
   <tr>
     <td>{{ u.email }}</td>
+    <td>
+      {% if current_user.role == 'super_admin' %}
+      <form method="post" action="{{ url_for('admin_ui.change_display_name_submit', user_id=u.id) }}" style="display:inline-flex;gap:.4rem;align-items:center;margin:0">
+        <input type="text" name="display_name" value="{{ u.display_name }}" style="width:14ch">
+        <button type="submit">Save</button>
+      </form>
+      {% else %}
+      {{ u.display_name }}
+      {% endif %}
+    </td>
     <td>
       {% if current_user.role == 'super_admin' and u.id != current_user.id %}
       <form method="post" action="{{ url_for('admin_ui.change_user_role_submit', user_id=u.id) }}" style="display:inline-flex;gap:.4rem;align-items:center;margin:0">
@@ -27,14 +37,20 @@
       {% endif %}
     </td>
     <td>{% if u.is_active %}<span class="badge green">active</span>{% else %}<span class="badge red">disabled</span>{% endif %}</td>
-    <td>{{ u.created_at }}</td>
     <td>{{ u.last_login_at or '—' }}</td>
     <td>
-      {% if current_user.role == 'super_admin' and u.id != current_user.id and u.is_active %}
-      <form method="post" action="{{ url_for('admin_ui.deactivate_user_submit', user_id=u.id) }}" style="margin:0">
-        <button type="submit">Deactivate</button>
-      </form>
-      {% endif %}
+      <div class="actions" style="margin:0">
+        {% if current_user.role == 'super_admin' and u.id != current_user.id and u.is_active %}
+        <form method="post" action="{{ url_for('admin_ui.deactivate_user_submit', user_id=u.id) }}" onsubmit="return confirm('Deactivate {{ u.email }}? They will be signed out and unable to log in until you re-activate.');" style="margin:0">
+          <button type="submit">Deactivate</button>
+        </form>
+        {% endif %}
+        {% if current_user.role == 'super_admin' %}
+        <form method="post" action="{{ url_for('admin_ui.revoke_tokens_submit', user_id=u.id) }}" onsubmit="return confirm('Revoke ALL active sessions/tokens for {{ u.email }}? They will need to sign in again everywhere they are currently signed in.{% if u.id == current_user.id %} This will also log YOU out of this session.{% endif %}');" style="margin:0">
+          <button type="submit">Revoke tokens</button>
+        </form>
+        {% endif %}
+      </div>
     </td>
   </tr>
   {% endfor %}

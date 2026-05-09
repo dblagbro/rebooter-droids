@@ -22,16 +22,6 @@
 </section>
 
 <section class="placeholder">
-  <h2>Edit metadata</h2>
-  <form method="post" action="{{ url_for('admin_ui.device_update_submit', device_id=device.id) }}">
-    <label>Display name <input type="text" name="display_name" value="{{ device.display_name or '' }}"></label>
-    <label>Notes <textarea name="notes" rows="3">{{ device.notes or '' }}</textarea></label>
-    <label><input type="checkbox" name="central_management_enabled" {% if device.central_management_enabled %}checked{% endif %}> Central management enabled</label>
-    <button type="submit">Save</button>
-  </form>
-</section>
-
-<section class="placeholder">
   <h2>Send command</h2>
   <div class="actions">
     {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
@@ -80,4 +70,31 @@
     <p class="muted">No events yet.</p>
   {% endif %}
 </section>
+
+<section class="placeholder">
+  <h2>Edit metadata</h2>
+  <form method="post" action="{{ url_for('admin_ui.device_update_submit', device_id=device.id) }}">
+    <label>Display name <input type="text" name="display_name" value="{{ device.display_name or '' }}"></label>
+    <label>Site
+      <select name="site_id">
+        <option value="">— none —</option>
+        {% for s in sites %}
+        <option value="{{ s.id }}" {% if device.site_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Notes <textarea name="notes" rows="3">{{ device.notes or '' }}</textarea></label>
+    <label><input type="checkbox" name="central_management_enabled" {% if device.central_management_enabled %}checked{% endif %}> Central management enabled</label>
+    <button type="submit">Save</button>
+  </form>
+</section>
+
+{% if current_user.role in ('super_admin','admin') %}
+<section class="placeholder" style="border-color:#5a2222">
+  <h2 style="color:#fca5a5">Danger zone</h2>
+  <form method="post" action="{{ url_for('admin_ui.device_delete_submit', device_id=device.id) }}" onsubmit="return confirm('Delete device {{ device.display_name or device.id }} permanently? Heartbeats, commands, events, and group memberships are all removed.');">
+    <button type="submit">Delete device</button>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

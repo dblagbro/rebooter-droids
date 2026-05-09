@@ -19,6 +19,7 @@ from app.models.users import (
 from app.services import audit
 from app.services.invitations import (
     InvitationError,
+    cancel_invitation as svc_cancel_invitation,
     list_invitations,
     mint_invitation,
 )
@@ -27,12 +28,14 @@ from app.services.users import (
     deactivate_user,
     list_users,
     revoke_all_tokens,
+    update_user_display_name,
     update_user_role,
 )
 from app.middleware.response import err, ok
 from app.services.commands import enqueue_for_device, enqueue_for_group
 from app.services.devices import (
     UnknownPatchFieldError,
+    delete_device as svc_delete_device,
     get_device_detail,
     list_devices as svc_list_devices,
     update_device,
@@ -52,6 +55,7 @@ from app.services.groups import (
     DuplicateNameError as DuplicateGroupName,
     add_members,
     create_group as svc_create_group,
+    delete_group as svc_delete_group,
     get_group_detail,
     list_groups,
     remove_member,
@@ -276,7 +280,88 @@ def add_group_members(group_id: str):
 def remove_group_member(group_id: str, device_id: str):
     if not remove_member(group_id, device_id):
         return err("not_a_member", "Device is not a member of this group.", status=404)
+    audit.record(
+        "group.member_removed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="group",
+        target_id=group_id,
+        details={"device_id": device_id},
+    )
     return ok({"removed": True})
+
+
+@bp.delete("/groups/<group_id>")
+@role_required_api(*ADMIN_AND_UP)
+def delete_group_api(group_id: str):
+    if not svc_delete_group(group_id):
+        return err("group_unknown", "Group not found.", status=404)
+    audit.record(
+        "group.deleted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="group",
+        target_id=group_id,
+    )
+    return ok({"deleted": True})
+
+
+@bp.delete("/devices/<device_id>")
+@role_required_api(*ADMIN_AND_UP)
+def delete_device_api(device_id: str):
+    if not svc_delete_device(device_id):
+        return err("device_unknown", "Device not found.", status=404)
+    audit.record(
+        "device.deleted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+    )
+    return ok({"deleted": True})
+
+
+@bp.delete("/invitations/<invitation_id>")
+@role_required_api(*ADMIN_AND_UP)
+def cancel_invitation_api(invitation_id: str):
+    if not svc_cancel_invitation(invitation_id):
+        return err(
+            "invitation_unknown_or_consumed",
+            "Invitation not found or already consumed.",
+            status=404,
+        )
+    audit.record(
+        "invitation.cancelled",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="invitation",
+        target_id=invitation_id,
+    )
+    return ok({"cancelled": True})
+
+
+@bp.post("/users/<user_id>/display-name")
+@role_required_api(*SUPER_ADMIN_ONLY)
+def change_user_display_name_api(user_id: str):
+    body = request.get_json(silent=True) or {}
+    name = (body.get("display_name") or "").strip()
+    if not name:
+        return err("validation_failed", "display_name is required", status=400)
+    try:
+        out = update_user_display_name(user_id, name)
+    except UserError as e:
+        return err("validation_failed", str(e), status=400)
+    if out is None:
+        return err("user_unknown", "User not found.", status=404)
+    audit.record(
+        "user.display_name_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={"new_display_name": name},
+    )
+    return ok(out)
 
 
 @bp.post("/groups/<group_id>/commands")
