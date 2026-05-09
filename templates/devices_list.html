@@ -1,8 +1,36 @@
 {% extends "layout.html" %}
 {% block title %}Devices - Rebooter-Droids{% endblock %}
 {% block content %}
-<h1>Devices</h1>
+<div class="v3-page-header">
+  <h1>Devices</h1>
+  <p class="v3-page-sub">{{ devices|length }} device{{ '' if devices|length == 1 else 's' }}{% if filters.chips %} · {{ filters.chips|length }} filter{{ '' if filters.chips|length == 1 else 's' }} active{% endif %}</p>
+</div>
 
+{# ── saved-filter chips (P2) ─────────────────────────────────────────── #}
+{% set chip_defs = [
+    ('offline_24h', 'Offline > 24 h'),
+    ('never', 'Never heartbeated'),
+    ('pending_cmds', 'Has pending commands'),
+    ('qa_fixtures', 'QA fixtures only'),
+] %}
+<nav class="v3-chips" aria-label="Saved filters">
+  {% for chip_key, chip_label in chip_defs %}
+    {% set is_active = chip_key in filters.chips %}
+    {% set new_chips = filters.chips|reject('eq', chip_key)|list if is_active else (filters.chips + [chip_key]) %}
+    {% set link_args = {'search': filters.search or '', 'status': filters.status or ''} %}
+    {% if not filters.show_qa_fixtures %}
+      {% set _ = link_args.update({'show_qa_fixtures': '0'}) %}
+    {% endif %}
+    {% set link = url_for('admin_ui.list_devices_page', **link_args) %}
+    <a class="v3-chip {% if is_active %}v3-chip-active{% endif %}"
+       href="{{ link }}{% for c in new_chips %}&chip={{ c }}{% endfor %}"
+       aria-pressed="{{ 'true' if is_active else 'false' }}">
+      {% if is_active %}✓ {% endif %}{{ chip_label }}
+    </a>
+  {% endfor %}
+</nav>
+
+{# ── search + status form ────────────────────────────────────────────── #}
 <form method="get" class="actions">
   <input type="search" name="search" value="{{ filters.search }}" placeholder="search by name, mac, id">
   <select name="status">
@@ -14,44 +42,97 @@
     <input type="checkbox" name="show_qa_fixtures" value="1" {% if filters.show_qa_fixtures %}checked{% endif %}>
     show QA fixtures
   </label>
+  {% for c in filters.chips %}<input type="hidden" name="chip" value="{{ c }}">{% endfor %}
   <button type="submit">Filter</button>
-  <a class="badge" href="{{ url_for('admin_ui.enrollment_tokens_page') }}">+ Enroll a device</a>
+  <a class="btn btn-secondary" href="{{ url_for('admin_ui.enroll_device_wizard') }}">+ Enrol a device</a>
 </form>
 
+{# ── empty state ─────────────────────────────────────────────────────── #}
 {% if not devices %}
-  <p class="muted">No devices yet. <a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">Mint an enrollment token</a> to add one.</p>
+  {% if filters.chips or filters.search or filters.status %}
+    {% set empty_title = "No devices match the current filter" %}
+    {% set empty_body = "Clear the filters above to see the full fleet." %}
+  {% else %}
+    {% set empty_title = "No devices yet" %}
+    {% set empty_body = "Enrol your first device to start monitoring it from this portal." %}
+    {% set empty_cta_label = "+ Enrol a device" %}
+    {% set empty_cta_href = url_for('admin_ui.enroll_device_wizard') %}
+  {% endif %}
+  {% include "_components/empty_state.html" %}
 {% else %}
-<div class="table-wrap"><table>
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>State</th>
-      <th>Online</th>
-      <th>Firmware</th>
-      <th>Last heartbeat</th>
-      <th>Local IP</th>
-    </tr>
-  </thead>
-  <tbody>
+
+{# ── desktop table layout ────────────────────────────────────────────── #}
+<div class="v3-devices-table">
+  <div class="table-wrap"><table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>State</th>
+        <th>Online</th>
+        <th>Central</th>
+        <th>Firmware</th>
+        <th>Last heartbeat</th>
+        <th>Local IP</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for d in devices %}
+      <tr>
+        <td>
+          <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
+          {% if d.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
+        </td>
+        <td><span class="badge">{{ d.registration_state }}</span></td>
+        <td>
+          {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
+          {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
+          {% else %}<span class="badge red" title="last heartbeat older than 3 min">offline</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if d.central_management_enabled %}<span class="badge" title="device opts in to central management">central</span>
+          {% else %}<span class="badge" title="device opts out — local-only is healthy">local-only</span>{% endif %}
+        </td>
+        <td>{{ d.firmware_version or '—' }}</td>
+        <td>{{ d.last_heartbeat_at or '—' }}</td>
+        <td>
+          {% if d.local_ip %}<a href="http://{{ d.local_ip }}/" target="_blank" rel="noopener">{{ d.local_ip }}</a>{% else %}—{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{# ── mobile card layout ──────────────────────────────────────────────── #}
+<div class="v3-device-cards">
   {% for d in devices %}
-    <tr>
-      <td>
+  <article class="v3-device-card">
+    <div class="v3-device-card-head">
+      <div class="v3-device-card-name">
         <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
-        {% if d.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
-      </td>
-      <td><span class="badge">{{ d.registration_state }}</span></td>
-      <td>
-        {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
-        {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
-        {% else %}<span class="badge red" title="last heartbeat older than 3 min">offline</span>
+        {% if d.is_qa_fixture %}<span class="badge" style="font-size:.7rem">QA</span>{% endif %}
+      </div>
+      <div>
+        {% if d.heartbeat_state == 'online' %}<span class="badge green">online</span>
+        {% elif d.heartbeat_state == 'never' %}<span class="badge">never heartbeated</span>
+        {% else %}<span class="badge red">offline</span>
         {% endif %}
-      </td>
-      <td>{{ d.firmware_version or '—' }}</td>
-      <td>{{ d.last_heartbeat_at or '—' }}</td>
-      <td>{{ d.local_ip or '—' }}</td>
-    </tr>
+      </div>
+    </div>
+    <div class="v3-device-card-meta">
+      <span class="badge">{{ d.registration_state }}</span>
+      {% if d.central_management_enabled %}
+        <span class="badge" title="opts in to central">central</span>
+      {% else %}
+        <span class="badge" title="opts out — local-only is healthy">local-only</span>
+      {% endif %}
+      {% if d.firmware_version %}<span>fw {{ d.firmware_version }}</span>{% endif %}
+      {% if d.last_heartbeat_at %}<span>{{ d.last_heartbeat_at }}</span>{% endif %}
+      {% if d.local_ip %}<a href="http://{{ d.local_ip }}/" target="_blank" rel="noopener">{{ d.local_ip }}</a>{% endif %}
+    </div>
+  </article>
   {% endfor %}
-  </tbody>
-</table></div>
+</div>
 {% endif %}
 {% endblock %}
