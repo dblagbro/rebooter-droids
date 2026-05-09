@@ -73,6 +73,12 @@ def create_app() -> Flask:
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["SESSION_COOKIE_HTTPONLY"] = True
+    # v0.3.3 (P3.1): rebooter-specific cookie name + optional cross-
+    # subdomain scope so the session carries between www and www2.
+    # See app/config.py::cookie_domain for the env var.
+    app.config["SESSION_COOKIE_NAME"] = "rebooter_session"
+    if settings.cookie_domain:
+        app.config["SESSION_COOKIE_DOMAIN"] = settings.cookie_domain
     # 2-day idle timeout: cookie expiry rolls forward on every request
     # (SESSION_REFRESH_EACH_REQUEST is Flask's default = True). Active
     # users stay signed in indefinitely; idle users get kicked after the

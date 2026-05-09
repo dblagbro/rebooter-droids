@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-05-09
+
+### Fixed — frequent sign-outs when switching between www and www2
+
+The session cookie was host-scoped (no `Domain=` attribute), so a
+login at `www.voipguru.org/rebooter` did not carry to
+`www2.voipguru.org/rebooter` — every switch required a fresh login.
+The firmware-side multi-URL fallback (primary → secondary) made this
+fire repeatedly during a single working session.
+
+**Diagnosis confirmed via Playwright** (`/tmp/diagnose_signouts.py`,
+captured in this commit's audit trail): cookie domain was
+`www.voipguru.org`, hitting `www2.voipguru.org` after login bounced
+to `/app/login`.
+
+**Fix.**
+
+- New env var `REBOOTER_COOKIE_DOMAIN`. When set (e.g.,
+  `.voipguru.org`), the session + theme cookies carry across all
+  subdomains of that domain. Default empty = host-scoped (the
+  v0.3.0–0.3.2 behaviour) for self-hosted single-host deployments.
+- Cookie name renamed from Flask's default `session` to
+  `rebooter_session`. Avoids collisions with peer voipguru.org apps
+  (hub, paperless, etc.) that also default to `session`. Without the
+  rename, a domain-shared cookie could collide with another app's
+  cookie of the same name and produce confusing failures.
+- Theme cookie similarly renamed: `theme` → `rebooter_theme`. The
+  legacy `theme` cookie is still read for one minor so users don't
+  lose their light-mode preference on upgrade; the writer clears it.
+- `docker-compose.yml` defaults `REBOOTER_COOKIE_DOMAIN=.voipguru.org`
+  for the multi-URL voipguru deployment.
+
+### Operational impact
+
+- **Operators upgrading from v0.3.0–0.3.2 will be signed out exactly
+  once** when v0.3.3 is deployed. The old `session` cookie is still
+  in their browser but the server is now looking for
+  `rebooter_session`. After the one re-login, the new cookie is
+  cross-subdomain and switching between www and www2 carries it.
+- No schema change. No code-call-site change.
+
 ## [0.3.2] - 2026-05-09
 
 ### Added — Power controls + safety + lockout (P3 of webui-redesign)
