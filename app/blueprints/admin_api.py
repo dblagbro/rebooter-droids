@@ -22,6 +22,7 @@ from app.services.firmware import (
     upload_release,
 )
 from app.services.groups import (
+    DuplicateNameError as DuplicateGroupName,
     add_members,
     create_group as svc_create_group,
     get_group_detail,
@@ -29,6 +30,7 @@ from app.services.groups import (
     remove_member,
 )
 from app.services.sites import (
+    DuplicateNameError as DuplicateSiteName,
     create_site as svc_create_site,
     delete_site as svc_delete_site,
     list_sites,
@@ -198,11 +200,14 @@ def create_group():
     name = (body.get("name") or "").strip()
     if not name:
         return err("validation_failed", "name is required", status=400)
-    g = svc_create_group(
-        name=name,
-        description=body.get("description"),
-        site_id=body.get("site_id"),
-    )
+    try:
+        g = svc_create_group(
+            name=name,
+            description=body.get("description"),
+            site_id=body.get("site_id"),
+        )
+    except DuplicateGroupName as e:
+        return err("name_conflict", str(e), status=409)
     return ok(g, status=201)
 
 
@@ -344,7 +349,10 @@ def create_site_api():
     name = (body.get("name") or "").strip()
     if not name:
         return err("validation_failed", "name is required", status=400)
-    return ok(svc_create_site(name=name, description=body.get("description")), status=201)
+    try:
+        return ok(svc_create_site(name=name, description=body.get("description")), status=201)
+    except DuplicateSiteName as e:
+        return err("name_conflict", str(e), status=409)
 
 
 @bp.delete("/sites/<site_id>")

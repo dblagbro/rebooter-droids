@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.db import session_scope
 from app.models import Device, Group, GroupMembership
+
+
+class DuplicateNameError(ValueError):
+    pass
 
 
 def serialize_group(g: Group, member_count: int = 0) -> dict:
@@ -38,10 +43,13 @@ def list_groups() -> list[dict]:
 
 def create_group(name: str, description: str | None, site_id: str | None) -> dict:
     g = Group(name=name, description=description, site_id=site_id)
-    with session_scope() as session:
-        session.add(g)
-        session.flush()
-        return serialize_group(g, member_count=0)
+    try:
+        with session_scope() as session:
+            session.add(g)
+            session.flush()
+            return serialize_group(g, member_count=0)
+    except IntegrityError:
+        raise DuplicateNameError(f"a group named '{name}' already exists")
 
 
 def get_group_detail(group_id: str) -> dict | None:

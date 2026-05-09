@@ -8,6 +8,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import load_settings
 from app.db import init_engine
+from app.middleware.rate_limit import init_rate_limit
 from app.middleware.response import register_envelope_handlers
 
 
@@ -78,6 +79,7 @@ def create_app() -> Flask:
     )
 
     init_engine(settings)
+    init_rate_limit(app)
 
     from app.services.bootstrap import run_startup_bootstrap
     try:

@@ -13,12 +13,8 @@ from .conftest import unique_suffix
 
 # ── duplicates / unique-constraint surface ─────────────────────────────────
 
-def test_duplicate_group_name_currently_allowed(base_url, admin_headers):
-    """No unique constraint on groups.name — exposes duplicate group names.
-
-    Today this is permitted; logging as a finding so we either decide it's
-    intentional or add a uniq constraint.
-    """
+def test_duplicate_group_name_returns_409(base_url, admin_headers):
+    """v0.1.4 — groups.name UNIQUE; duplicate returns 409 name_conflict."""
     name = f"qa-dupe-{unique_suffix()}"
     a = requests.post(
         f"{base_url}/api/v1/admin/groups",
@@ -32,13 +28,13 @@ def test_duplicate_group_name_currently_allowed(base_url, admin_headers):
         json={"name": name},
         timeout=10,
     )
-    assert a.status_code == 201 and b.status_code == 201
-    assert a.json()["data"]["id"] != b.json()["data"]["id"], (
-        "two groups with the same name created — was this intentional?"
-    )
+    assert a.status_code == 201
+    assert b.status_code == 409, b.text
+    assert b.json()["error"]["code"] == "name_conflict"
 
 
-def test_duplicate_site_name_currently_allowed(base_url, admin_headers):
+def test_duplicate_site_name_returns_409(base_url, admin_headers):
+    """v0.1.4 — sites.name UNIQUE; duplicate returns 409 name_conflict."""
     name = f"qa-site-dupe-{unique_suffix()}"
     a = requests.post(
         f"{base_url}/api/v1/admin/sites",
@@ -52,14 +48,14 @@ def test_duplicate_site_name_currently_allowed(base_url, admin_headers):
         json={"name": name},
         timeout=10,
     )
-    assert a.status_code == 201 and b.status_code == 201
+    assert a.status_code == 201
+    assert b.status_code == 409
     # cleanup
-    for r in (a, b):
-        requests.delete(
-            f"{base_url}/api/v1/admin/sites/{r.json()['data']['id']}",
-            headers=admin_headers,
-            timeout=10,
-        )
+    requests.delete(
+        f"{base_url}/api/v1/admin/sites/{a.json()['data']['id']}",
+        headers=admin_headers,
+        timeout=10,
+    )
 
 
 # ── concurrency races ──────────────────────────────────────────────────────
@@ -208,10 +204,8 @@ def test_deploy_invalid_target_type_400(base_url, admin_headers):
         assert "target_type" in j["error"]["message"]
 
 
-def test_zero_byte_firmware_upload_gets_recorded_with_known_sha(
-    base_url, admin_headers
-):
-    """0-byte upload — does the system record an empty release? Probably should reject."""
+def test_zero_byte_firmware_upload_rejected(base_url, admin_headers):
+    """v0.1.4 — empty firmware uploads must be rejected."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
         path = f.name  # zero bytes
     try:
@@ -224,19 +218,8 @@ def test_zero_byte_firmware_upload_gets_recorded_with_known_sha(
         )
     finally:
         os.unlink(path)
-    if r.status_code == 201:
-        # Today this is permitted; logging as a hardening finding.
-        rel = r.json()["data"]
-        assert rel["size_bytes"] == 0
-        empty_sha = hashlib.sha256(b"").hexdigest()
-        assert rel["sha256"] == empty_sha
-        requests.delete(
-            f"{base_url}/api/v1/admin/firmware/releases/{rel['id']}",
-            headers=admin_headers,
-            timeout=10,
-        )
-    else:
-        assert r.status_code == 400
+    assert r.status_code == 400
+    assert "empty" in r.json()["error"]["message"].lower()
 
 
 # ── session / cookie ───────────────────────────────────────────────────────
@@ -292,23 +275,31 @@ def test_logout_does_not_revoke_cookie_server_side(base_url):
 
 # ── auth brute-force / rate limiting ───────────────────────────────────────
 
-def test_no_rate_limit_on_login(base_url):
-    """The login endpoint has no rate limiting today.
+def test_login_rate_limit_kicks_in(base_url):
+    """v0.1.4 — login is rate-limited (30/minute, 200/hour) per IP.
 
-    Ten rapid bad attempts should all return 401 instantly with no lockout.
-    Logged as a hardening finding.
+    Fire 35 rapid bad-password attempts and verify at least one 429
+    surfaces. We then sleep enough to clear the per-minute window so
+    later tests in the suite still authenticate cleanly.
     """
+    import time as _t
+
     statuses = []
-    for _ in range(10):
+    for i in range(35):
         r = requests.post(
             f"{base_url}/api/v1/auth/login",
-            json={"email": "dblagbro", "password": f"wrong-{_}"},
+            json={"email": "dblagbro", "password": f"wrong-{i}"},
             timeout=10,
         )
         statuses.append(r.status_code)
-    assert all(s == 401 for s in statuses), (
-        f"login rate limit/throttle changed behaviour: {statuses}"
+    assert 429 in statuses, (
+        f"expected at least one 429 (rate_limited) within 35 rapid attempts; "
+        f"got {statuses}"
     )
+    # And no 5xx surfaced on the way to the limit.
+    assert not any(s >= 500 for s in statuses)
+    # Drain the per-minute bucket so later tests can still log in.
+    _t.sleep(61)
 
 
 # ── JWT cross-realm / forgery ──────────────────────────────────────────────
