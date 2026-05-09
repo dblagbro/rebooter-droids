@@ -23,3 +23,5 @@ from app.models.firmware import (  # noqa: E402,F401
     FirmwareDeployment,
     FirmwareRelease,
 )
+from app.models.invitations import Invitation  # noqa: E402,F401
+from app.models.audit import AuditEvent  # noqa: E402,F401

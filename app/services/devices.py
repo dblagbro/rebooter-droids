@@ -176,15 +176,31 @@ def get_device_detail(device_id: str) -> dict | None:
 _PATCHABLE = {"display_name", "site_id", "notes", "central_management_enabled"}
 
 
+class UnknownPatchFieldError(ValueError):
+    def __init__(self, fields: set[str]):
+        super().__init__(
+            f"unsupported PATCH fields: {sorted(fields)}. Allowed: {sorted(_PATCHABLE)}"
+        )
+        self.fields = fields
+
+
 def update_device(device_id: str, patch: dict) -> dict | None:
+    unknown = set(patch.keys()) - _PATCHABLE
+    if unknown:
+        raise UnknownPatchFieldError(unknown)
+
     with session_scope() as session:
         d = session.get(Device, device_id)
         if d is None:
             return None
+        # Only bump updated_at when a real change occurs (BUG-011).
+        changed = False
         for k, v in patch.items():
-            if k in _PATCHABLE:
+            if getattr(d, k) != v:
                 setattr(d, k, v)
-        d.updated_at = datetime.now(timezone.utc)
-        session.add(d)
+                changed = True
+        if changed:
+            d.updated_at = datetime.now(timezone.utc)
+            session.add(d)
         session.flush()
         return serialize_device(d)

@@ -1,18 +1,38 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from functools import wraps
 
 from flask import current_app, g, redirect, request, session, url_for
 
 from app.middleware.response import err
+from app.models.users import (
+    ROLE_ADMIN,
+    ROLE_OPERATOR,
+    ROLE_SUPER_ADMIN,
+    ROLE_VIEWER,
+)
 from app.services.auth import decode_token, load_user
 
+# Convenience role sets used throughout the blueprints.
+ANY_AUTHENTICATED = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER}
+WRITE_ROLES = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_OPERATOR}
+ADMIN_AND_UP = {ROLE_SUPER_ADMIN, ROLE_ADMIN}
+SUPER_ADMIN_ONLY = {ROLE_SUPER_ADMIN}
 
-def _resolve_user():
+
+def _resolve_user_and_iat() -> tuple[object | None, int | None]:
+    """Returns (user, iat_seconds_epoch) or (None, None)."""
+    # Cookie session
     user_id = session.get("user_id")
     if user_id:
-        return load_user(user_id)
+        user = load_user(user_id)
+        if user is None:
+            return None, None
+        iat = session.get("iat")
+        return user, iat
 
+    # Bearer token
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         token = auth.split(" ", 1)[1]
@@ -21,30 +41,82 @@ def _resolve_user():
                 current_app.config["SETTINGS"], token, expected_kind="access"
             )
         except Exception:
+            return None, None
+        user = load_user(payload.get("sub", ""))
+        if user is None:
+            return None, None
+        return user, payload.get("iat")
+    return None, None
+
+
+def _resolve_user(check_token_freshness: bool = True):
+    user, iat = _resolve_user_and_iat()
+    if user is None:
+        return None
+    if not user.is_active:
+        return None
+
+    if check_token_freshness and iat is not None:
+        cutoff = getattr(user, "tokens_valid_after", None)
+        if cutoff is not None and iat < int(cutoff.replace(tzinfo=timezone.utc).timestamp()):
+            # Token / cookie was issued before the user's revocation cutoff.
             return None
-        return load_user(payload.get("sub", ""))
-    return None
+    return user
 
 
+def role_required_api(*allowed_roles: str):
+    """Require any of the given roles for an API endpoint."""
+    allowed = set(allowed_roles) if allowed_roles else ADMIN_AND_UP
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = _resolve_user()
+            if user is None:
+                return err("auth_required", "Authentication required.", status=401)
+            if user.role not in allowed:
+                return err(
+                    "forbidden",
+                    f"role '{user.role}' is not permitted for this action.",
+                    status=403,
+                )
+            g.current_user = user
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def role_required_ui(*allowed_roles: str):
+    allowed = set(allowed_roles) if allowed_roles else ANY_AUTHENTICATED
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = _resolve_user()
+            if user is None:
+                return redirect(url_for("admin_ui.login_page"))
+            if user.role not in allowed:
+                from flask import render_template, abort
+                # 403 with friendly UI
+                return (
+                    render_template("forbidden.html", current_user=user, version=__import__("app.version", fromlist=["__version__"]).__version__),
+                    403,
+                )
+            g.current_user = user
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+# Backwards-compatible aliases — every existing call site permitted any
+# admin/operator. We narrow case-by-case as we migrate the routes.
 def admin_required_api(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        user = _resolve_user()
-        if user is None or not user.is_admin or not user.is_active:
-            return err("auth_required", "Authentication required.", status=401)
-        g.current_user = user
-        return fn(*args, **kwargs)
-
-    return wrapper
+    return role_required_api(*ADMIN_AND_UP, ROLE_OPERATOR, ROLE_VIEWER)(fn)
 
 
 def admin_required_ui(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        user = _resolve_user()
-        if user is None or not user.is_admin or not user.is_active:
-            return redirect(url_for("admin_ui.login_page"))
-        g.current_user = user
-        return fn(*args, **kwargs)
-
-    return wrapper
+    return role_required_ui(*ANY_AUTHENTICATED)(fn)

@@ -9,6 +9,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models import Base
 from app.models._helpers import new_id, ts_column
 
+ROLE_SUPER_ADMIN = "super_admin"
+ROLE_ADMIN = "admin"
+ROLE_OPERATOR = "operator"
+ROLE_VIEWER = "viewer"
+ALL_ROLES = (ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -24,6 +30,13 @@ class User(Base):
     is_super_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ROLE_ADMIN
+    )
+
+    # Tokens issued before this timestamp are rejected. Bumped on logout
+    # ("log out everywhere") and on password reset.
+    tokens_valid_after: Mapped[datetime] = ts_column()
 
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()

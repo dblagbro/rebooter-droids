@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% block title %}Accept Invitation - Rebooter-Droids{% endblock %}
+{% block content %}
+<section class="auth">
+  <h1>Accept your Rebooter-Droids invitation</h1>
+  {% if not invitation %}
+  <p class="error">This invitation link is invalid or has expired. Ask whoever sent it for a fresh one.</p>
+  {% else %}
+    <p>You've been invited as <strong>{{ invitation.email }}</strong> with the role <strong>{{ invitation.role }}</strong>.</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post" action="{{ url_for('admin_ui.invite_redeem_submit', token=token) }}">
+      <label>Display name <input type="text" name="display_name" placeholder="e.g. Jane Doe" required></label>
+      <label>Choose a password (8+ characters) <input type="password" name="password" minlength="8" required></label>
+      <label>Confirm password <input type="password" name="password_confirm" minlength="8" required></label>
+      <button type="submit">Create my account</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}
