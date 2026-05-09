@@ -1,6 +1,6 @@
 [project]
 name = "rebooter-droids"
-version = "0.2.4"
+version = "0.2.5"
 description = "Central coordination server for Sonoff S31-based Rebooter devices"
 authors = [{ name = "dblagbro", email = "dblagbro@gmail.com" }]
 requires-python = ">=3.12"
@@ -34,3 +34,14 @@ include = ["app*"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+
+[tool.pytest.ini_options]
+# Test bucket markers — see docs/testing-split.md.
+# `addopts = "-m 'not slow'"` deselects slow probes by default; pass
+# `-m ""` (or `-m slow`) to opt in.
+markers = [
+  "smoke: very fast core-up checks (subset of api)",
+  "responsive: mobile/tablet viewport regression tests",
+  "slow: tests that block on rate-limit windows or sleep",
+]
+addopts = "-m 'not slow'"

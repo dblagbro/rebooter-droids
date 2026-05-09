@@ -16,7 +16,7 @@
 </section>
 
 {% if sites %}
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>Name</th><th>Description</th><th>Created</th><th></th></tr></thead>
   <tbody>
   {% for s in sites %}
@@ -32,7 +32,7 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% else %}
 <p class="muted">No sites yet.</p>
 {% endif %}

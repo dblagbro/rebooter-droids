@@ -6,7 +6,7 @@
 
 <p><a href="{{ url_for('admin_ui.invitations_page') }}">Invite a new user →</a></p>
 
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>Email</th><th>Display name</th><th>Role</th><th>Active</th><th>Last login</th><th>Actions</th></tr></thead>
   <tbody>
   {% for u in users %}
@@ -55,5 +55,5 @@
   </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% endblock %}

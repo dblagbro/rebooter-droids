@@ -13,7 +13,7 @@
 </form>
 
 {% if events %}
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>Timestamp</th><th>Device</th><th>Type</th><th>Message</th><th>Mode</th></tr></thead>
   <tbody>
   {% for e in events %}
@@ -26,7 +26,7 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% else %}
 <p class="muted">No events match.</p>
 {% endif %}
