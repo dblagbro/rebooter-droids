@@ -45,16 +45,40 @@ def authenticate(email: str, password: str) -> User | None:
         return user
 
 
-def _issue_token(settings: Settings, user_id: str, kind: str, ttl_seconds: int) -> str:
+def _issue_token(
+    settings: Settings,
+    user_id: str,
+    kind: str,
+    ttl_seconds: int,
+) -> str:
+    """Issue a JWT and (v0.2.10, shadow-mode) record a server-side session
+    row for it. Adding `jti` is the contract change that lets a future
+    enforce path correlate the token back to its row."""
+    from app.services import sessions as sessions_service
+
     now = datetime.now(timezone.utc)
+    jti = sessions_service.new_jti()
     payload = {
         "sub": user_id,
         "kind": kind,
         "aud": JWT_AUDIENCE,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=ttl_seconds)).timestamp()),
+        "jti": jti,
     }
-    return jwt.encode(payload, settings.secret_key, algorithm=JWT_ALG)
+    token = jwt.encode(payload, settings.secret_key, algorithm=JWT_ALG)
+    # Best-effort; never raise from the auth path.
+    sessions_service.record(
+        user_id=user_id,
+        kind=(
+            sessions_service.KIND_ACCESS
+            if kind == "access"
+            else sessions_service.KIND_REFRESH
+        ),
+        jti=jti,
+        ttl_seconds=ttl_seconds,
+    )
+    return token
 
 
 def issue_access_token(settings: Settings, user_id: str) -> str:

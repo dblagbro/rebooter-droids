@@ -102,7 +102,17 @@ def revoke_all_tokens(user_id: str) -> bool:
             return False
         u.tokens_valid_after = datetime.now(timezone.utc)
         u.updated_at = datetime.now(timezone.utc)
-        return True
+    # v0.2.10 shadow-mode: also mark every active server-side session row
+    # for this user revoked. Today the request authoriser does NOT consult
+    # this column, so behaviour is unchanged; once enforce flips, this is
+    # what makes "revoke everywhere" actually invalidate live cookies.
+    try:
+        from app.services import sessions as sessions_service
+
+        sessions_service.revoke_all_for_user(user_id)
+    except Exception:
+        pass
+    return True
 
 
 def update_user_display_name(user_id: str, display_name: str) -> dict | None:
