@@ -62,10 +62,108 @@ The suite attempts cleanup on success — manual fallback above.
 
 ```bash
 cd /mnt/s/code/rebooter-droids
-python3 -m pytest tests/qa -v
+python3 -m pytest tests/qa -v --timeout=120
 # or just the hardening probes:
-python3 -m pytest tests/qa/test_hardening_probes.py -v
+python3 -m pytest tests/qa/test_hardening_probes.py -v --timeout=120
 ```
 
 The suite hits the live deployment by default. Override with
 `REBOOTER_QA_BASE=https://.../rebooter` for staging.
+
+> **--timeout=120 is required.** Default is 60 s and BUG-025 (rate
+> limit test) needs ~62 s wall-clock.
+
+---
+
+### 2026-05-09 PM — deep regression after v0.4.0 → v0.4.1 → v0.4.2 ships
+
+Triggered by operator question "why no devices show online?" plus a
+demand for senior-SDET-style deep validation. Conducted in 5 phases.
+
+#### Phase 0 — ground-truth on the operator's complaint
+
+- DB query: `SELECT count(*) FROM devices` → **1**
+- That one row has `is_qa_fixture = true` and last beat 75 minutes ago.
+- **There are zero real devices in the system.** The "no devices
+  show online" observation is operationally correct.
+- Documented in BUG-029 (environmental, no code fix).
+
+#### Phase 1 — read existing docs
+
+- bug-log.md (200 lines, 20 prior bugs)
+- test-plan.md (78 lines, surface inventory)
+- qa-notes.md (71 lines)
+- rca-2026-05-09-no-device-online.md (235 lines — definitive answer
+  to operator's question; aligned with BUG-029)
+
+#### Phase 2 — full pytest baseline
+
+- `python3 -m pytest tests/qa/ --tb=line --timeout=120` →
+  **34 failed, 207 passed, 1 skipped** in 192 s.
+- Per-file isolation re-run: only **7 distinct real failures**.
+- Delta (27 cascading failures) traced to **BUG-021** —
+  session-scoped admin token poisoned by tests that call
+  `POST /api/v1/auth/logout`.
+
+#### Phase 3 — device-claim/heartbeat/failsafe API
+
+- `tests/qa/test_device_api.py` — 11/11 pass.
+- Direct curl claim → register → heartbeat → cleanup round-trip
+  green. Server-side device intake is verified-healthy.
+
+#### Phase 4 — Playwright UI walkthrough
+
+- Headless Chromium, 1280×800. Logged in as bootstrap super-admin.
+- Walked Status / Devices / Rules / History / Settings; every
+  link landed cleanly.
+- Walked all 6 settings sub-tabs (System / Network / Authentication
+  / Sync / Notifications / Theme); all titles correct except
+  Authentication (BUG-028, low).
+- **No console errors. No request failures.**
+- **Sign out is not in the persistent header — only in Profile**
+  (BUG-022, high).
+- **No super-admin role badge in the header** (BUG-023, medium).
+
+#### Phase 5 — direct LAN probe of the four lab devices
+
+- This central host: `192.168.18.0/24` (gw 192.168.18.1).
+- Lab devices: `192.168.1.0/24`. Different subnet.
+- Live probe results (2026-05-09 22:55 UTC):
+  - .67 → TCP-80 timeout
+  - .225 → TCP-80 timeout
+  - .30 → TCP-80 timeout
+  - .207 → TCP-80 connection refused (host up, no http)
+- Documented in BUG-027 (environmental). Earlier-today
+  firmware-team report ("all 4 HTTP OK") was per their probe
+  inside the lab subnet.
+
+### Rate-limiter state — 2026-05-09 evening verify
+
+Independent verify of the limiter (NOT via pytest):
+- 5 logins in <1 s → 401 401 401 429 429 (kicks in at attempt 4).
+- 35 logins after a 65 s window reset → 30×401 + 5×429 (matches
+  the configured `30 per minute`).
+- **Rate limiter works as documented.** BUG-025 is purely a
+  test-timeout-config mismatch.
+
+### Test-isolation discipline (BUG-021 root cause)
+
+Tests that mutate shared user state — anything that calls
+`/api/v1/auth/logout`, `/api/v1/admin/users/<id>/revoke-all`, or
+the password-reset consume path — MUST use a dedicated test user,
+not the bootstrap admin. The session-scoped `admin_token` fixture
+is shared across every test file.
+
+When adding a new test that mutates user state, either:
+1. Mint a fresh test user via the admin API at the top of the
+   test, scope teardown to delete that user.
+2. Or use a pre-provisioned `qa-test-admin@…` user that's NOT the
+   one the rest of the suite logs in as.
+
+### Operator-facing diagnostic blind spot (BUG-027)
+
+The central server lives on a different subnet than the lab
+devices. Any "is device X reachable?" feature added to the UI
+will produce constant false negatives. Recommended pattern: the
+device sends a "I tried to reach you from <my LAN IP>" beacon
+which central records, rather than central probing devices.
