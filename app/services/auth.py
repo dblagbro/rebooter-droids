@@ -17,8 +17,23 @@ REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 14
 
 
 def authenticate(email: str, password: str) -> User | None:
+    """
+    Accept either a full email address or a bare username (the local-part
+    of the email). Bare-username login is unambiguous as long as no two
+    users share the same local-part — when there's a clash, the user must
+    use the full email.
+    """
+    identifier = email.lower().strip()
     with session_scope() as session:
-        user = session.scalar(select(User).where(User.email == email.lower().strip()))
+        user = session.scalar(select(User).where(User.email == identifier))
+        if user is None and "@" not in identifier:
+            matches = list(
+                session.scalars(
+                    select(User).where(User.email.like(f"{identifier}@%"))
+                )
+            )
+            if len(matches) == 1:
+                user = matches[0]
         if user is None or not user.is_active:
             return None
         if not verify_password(user.password_hash, password):
