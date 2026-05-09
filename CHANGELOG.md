@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-09
+
+### Changed
+
+- **Session idle timeout is now 2 days** (was 31 days, the Flask
+  default). Cookie expiry rolls forward on every request, so active
+  users stay signed in indefinitely; idle users get kicked after 2
+  days of no activity. Tunable via the
+  `REBOOTER_SESSION_IDLE_TIMEOUT_SECONDS` env var.
+
+### Operational
+
+- All QA test data (114 devices, 66 groups, 14 sites, 31 invitations,
+  18 throwaway users, 126 enrollment tokens, all 72 audit events,
+  2 leftover firmware blobs) purged from the live DB. Architect
+  account and the fresh firmware-team enrollment token preserved.
+
 ## [0.2.1] - 2026-05-09
 
 ### Added

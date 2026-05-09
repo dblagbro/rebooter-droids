@@ -26,6 +26,7 @@ class Settings:
     smtp_password: str
     smtp_from: str
     smtp_helo: str
+    session_idle_timeout_seconds: int
 
 
 @lru_cache
@@ -66,4 +67,9 @@ def load_settings() -> Settings:
         smtp_password=os.environ.get("REBOOTER_SMTP_PASSWORD", ""),
         smtp_from=os.environ.get("REBOOTER_SMTP_FROM", ""),
         smtp_helo=os.environ.get("REBOOTER_SMTP_HELO", ""),
+        session_idle_timeout_seconds=int(
+            os.environ.get(
+                "REBOOTER_SESSION_IDLE_TIMEOUT_SECONDS", str(60 * 60 * 24 * 2)
+            )
+        ),
     )
