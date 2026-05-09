@@ -42,7 +42,13 @@ def _make_stale_cookie_session(base_url: str, email: str, pw: str) -> requests.S
     """Forge a stale-cookie scenario: login (cookie iat=T1), wait
     >1.5s so int(iat) < int(tokens_valid_after) after the bump,
     then logout (bumps tokens_valid_after), then re-inject the
-    pre-logout cookie."""
+    pre-logout cookie.
+
+    v0.4.4 (BUG-021): callers must pass DISPOSABLE creds, not the
+    bootstrap admin's — calling /api/v1/auth/logout bumps that
+    user's `tokens_valid_after` and would corrupt the shared
+    session-scoped admin_token used by the rest of the suite.
+    """
     import time
 
     s = requests.Session()
@@ -65,10 +71,11 @@ def _make_stale_cookie_session(base_url: str, email: str, pw: str) -> requests.S
     return s
 
 
-def test_app_root_with_stale_cookie_terminates(base_url, admin_creds):
+def test_app_root_with_stale_cookie_terminates(base_url, disposable_admin_session):
     """A stale cookie hitting /app/ resolves in at most one redirect
     (to /app/login) and renders the login form. No loop."""
-    email, pw = admin_creds
+    email = disposable_admin_session["email"]
+    pw = disposable_admin_session["password"]
     s = _make_stale_cookie_session(base_url, email, pw)
 
     # Hit /app/ with the stale cookie. allow_redirects=True follows
@@ -84,10 +91,11 @@ def test_app_root_with_stale_cookie_terminates(base_url, admin_creds):
     assert 'name="email"' in r.text and 'name="password"' in r.text
 
 
-def test_login_page_clears_stale_cookie(base_url, admin_creds):
+def test_login_page_clears_stale_cookie(base_url, disposable_admin_session):
     """GET /app/login with a stale cookie does NOT redirect to
     /app/. It clears the cookie and renders the form (single hop)."""
-    email, pw = admin_creds
+    email = disposable_admin_session["email"]
+    pw = disposable_admin_session["password"]
     s = _make_stale_cookie_session(base_url, email, pw)
 
     r = s.get(
