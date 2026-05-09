@@ -117,7 +117,8 @@ def group_delete_submit(group_id: str):
 @admin_ui_bp.post("/groups/bulk-delete")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def groups_bulk_delete_submit():
-    ids = [i for i in request.form.getlist("group_id") if i]
+    # v0.3.5 fix: dedupe (defense-in-depth against paired checkboxes).
+    ids = list(dict.fromkeys(i for i in request.form.getlist("group_id") if i))
     if not ids:
         flash("Select at least one group first.", "warning")
         return redirect(url_for("admin_ui.list_groups_page"))

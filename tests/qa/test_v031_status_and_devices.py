@@ -156,24 +156,65 @@ def test_chips_compose_with_AND_semantics(base_url, shell_session):
 
 def test_devices_list_renders_both_layouts_in_dom(base_url, shell_session):
     """Both layouts are always in the DOM; CSS swaps which one is
-    visible per breakpoint. (R-DEV-3 mobile-card + desktop-table.)"""
+    visible per breakpoint. (R-DEV-3 mobile-card + desktop-table.)
+    The empty-state replaces both wrappers when fleet=0; create a
+    fixture device so this assertion is meaningful."""
     s = shell_session
-    body = s.get(f"{base_url}/app/devices", timeout=10).text
-    assert 'class="v3-devices-table"' in body, "missing desktop-table wrapper"
-    assert 'class="v3-device-cards"' in body, "missing mobile-card wrapper"
+    et = s.post(
+        f"{base_url}/api/v1/admin/enrollment-tokens",
+        json={"display_name_hint": f"QA layout {unique_suffix()}", "note": "qa-v031-layout"},
+        timeout=10,
+    ).json()["data"]["enrollment_token"]
+    reg = requests.post(
+        f"{base_url}/api/v1/device/register",
+        json={
+            "enrollment_token": et,
+            "hardware_model": "sonoff_s31",
+            "firmware_version": "0.1.0-qa",
+            "display_name": f"QA layout {unique_suffix()}",
+        },
+        timeout=10,
+    )
+    assert reg.status_code == 201
+    dev_id = reg.json()["data"]["device_id"]
+    try:
+        body = s.get(f"{base_url}/app/devices?show_qa_fixtures=1", timeout=10).text
+        assert 'class="v3-devices-table"' in body, "missing desktop-table wrapper"
+        assert 'class="v3-device-cards"' in body, "missing mobile-card wrapper"
+    finally:
+        s.delete(f"{base_url}/api/v1/admin/devices/{dev_id}", timeout=10)
 
 
 # ── Central vs local cue ──────────────────────────────────────────────────
 
 def test_devices_list_shows_central_vs_local_badges(base_url, shell_session):
+    """Render at least one device's central-vs-local cue. Self-creates
+    a fixture so the assertion is meaningful even on an empty fleet."""
     s = shell_session
-    body = s.get(f"{base_url}/app/devices?show_qa_fixtures=1", timeout=10).text
-    # Pages render at least one of the two badges as long as devices
-    # exist. The assertion is loose because the prod fleet may be only
-    # central or only local.
-    assert ">central<" in body or ">local-only<" in body, (
-        "devices list must display the central-vs-local cue badges"
+    et = s.post(
+        f"{base_url}/api/v1/admin/enrollment-tokens",
+        json={"display_name_hint": f"QA cue {unique_suffix()}", "note": "qa-v031-cue"},
+        timeout=10,
+    ).json()["data"]["enrollment_token"]
+    reg = requests.post(
+        f"{base_url}/api/v1/device/register",
+        json={
+            "enrollment_token": et,
+            "hardware_model": "sonoff_s31",
+            "firmware_version": "0.1.0-qa",
+            "display_name": f"QA cue {unique_suffix()}",
+        },
+        timeout=10,
     )
+    assert reg.status_code == 201
+    dev_id = reg.json()["data"]["device_id"]
+    try:
+        body = s.get(f"{base_url}/app/devices?show_qa_fixtures=1", timeout=10).text
+        assert ">central<" in body or ">local-only<" in body, (
+            "devices list must display the central-vs-local cue badges"
+        )
+    finally:
+        s.delete(f"{base_url}/api/v1/admin/devices/{dev_id}", timeout=10)
 
 
 # ── Device detail tab strip ──────────────────────────────────────────────

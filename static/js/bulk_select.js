@@ -55,7 +55,29 @@
       }
     }
 
-    each(rows, function (cb) { cb.addEventListener('change', refresh); });
+    // v0.3.5 fix: many list pages render the SAME row in two
+    // layouts (desktop table + mobile card) with paired checkboxes
+    // sharing the same name+value. Without sync, master-toggle checks
+    // both copies, but the user only sees and unchecks one — the
+    // hidden pair stays checked and gets submitted. Pair-sync makes
+    // toggling one toggle its pair too.
+    function syncPairs(cb) {
+      if (!cb.value || !cb.name) return;
+      var siblings = form.querySelectorAll(
+        'input[type="checkbox"][data-bulk-row][name="'
+        + cb.name + '"][value="' + cb.value + '"]'
+      );
+      each(siblings, function (s) {
+        if (s !== cb) s.checked = cb.checked;
+      });
+    }
+
+    each(rows, function (cb) {
+      cb.addEventListener('change', function () {
+        syncPairs(cb);
+        refresh();
+      });
+    });
 
     if (master) {
       master.addEventListener('change', function () {
