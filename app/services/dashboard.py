@@ -43,6 +43,18 @@ def stats(online_threshold_seconds: int = 180) -> dict:
             )
             or 0
         )
+        # v0.2.7: count devices that have NEVER heartbeated separately from
+        # those that have-but-are-stale. Lets the UI distinguish "newly
+        # enrolled, still waiting for first heartbeat" from "was online,
+        # went silent".
+        never_heartbeated = (
+            session.scalar(
+                select(func.count())
+                .select_from(Device)
+                .where(Device.last_heartbeat_at.is_(None))
+            )
+            or 0
+        )
         with_pending = (
             session.scalar(
                 select(func.count(func.distinct(Command.device_id))).where(
@@ -74,7 +86,13 @@ def stats(online_threshold_seconds: int = 180) -> dict:
         return {
             "devices_total": total,
             "devices_online": online,
+            # `devices_offline` keeps its v0.2.6 meaning "everything not
+            # currently online" — preserves dashboard backwards compat.
+            # `devices_offline_with_history` is the strict "was-online-now-
+            # silent" subset for any consumer that wants to distinguish.
             "devices_offline": total - online,
+            "devices_offline_with_history": max(total - online - never_heartbeated, 0),
+            "devices_never_heartbeated": never_heartbeated,
             "devices_active": active,
             "devices_with_pending_commands": with_pending,
             "groups_total": groups_count,

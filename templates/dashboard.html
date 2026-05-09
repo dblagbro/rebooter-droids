@@ -32,6 +32,11 @@
     <div class="label">groups</div>
     <div class="sub muted">{{ stats.sites_total }} site(s)</div>
   </a>
+  <a class="stat" href="{{ url_for('admin_ui.list_devices_page') }}">
+    <div class="num">{{ stats.devices_never_heartbeated or 0 }}</div>
+    <div class="label">never heartbeated</div>
+    <div class="sub muted">enrolled but no first heartbeat yet</div>
+  </a>
   <a class="stat" href="{{ url_for('admin_ui.list_firmware_page') }}">
     <div class="num">{{ stats.firmware_releases_total }}</div>
     <div class="label">firmware releases</div>

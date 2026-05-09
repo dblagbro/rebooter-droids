@@ -33,7 +33,12 @@
     <tr>
       <td><a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a></td>
       <td><span class="badge">{{ d.registration_state }}</span></td>
-      <td>{% if d.online %}<span class="badge green">online</span>{% else %}<span class="badge red">offline</span>{% endif %}</td>
+      <td>
+        {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
+        {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
+        {% else %}<span class="badge red" title="last heartbeat older than 3 min">offline</span>
+        {% endif %}
+      </td>
       <td>{{ d.firmware_version or '—' }}</td>
       <td>{{ d.last_heartbeat_at or '—' }}</td>
       <td>{{ d.local_ip or '—' }}</td>

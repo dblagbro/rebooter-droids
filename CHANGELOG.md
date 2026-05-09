@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-05-09
+
+### Fixed — UI no longer conflates "never heartbeated" with "offline"
+
+- Devices list and device detail now render three distinct heartbeat
+  states instead of the binary online/offline split:
+  - `online` — heartbeat received within the last 3 min
+  - `offline` — has heartbeated in the past, but not recently
+  - `never` — device row exists but no heartbeat has ever been received
+    (newly enrolled, or firmware mis-configured before first contact)
+- API: `/api/v1/admin/devices` device rows gain a new `heartbeat_state`
+  field. The existing `online: bool` is preserved for backwards
+  compatibility and is True only for the `online` state.
+- Dashboard: new "never heartbeated" stat tile alongside online /
+  offline counts. New `stats.devices_never_heartbeated` and
+  `stats.devices_offline_with_history` fields on
+  `/api/v1/admin/dashboard` (legacy `devices_offline` unchanged).
+- Device detail page: the Heartbeat section, when `last_heartbeat_at IS
+  NULL`, now surfaces a "never heartbeated" badge plus a hint to check
+  the firmware's `central_base_url`. v0.2.6 rendered a muted "No
+  heartbeats received yet" line that was easy to miss.
+
+### Operational
+
+- Purged 9 leftover QA-suite device fixtures that were polluting the
+  production devices view (all `display_name LIKE 'QA %'` with NULL
+  `last_heartbeat_at`). Real fleet plus two real devices preserved.
+
+### Notes for the firmware team
+
+- `dev_01KR5HV2PY7CY1CD9WMWM3W1KS` (`test-s31-01`) stopped heartbeating
+  at 2026-05-09T05:18:53Z and is genuinely offline as of v0.2.7
+  release; UI now correctly shows it as `offline` (it has heartbeat
+  history), not `never`.
+
 ## [0.2.6] - 2026-05-09
 
 ### Refactor — admin blueprints split into `app/blueprints/admin/`

@@ -82,11 +82,20 @@ def list_devices(
         out = []
         for d in rows:
             obj = serialize_device(d)
-            online = (
-                d.last_heartbeat_at is not None
-                and (now - d.last_heartbeat_at).total_seconds() < offline_threshold_seconds
-            )
-            obj["online"] = online
+            # Three-state heartbeat health (v0.2.7):
+            #   never   — device row exists but has never sent a heartbeat
+            #   online  — heartbeat received within `offline_threshold_seconds`
+            #   offline — has heartbeated in the past, but not recently
+            # `online: bool` is preserved for backwards compatibility with any
+            # API consumer; it is True only for the `online` state.
+            if d.last_heartbeat_at is None:
+                hb_state = "never"
+            elif (now - d.last_heartbeat_at).total_seconds() < offline_threshold_seconds:
+                hb_state = "online"
+            else:
+                hb_state = "offline"
+            obj["heartbeat_state"] = hb_state
+            obj["online"] = hb_state == "online"
             out.append(obj)
         return out
 
