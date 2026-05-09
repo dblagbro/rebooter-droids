@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-05-09
+
+### Added — per-record audit slice (R3 of REMEDIATION-PLAN-2026-05)
+
+- Device-detail page (`/app/devices/<id>`) and group-detail page
+  (`/app/groups/<id>`) now embed an "Audit history" section showing
+  the last 25 audit events that target the record. The composite
+  `ix_audit_target` index already in place on `audit_events` makes
+  this query cheap.
+- "Full audit history for this device/group →" link drops the
+  operator into `/app/audit` pre-filtered by `target_type` +
+  `target_id`.
+- Admin-UI `/app/audit` handler now parses `target_id` from the query
+  string (the API endpoint already supported it; the UI was missing
+  the param).
+- `get_device_detail()` and `get_group_detail()` services return a
+  new `audit_history: [...]` field — same shape as `/api/v1/admin/audit`
+  rows (id, at, actor_email_snapshot, action, target_type, target_id,
+  details).
+
+### Notes
+
+- Purely additive read path. No schema change. No feature flag.
+- Per-record audit for sites, deployments, and firmware releases is
+  scheduled for a follow-up minor; the device + group surfaces are
+  the highest-traffic operator surfaces and ship first.
+
 ## [0.2.8] - 2026-05-09
 
 ### Added — first-class QA-fixture isolation (R2 of REMEDIATION-PLAN-2026-05)

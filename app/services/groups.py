@@ -76,9 +76,16 @@ def get_group_detail(group_id: str) -> dict | None:
             }
             for d in member_rows
         ]
+        # v0.2.9: per-record audit slice for groups too.
+        from app.services import audit as audit_service
+
+        audit_history = audit_service.query(
+            target_type="group", target_id=group_id, limit=25
+        )
         return {
             **serialize_group(g, member_count=len(members)),
             "members": members,
+            "audit_history": audit_history,
         }
 
 

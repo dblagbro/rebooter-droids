@@ -63,6 +63,29 @@
 </section>
 
 <section class="placeholder">
+  <h2>Audit history</h2>
+  {% if group.audit_history %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th></tr></thead>
+    <tbody>
+    {% for a in group.audit_history %}
+      <tr>
+        <td>{{ a.at }}</td>
+        <td>{{ a.actor_email_snapshot or a.actor_user_id or '—' }}</td>
+        <td>{{ a.action }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted">
+    <a href="{{ url_for('admin_ui.audit_page', target_type='group', target_id=group.id) }}">Full audit history for this group →</a>
+  </p>
+  {% else %}
+    <p class="muted">No audit events recorded for this group yet.</p>
+  {% endif %}
+</section>
+
+<section class="placeholder">
   <h2>Add a member</h2>
   {% if available_devices %}
   <form method="post" action="{{ url_for('admin_ui.group_add_member_submit', group_id=group.id) }}">
