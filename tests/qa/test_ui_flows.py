@@ -13,9 +13,13 @@ def test_login_logout_round_trip(page, base_url, admin_creds):
     page.click('button[type="submit"]')
     page.wait_for_load_state("networkidle")
     assert "/app/" in page.url and "login" not in page.url.split("/app/")[-1]
-    assert "Dashboard" in page.title()
+    # v0.3.1 (R-DSH-1) replaced the v0.2.x "Dashboard" home with the
+    # operator-needs-attention "Status" page. Title is now "Status -
+    # Rebooter-Droids". The earlier assertion was stale.
+    assert "Status" in page.title()
 
-    # Sign out
+    # Sign out — v0.4.3 restored this link to the persistent header
+    # (BUG-022). Pre-v0.4.3 it was hidden inside Profile.
     page.click('a:has-text("Sign out")')
     page.wait_for_load_state("networkidle")
     assert "/app/login" in page.url
@@ -53,9 +57,9 @@ def test_create_group_does_not_log_user_out(logged_in_page, base_url):
         "create-group response is showing the login form — user reported this"
     )
     assert "<h1>Groups</h1>" in body
-    # session cookie still present and not in the past
+    # v0.3.3 cookie-domain rework renamed `session` → `rebooter_session`.
     cookies = page.context.cookies()
-    sess = [c for c in cookies if c["name"] == "session"]
+    sess = [c for c in cookies if c["name"] == "rebooter_session"]
     assert sess and sess[0].get("expires", 0) > 0
 
 
