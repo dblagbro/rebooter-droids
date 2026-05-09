@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-05-09
+
+### Fixed — bulk-delete deleted unchecked rows (regression in v0.3.4)
+
+**Symptom (operator-reported).** Master-select-all → uncheck the
+non-target rows → click *Delete selected* → **all of them got
+deleted**, including the unchecked ones.
+
+**Root cause.** The devices list renders the same row in TWO
+layouts (desktop table + mobile card) and both copies have a
+checkbox with `name="device_id"`. The master-toggle checked both
+copies; when the operator unchecked the visible one, its hidden
+pair (the other layout's copy of the same row) stayed checked
+and was submitted. Server received the value despite the visible
+checkbox being unchecked.
+
+**Fix.**
+- `static/js/bulk_select.js` now syncs paired checkboxes by
+  `name + value` — toggling one toggles the other in the same
+  form.
+- All four bulk handlers dedupe their incoming id list as
+  defense-in-depth, so even a future stray double-submission
+  doesn't inflate counts:
+  `app/blueprints/admin/{devices,groups,invitations,enrollment_tokens}.py`.
+
+### Documented — RCA: "no device shows online" (operator-reported)
+
+Investigation findings landed in `docs/rca-2026-05-09-no-device-online.md`.
+Summary:
+
+- **Server side: healthy.** `device_heartbeats` insert path
+  works; v027 + synthetic-probe smoke confirms a registered
+  device + a single `POST /api/v1/device/heartbeat` flips
+  `heartbeat_state` to `online` immediately.
+- **No real device has called this server in the last 24 h+.**
+  Container access logs show only `192.168.18.1` (docker bridge,
+  QA tests) on every `/api/v1/device/*` POST.
+- **Three of four lab devices are network-unreachable** as of the
+  RCA window. 192.168.1.{67, 225, 30} 100% packet loss; .207
+  pings but TCP-RST on port 80 (no HTTP service).
+- **Per the project pause state, three of four devices are
+  `central_management_enabled = false` BY DESIGN** (local-only).
+  Only `test-s31-01` (192.168.1.67) was centrally enrolled — and
+  it's the one that's now unreachable.
+
+**No code defect on the server.** The fix is operational
+(power + Wi-Fi + central-enable the three local-only devices) and
+firmware-side (the operator's hint "we may need new firmware for
+them too" is consistent with the unreachable-state findings).
+
+### Compatibility
+
+- All v0.3.4 routes preserved.
+- No schema change.
+- Rollback: `sudo docker pull dblagbro/rebooter-droids:0.3.4 && sudo docker tag … :latest && sudo docker compose up -d --no-deps --force-recreate rebooter-droids`.
+
 ## [0.3.4] - 2026-05-09
 
 ### Added — bulk-action UI on devices, groups, invitations, enrollment tokens

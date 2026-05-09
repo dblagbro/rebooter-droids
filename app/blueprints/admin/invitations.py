@@ -56,7 +56,8 @@ def invitations_cancel_submit(invitation_id: str):
 def invitations_bulk_cancel_submit():
     from flask import flash
 
-    ids = [i for i in request.form.getlist("invitation_id") if i]
+    # v0.3.5 fix: dedupe (defense-in-depth against paired checkboxes).
+    ids = list(dict.fromkeys(i for i in request.form.getlist("invitation_id") if i))
     if not ids:
         flash("Select at least one invitation first.", "warning")
         return redirect(url_for("admin_ui.invitations_page"))

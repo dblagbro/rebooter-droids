@@ -143,7 +143,11 @@ def device_delete_submit(device_id: str):
 def devices_bulk_delete_submit():
     from flask import flash
 
-    ids = [i for i in request.form.getlist("device_id") if i]
+    # v0.3.5 fix: dedupe device_id list. The list page renders both
+    # desktop-table and mobile-card layouts in the DOM; without
+    # JS pair-sync we used to receive each id twice, and a stray
+    # double-submission could otherwise inflate the count.
+    ids = list(dict.fromkeys(i for i in request.form.getlist("device_id") if i))
     if not ids:
         flash("Select at least one device first.", "warning")
         return redirect(url_for("admin_ui.list_devices_page"))
@@ -428,9 +432,11 @@ def delete_device_api(device_id: str):
 @role_required_api(*ADMIN_AND_UP)
 def devices_bulk_delete_api():
     body = request.get_json(silent=True) or {}
-    ids = body.get("device_ids") or []
-    if not isinstance(ids, list) or not ids:
+    raw_ids = body.get("device_ids") or []
+    if not isinstance(raw_ids, list) or not raw_ids:
         return err("validation_failed", "device_ids must be a non-empty list", status=400)
+    # Dedupe defensively (mirrors the UI handler).
+    ids = list(dict.fromkeys(i for i in raw_ids if i))
     override_lockout = bool(body.get("override_lockout"))
     try:
         mass_action.validate(
