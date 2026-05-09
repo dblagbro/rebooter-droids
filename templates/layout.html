@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Rebooter-Droids{% endblock %}</title>
+  <link rel="stylesheet" href="/rebooter/app/static/css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/rebooter/app/">Rebooter-Droids</a>
+    <nav>
+      <a href="/rebooter/app/">Dashboard</a>
+    </nav>
+    <span class="version">v{{ version }}</span>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
