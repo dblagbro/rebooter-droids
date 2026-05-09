@@ -75,6 +75,29 @@
 </section>
 
 <section class="placeholder">
+  <h2>Audit history</h2>
+  {% if device.audit_history %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th></tr></thead>
+    <tbody>
+    {% for a in device.audit_history %}
+      <tr>
+        <td>{{ a.at }}</td>
+        <td>{{ a.actor_email_snapshot or a.actor_user_id or '—' }}</td>
+        <td>{{ a.action }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted">
+    <a href="{{ url_for('admin_ui.audit_page', target_type='device', target_id=device.id) }}">Full audit history for this device →</a>
+  </p>
+  {% else %}
+    <p class="muted">No audit events recorded for this device yet.</p>
+  {% endif %}
+</section>
+
+<section class="placeholder">
   <h2>Edit metadata</h2>
   <form method="post" action="{{ url_for('admin_ui.device_update_submit', device_id=device.id) }}">
     <label>Display name <input type="text" name="display_name" value="{{ device.display_name or '' }}"></label>
