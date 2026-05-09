@@ -25,7 +25,11 @@ from app.middleware.admin_auth import (
 from app.middleware.response import err, ok
 from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services import audit as audit_service
-from app.services.commands import enqueue_for_device
+from app.services.commands import (
+    DeviceLockedError,
+    cancel_pending_command,
+    enqueue_for_device,
+)
 from app.services.devices import (
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
@@ -134,6 +138,8 @@ def device_delete_submit(device_id: str):
 @admin_ui_bp.post("/devices/<device_id>/commands")
 @admin_required_ui
 def device_send_command(device_id: str):
+    from flask import flash
+
     cmd_type = (request.form.get("type") or "").strip()
     if not cmd_type:
         abort(400)
@@ -149,15 +155,95 @@ def device_send_command(device_id: str):
             )
         except ValueError:
             payload["post_reboot_holdoff_seconds"] = 180
+    override_lockout = (request.form.get("override_lockout") or "").lower() in ("1", "true", "yes")
+    set_hold_off = (request.form.get("hold_off") or "").lower() in ("1", "true", "yes")
     try:
-        enqueue_for_device(
+        cmd = enqueue_for_device(
             device_id=device_id,
             cmd_type=cmd_type,
             payload=payload,
             issued_by_user_id=g.current_user.id,
+            override_lockout=override_lockout,
+            set_hold_off=set_hold_off,
         )
+    except DeviceLockedError:
+        flash(
+            "This device is protected. Tick 'Override lockout' on the form "
+            "to issue power commands against it.",
+            "error",
+        )
+        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
     except (LookupError, ValueError):
         abort(400)
+    audit_service.record(
+        "device.command_issued",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={
+            "type": cmd_type,
+            "command_id": cmd.id,
+            "reason": "operator",
+            "override_lockout": override_lockout,
+            "set_hold_off": set_hold_off,
+        },
+    )
+    return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+
+
+# v0.3.2 (P3): cancel a queued command before delivery (R-CTRL-8).
+@admin_ui_bp.post("/devices/<device_id>/commands/<command_id>/cancel")
+@admin_required_ui
+def device_cancel_command(device_id: str, command_id: str):
+    from flask import flash
+
+    if cancel_pending_command(command_id, by_user_id=g.current_user.id):
+        audit_service.record(
+            "device.command_cancelled",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="device",
+            target_id=device_id,
+            details={"command_id": command_id, "reason": "operator"},
+        )
+        flash("Pending command cancelled.", "info")
+    else:
+        flash(
+            "Could not cancel that command — it may have already been delivered.",
+            "warning",
+        )
+    return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+
+
+# v0.3.2 (P3): toggle the device's `is_protected` lockout (R-DEV-8).
+@admin_ui_bp.post("/devices/<device_id>/protection")
+@admin_required_ui
+def device_set_protection(device_id: str):
+    from flask import flash
+
+    raw = (request.form.get("is_protected") or "").lower()
+    new_value = raw in ("1", "true", "on", "yes")
+    try:
+        updated = update_device(device_id, {"is_protected": new_value})
+    except UnknownPatchFieldError:
+        abort(400)
+    if updated is None:
+        abort(404)
+    audit_service.record(
+        "device.protection_changed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={"is_protected": new_value, "reason": "operator"},
+    )
+    flash(
+        "Device is now protected. Power commands require explicit override."
+        if new_value
+        else "Device protection cleared.",
+        "info" if new_value else "info",
+    )
     return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
 
 
@@ -216,6 +302,8 @@ def send_device_command(device_id: str):
     cmd_type = body.get("type")
     if not cmd_type:
         return err("validation_failed", "type is required", status=400)
+    override_lockout = bool(body.get("override_lockout"))
+    set_hold_off = bool(body.get("hold_off"))
     try:
         cmd = enqueue_for_device(
             device_id=device_id,
@@ -223,9 +311,13 @@ def send_device_command(device_id: str):
             payload=body.get("payload"),
             issued_by_user_id=g.current_user.id,
             ttl_seconds=body.get("ttl_seconds"),
+            override_lockout=override_lockout,
+            set_hold_off=set_hold_off,
         )
     except LookupError:
         return err("device_unknown", "Device not found.", status=404)
+    except DeviceLockedError as e:
+        return err("device_locked", str(e), status=423)  # 423 Locked
     except ValueError as e:
         return err("validation_failed", str(e), status=400)
     audit_service.record(
@@ -234,7 +326,13 @@ def send_device_command(device_id: str):
         actor_email_snapshot=g.current_user.email,
         target_type="device",
         target_id=device_id,
-        details={"type": cmd_type, "command_id": cmd.id},
+        details={
+            "type": cmd_type,
+            "command_id": cmd.id,
+            "reason": "operator",
+            "override_lockout": override_lockout,
+            "set_hold_off": set_hold_off,
+        },
     )
     return ok(
         {
@@ -260,3 +358,24 @@ def delete_device_api(device_id: str):
         target_id=device_id,
     )
     return ok({"deleted": True})
+
+
+# v0.3.2 (P3): cancel a queued (pending-status) command (R-CTRL-8).
+@admin_api_bp.post("/devices/<device_id>/commands/<command_id>/cancel")
+@role_required_api(*WRITE_ROLES)
+def cancel_device_command_api(device_id: str, command_id: str):
+    if not cancel_pending_command(command_id, by_user_id=g.current_user.id):
+        return err(
+            "not_cancellable",
+            "Command not found or no longer cancellable (already accepted by device).",
+            status=409,
+        )
+    audit_service.record(
+        "device.command_cancelled",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={"command_id": command_id, "reason": "operator"},
+    )
+    return ok({"cancelled": True, "command_id": command_id})

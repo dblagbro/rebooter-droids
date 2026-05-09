@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-09
+
+### Added — Power controls + safety + lockout (P3 of webui-redesign)
+
+- **`is_protected` lockout flag** on every device (R-DEV-8). When
+  set, the service layer rejects any power command (`relay_on`,
+  `relay_off`, `relay_toggle`, `relay_cycle`, `device_restart`)
+  unless the caller passes `override_lockout=True` (form param or
+  JSON body).
+  - API: locked-device commands return **HTTP 423 Locked** with
+    `error.code = "device_locked"`.
+  - UI: device-detail Power tab shows a lockout banner; the
+    settings tab carries the toggle.
+  - Mass fan-out (group commands) **skips** protected devices
+    by default and surfaces the skipped count in the audit row +
+    a warning flash. `override_lockout=1` includes them.
+- **Hold-off action** (R-CTRL-3). Issues `relay_off` with the
+  intent flag `hold_off=1`, sets the device's new `is_held_off`
+  bool, and the UI renders a "held off" badge until any power-on
+  command (`relay_on` / `relay_toggle` / `relay_cycle`) clears it.
+  Watchdog rules + schedules (P4) MUST honour this flag.
+- **Cancel-pending-command** (R-CTRL-8). New service helper
+  `commands.cancel_pending_command()` flips a queued command to
+  `cancelled` status, but only while it's still in `pending` —
+  once the device has accepted, the cancel returns 409.
+  - API: `POST /api/v1/admin/devices/<id>/commands/<cmd_id>/cancel`
+  - UI: cancel button on every pending row in the Power tab.
+- **`reason` field** convention (R-CTRL-6). Every power-action
+  audit row now carries `details.reason ∈ {operator}`. The
+  `schedule` and `watchdog` reasons land in P4 when those
+  surfaces ship.
+- **Confirmation dialogs scaled to action severity** (R-UX-12,
+  R-CTRL-4 v0.3.2 visual tune):
+  - `relay_off` and `device_restart` get a `btn-danger` red button
+    plus a `confirm()` prompt.
+  - `relay_cycle` gets a `confirm()` prompt that names the device.
+  - `hold_off` requires a typed-confirmation prompt of the
+    device's display name.
+- **Lockout banner + held-off banner** on the Power tab —
+  prominent visual treatment so operators can't miss the state.
+- **`devices.is_protected` patchable** via `PATCH /api/v1/admin/
+  devices/<id>` with `{"is_protected": true|false}`. Audit row
+  emitted on change.
+
+### Schema
+
+Idempotent boot-time `ALTER TABLE ADD COLUMN IF NOT EXISTS`:
+- `devices.is_protected BOOLEAN NOT NULL DEFAULT FALSE`
+- `devices.is_held_off  BOOLEAN NOT NULL DEFAULT FALSE`
+
+No manual migration step.
+
+### Compatibility
+
+- All v0.3.1 routes and endpoint names preserved.
+- `enqueue_for_group()` now returns `(created, skipped)` instead
+  of `list[Command]`. The two callers in `app/blueprints/admin/
+  groups.py` are updated. **Internal API only** — no public
+  consumer affected.
+- Rollback: `docker run dblagbro/rebooter-droids:0.3.1`.
+
 ## [0.3.1] - 2026-05-09
 
 ### Added — Status page + device list/detail restructure (P2 of webui-redesign)

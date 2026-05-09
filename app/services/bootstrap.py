@@ -62,6 +62,8 @@ def ensure_schema() -> bool:
 # Each entry is (table, column_name, column_ddl). Postgres only.
 _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("devices", "is_qa_fixture", "BOOLEAN NOT NULL DEFAULT FALSE"),  # v0.2.8
+    ("devices", "is_protected",  "BOOLEAN NOT NULL DEFAULT FALSE"),  # v0.3.2
+    ("devices", "is_held_off",   "BOOLEAN NOT NULL DEFAULT FALSE"),  # v0.3.2
 )
 
 

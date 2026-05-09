@@ -741,6 +741,31 @@ tr:hover td { background: var(--bg-elev-2); }
 }
 
 
+/* ────────────────────────────── safety banners (P3) ─────────────────── */
+
+.v3-lockout-banner,
+.v3-holdoff-banner {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-4);
+  border: 1px solid transparent;
+}
+.v3-lockout-banner {
+  background: var(--red-bg);
+  color: var(--red-fg);
+  border-color: var(--red-fg);
+}
+.v3-holdoff-banner {
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+  border-color: var(--amber-fg);
+}
+.v3-lockout-banner code,
+.v3-holdoff-banner code {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+
 /* ────────────────────────────── tab strip (P2 device-detail) ────────── */
 
 .v3-tabbar {
