@@ -28,3 +28,4 @@ from app.models.audit import AuditEvent  # noqa: E402,F401
 from app.models.unregistered import UnregisteredAuthAttempt  # noqa: E402,F401
 from app.models.sessions import Session  # noqa: E402,F401
 from app.models.failsafe import DeviceFailsafeEvent  # noqa: E402,F401
+from app.models.firmware_mirrors import FirmwareReleaseMirror  # noqa: E402,F401

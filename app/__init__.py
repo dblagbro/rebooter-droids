@@ -115,11 +115,13 @@ def create_app() -> Flask:
     from app.blueprints.version import bp as version_bp
     from app.blueprints.auth import bp as auth_bp
     from app.blueprints.device_api import bp as device_api_bp
+    from app.blueprints.firmware_public import bp as firmware_public_bp
     from app.blueprints.admin import admin_api_bp, admin_ui_bp
 
     app.register_blueprint(version_bp, url_prefix="/api/v1")
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(device_api_bp, url_prefix="/api/v1/device")
+    app.register_blueprint(firmware_public_bp, url_prefix="/api/v1/firmware")
     app.register_blueprint(admin_api_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(admin_ui_bp, url_prefix="/app")
 

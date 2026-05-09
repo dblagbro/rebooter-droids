@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-05-09
+
+### Added — firmware mirror chain P1 (RFC-002)
+
+Backend hosting for the per-channel firmware library that
+RFC-005's safe-bootstrap and the dual-URL fallback design depend
+on.
+
+- **New table:** `firmware_release_mirrors` — one row per
+  (release, mirror-kind) tuple. Tracks URL, status (`pending` /
+  `live` / `failed`), `verified_sha256`, and probe metadata.
+  Cascade-deletes with the parent `firmware_releases` row.
+- **Per-channel publishing on upload.** A new release's binary
+  is written to **two** static locations on the firmware volume:
+  - canonical flat: `<firmware_dir>/rebooter-<v>.bin` (existing,
+    kept for backwards-compat with devices already in the field)
+  - per-channel: `<firmware_dir>/<channel>/rebooter-<v>.bin`
+- **Channel pointer is a Flask 302-redirect endpoint, NOT a static
+  file.** New public, unauthenticated route:
+  `GET /api/v1/firmware/<channel>/latest` → 302 to
+  `<public-base>/<channel>/<latest-version-filename>.bin`. RFC-005's
+  bootstrap firmware will fetch this on first boot and on every
+  retry — it always resolves to the freshest binary in the
+  channel without the bootstrap needing to know specific version
+  strings. The endpoint is public (no auth) because the
+  bootstrap doesn't have a bearer token yet by definition.
+- **Why redirect, not static file.** Static `latest.bin` files
+  were considered and rejected: they would collide with nginx's
+  global `open_file_cache_valid 60s`, making an overwrite
+  invisible to clients for up to a minute. The redirect endpoint
+  queries the DB on every hit, so it's always fresh; nginx still
+  serves the per-channel versioned binary on the redirected URL
+  (which never changes content for the same path → safe to cache).
+- **Mirror records.** Three rows per upload — canonical flat
+  URL, per-channel static-file URL, and channel-pointer redirect
+  URL — all marked `status=live` / `verified_sha256=<hash>` since
+  we just wrote them.
+- **Admin UI.** `/app/firmware` now shows a per-release mirror
+  expander listing each URL + status + kind.
+- **Delete cleans up cleanly.** Deleting a release removes the
+  canonical + per-channel artifacts. The channel-pointer URL
+  self-updates because it's DB-backed.
+
+### What's NOT in this release
+
+Per RFC-002 §8 phase split:
+- **GitHub Releases mirror publisher (P2)** — not in v0.3.9.
+  The `MirrorPublisher` abstraction is intentionally not yet
+  introduced; the local-only logic is inline. Once we add the
+  GitHub publisher, we'll abstract.
+- **Project-owned nginx snippet (RFC-002 §7.6)** — host nginx
+  config still hand-edited; project snippet ships in a follow-up
+  minor.
+
+### Compatibility
+
+- All v0.3.8 routes preserved.
+- Existing flat-layout firmware URLs continue to work — devices
+  in the field do not need re-configuration.
+- New table created via `Base.metadata.create_all()` at boot.
+  No manual migration step.
+- Per-channel publish failure logs but does not fail the
+  upload; the canonical flat-layout file remains the source of
+  truth for v0.3.9.
+
 ## [0.3.8] - 2026-05-09
 
 ### Added — failsafe-event surface (RFC-005 P1 backend)
