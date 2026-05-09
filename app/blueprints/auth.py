@@ -30,8 +30,11 @@ def login():
         return err("auth_invalid", "Invalid email or password.", status=401)
 
     settings = current_app.config["SETTINGS"]
+    from datetime import datetime, timezone
+
     session.clear()
     session["user_id"] = user.id
+    session["iat"] = int(datetime.now(timezone.utc).timestamp())
     session.permanent = True
 
     access = issue_access_token(settings, user.id)
@@ -39,7 +42,12 @@ def login():
 
     return ok(
         {
-            "user": {"id": user.id, "email": user.email, "display_name": user.display_name},
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "display_name": user.display_name,
+                "role": getattr(user, "role", "admin"),
+            },
             "access_token": access,
             "refresh_token": refresh,
             "token_type": "Bearer",
@@ -49,7 +57,15 @@ def login():
 
 @bp.post("/logout")
 def logout():
+    user_id = session.get("user_id")
     session.clear()
+    if user_id:
+        try:
+            from app.services.users import revoke_all_tokens
+
+            revoke_all_tokens(user_id)
+        except Exception:
+            pass
     return ok({"logged_out": True})
 
 
@@ -90,5 +106,6 @@ def me():
             "display_name": u.display_name,
             "is_admin": u.is_admin,
             "is_super_admin": getattr(u, "is_super_admin", False),
+            "role": getattr(u, "role", "admin"),
         }
     )

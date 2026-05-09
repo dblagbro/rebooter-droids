@@ -19,6 +19,13 @@ class Settings:
     heartbeat_interval_seconds: int
     poll_interval_seconds: int
     enrollment_token_ttl_seconds: int
+    invitation_ttl_seconds: int
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password: str
+    smtp_from: str
+    smtp_helo: str
 
 
 @lru_cache
@@ -50,4 +57,13 @@ def load_settings() -> Settings:
         enrollment_token_ttl_seconds=int(
             os.environ.get("REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS", "86400")
         ),
+        invitation_ttl_seconds=int(
+            os.environ.get("REBOOTER_INVITATION_TTL_SECONDS", str(60 * 60 * 24 * 7))
+        ),
+        smtp_host=os.environ.get("REBOOTER_SMTP_HOST", ""),
+        smtp_port=int(os.environ.get("REBOOTER_SMTP_PORT", "587")),
+        smtp_user=os.environ.get("REBOOTER_SMTP_USER", ""),
+        smtp_password=os.environ.get("REBOOTER_SMTP_PASSWORD", ""),
+        smtp_from=os.environ.get("REBOOTER_SMTP_FROM", ""),
+        smtp_helo=os.environ.get("REBOOTER_SMTP_HELO", ""),
     )

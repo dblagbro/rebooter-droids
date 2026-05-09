@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-09
+
+### Added — RBAC, invites, audit
+
+- **Roles** on `users.role`: `super_admin`, `admin`, `operator`, `viewer`.
+  `operator` can issue commands but not manage firmware/users; `viewer`
+  is read-only; `admin` does everything except role changes; `super_admin`
+  does everything including user/role management.
+- **Email-invite signup** — admins mint an invitation via the API/UI;
+  invitee redeems at `/app/invite/<token>` to set up their account.
+  Single-use token, 7-day TTL by default. SMTP via env vars
+  `REBOOTER_SMTP_*` (lifted from the DevinGPT pattern); the admin sees
+  a copy-able link if SMTP isn't configured.
+- **Audit log** — `audit_events` table records every admin mutation
+  (device patches, command issuance, firmware deploys, user/invite
+  changes). Surfaced at `/app/audit` and `GET /api/v1/admin/audit`.
+- **User management endpoints** — `GET /admin/users`,
+  `POST /admin/users/<id>/role` (super-admin only),
+  `POST /admin/users/<id>/deactivate`,
+  `POST /admin/users/<id>/revoke-tokens`.
+- **Server-side token revocation** — bumping `users.tokens_valid_after`
+  on logout / deactivate / revoke invalidates every JWT and Flask
+  session cookie issued before that timestamp. Closes BUG-005.
+
+### Fixed (cheap polish from QA pass)
+
+- BUG-009: shipped a placeholder `favicon.ico` so browsers stop
+  404'ing the icon request.
+- BUG-010: `PATCH /admin/devices/<id>` now rejects unknown fields with
+  `validation_failed` (was previously silently ignored).
+- BUG-011: empty/no-op PATCH no longer bumps `updated_at`.
+
+### Changed
+
+- All admin API endpoints are explicitly role-gated. Existing
+  super-admin sessions keep working unchanged.
+
 ## [0.1.4] - 2026-05-09
 
 ### Fixed / hardened (quick-wins from the QA pass)

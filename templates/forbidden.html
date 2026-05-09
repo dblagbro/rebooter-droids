@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block title %}Forbidden - Rebooter-Droids{% endblock %}
+{% block content %}
+<section class="placeholder">
+  <h1>403 — Not allowed</h1>
+  <p>Your role (<strong>{{ current_user.role }}</strong>) cannot perform this action. If you believe this is an error, ask a super admin to adjust your role.</p>
+  <p><a href="{{ url_for('admin_ui.index') }}">Back to dashboard</a></p>
+</section>
+{% endblock %}
