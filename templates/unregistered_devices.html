@@ -1,0 +1,75 @@
+{% extends "layout.html" %}
+{% block title %}Unregistered devices - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>Unregistered device attempts</h1>
+<p class="muted">
+  Heartbeat / commands calls that failed authentication. Useful for spotting
+  firmware that re-uses a stale or self-minted <code>device_id</code> without
+  ever calling <code>POST /api/v1/device/register</code>. Each row is one
+  (claimed device_id, source IP, endpoint) tuple, aggregated by hit count.
+</p>
+
+<form method="get" style="margin-bottom:1rem">
+  <label style="display:inline-block; margin-right:1rem">Since (minutes)
+    <input type="number" name="since_minutes" value="{{ since_minutes or '' }}" min="1" max="10080" style="width:120px">
+  </label>
+  <button type="submit">Filter</button>
+  <a href="{{ url_for('admin_ui.unregistered_devices_page') }}" style="margin-left:.6rem">all</a>
+</form>
+
+{% if rows %}
+<table>
+  <thead>
+    <tr>
+      <th>Last seen</th>
+      <th>Claimed device_id</th>
+      <th>Endpoint</th>
+      <th>Source IP</th>
+      <th>User-Agent</th>
+      <th>Auth header?</th>
+      <th>Hits</th>
+      <th>First seen</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code>{{ r.last_seen_at }}</code></td>
+      <td><code>{{ r.claimed_device_id or '—' }}</code></td>
+      <td><code>{{ r.endpoint }}</code></td>
+      <td><code>{{ r.source_ip }}</code></td>
+      <td class="muted" style="max-width:280px; word-break:break-all">{{ r.user_agent or '—' }}</td>
+      <td>
+        {% if r.auth_present %}
+          <span class="badge amber">yes (invalid)</span>
+        {% else %}
+          <span class="badge red">no</span>
+        {% endif %}
+      </td>
+      <td>{{ r.hit_count }}</td>
+      <td class="muted"><code>{{ r.first_seen_at }}</code></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted" style="font-size:.85rem; margin-top:1.5rem">
+  Aggregation rolls up at the (device_id, IP, endpoint) tuple level. The table
+  is rolling-capped — oldest rows are pruned when total exceeds 5000.
+  If you see persistent rows here for what should be a healthy device, the
+  firmware needs to call <code>POST /api/v1/device/register</code> with a
+  fresh enrollment token; <a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">mint one here</a>.
+</p>
+{% else %}
+<section class="placeholder">
+  <p class="muted">
+    No unregistered-auth attempts recorded
+    {% if since_minutes %} in the last {{ since_minutes }} minute(s){% endif %}.
+  </p>
+  <p class="muted" style="font-size:.85rem">
+    This is the desired state — every authenticated request resolves to a
+    known device row.
+  </p>
+</section>
+{% endif %}
+{% endblock %}

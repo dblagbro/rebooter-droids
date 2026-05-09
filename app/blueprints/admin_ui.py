@@ -27,6 +27,7 @@ from app.models.users import (
 from app.middleware.rate_limit import limiter
 from app.services.auth import authenticate
 from app.services.commands import enqueue_for_device, enqueue_for_group
+from app.services import mass_action
 from app.services.devices import (
     delete_device as svc_delete_device_ui,
     get_device_detail,
@@ -84,7 +85,19 @@ bp = Blueprint("admin_ui", __name__)
 
 
 def _ctx(extra: dict | None = None) -> dict:
-    base = {"version": __version__, "current_user": g.current_user}
+    # v0.2.5: surface unregistered-auth-attempts count in the layout nav badge.
+    # Best-effort — never break the page render.
+    try:
+        from app.services import unregistered as unreg_service
+
+        unregistered_active = unreg_service.count_active(since_minutes=60)
+    except Exception:
+        unregistered_active = 0
+    base = {
+        "version": __version__,
+        "current_user": g.current_user,
+        "unregistered_active": unregistered_active,
+    }
     if extra:
         base.update(extra)
     return base
@@ -467,8 +480,26 @@ def group_send_command_submit(group_id: str):
             payload["power_off_seconds"] = int(request.form.get("power_off_seconds") or 5)
         except ValueError:
             payload["power_off_seconds"] = 5
+
+    target_count = mass_action.count_group_members(group_id)
     try:
-        enqueue_for_group(
+        mass_action.validate(
+            target_count=target_count,
+            expected_typed_value=cmd_type,
+            confirmation_level=request.form.get("confirmation_level"),
+            confirmation_typed_value=request.form.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        flash(
+            f"Mass action requires confirmation: {target_count} devices "
+            f"would be affected; please re-submit with the required confirmation. "
+            f"(required level: {e.required_level})",
+            "error",
+        )
+        return redirect(url_for("admin_ui.group_detail_page", group_id=group_id))
+
+    try:
+        cmds = enqueue_for_group(
             group_id=group_id,
             cmd_type=cmd_type,
             payload=payload,
@@ -476,6 +507,19 @@ def group_send_command_submit(group_id: str):
         )
     except ValueError:
         abort(400)
+    audit_service.record(
+        "group.mass_command_issued",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="group",
+        target_id=group_id,
+        details={
+            "type": cmd_type,
+            "target_count": target_count,
+            "fan_out_count": len(cmds),
+            "confirmation_level": mass_action.required_level(target_count),
+        },
+    )
     return redirect(url_for("admin_ui.group_detail_page", group_id=group_id))
 
 
@@ -494,6 +538,7 @@ def list_firmware_page():
                 "deployments": deployments,
                 "groups": groups,
                 "devices": devices,
+                "all_active_devices_count": mass_action.count_all_active_devices(),
                 "uploaded": session.pop("_new_firmware", None),
             }
         ),
@@ -510,6 +555,28 @@ def firmware_deploy_submit():
         target_id = None
     if not release_id or not target_type:
         abort(400)
+
+    if target_type == "all_devices":
+        target_count = mass_action.count_all_active_devices()
+    elif target_type == "group" and target_id:
+        target_count = mass_action.count_group_members(target_id)
+    else:
+        target_count = 1  # single device deployment is not a mass action
+    try:
+        mass_action.validate(
+            target_count=target_count,
+            expected_typed_value="deploy_firmware",
+            confirmation_level=request.form.get("confirmation_level"),
+            confirmation_typed_value=request.form.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        flash(
+            f"Firmware deployment requires confirmation: {target_count} devices "
+            f"would be affected. (required level: {e.required_level})",
+            "error",
+        )
+        return redirect(url_for("admin_ui.list_firmware_page"))
+
     try:
         create_deployment(
             release_id=release_id,
@@ -521,6 +588,21 @@ def firmware_deploy_submit():
         )
     except (LookupError, ValueError):
         abort(400)
+    audit_service.record(
+        "firmware.mass_deployment_issued",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="firmware_deployment",
+        target_id=release_id,
+        details={
+            "release_id": release_id,
+            "target_type": target_type,
+            "target_id": target_id,
+            "target_count": target_count,
+            "force": "force" in request.form,
+            "confirmation_level": mass_action.required_level(target_count),
+        },
+    )
     return redirect(url_for("admin_ui.list_firmware_page"))
 
 
@@ -764,6 +846,21 @@ def audit_page():
         limit=int(request.args.get("limit") or 200),
     )
     return render_template("audit_list.html", **_ctx({"events": rows}))
+
+
+# ── unregistered-heartbeat visibility (v0.2.5) ──────────────────────────
+
+@bp.get("/unregistered-devices")
+@admin_required_ui
+def unregistered_devices_page():
+    from app.services import unregistered as unreg_service
+
+    since_minutes = int(request.args.get("since_minutes") or 0) or None
+    rows = unreg_service.list_recent(limit=200, since_minutes=since_minutes)
+    return render_template(
+        "unregistered_devices.html",
+        **_ctx({"rows": rows, "since_minutes": since_minutes}),
+    )
 
 
 # ── public invite redeem flow (no auth) ──────────────────────────────────
