@@ -16,7 +16,7 @@ class Group(Base):
     id: Mapped[str] = mapped_column(
         String(40), primary_key=True, default=partial(new_id, "grp")
     )
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     site_id: Mapped[str | None] = mapped_column(
         String(40), ForeignKey("sites.id", ondelete="SET NULL"), nullable=True

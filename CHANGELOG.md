@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-09
+
+### Fixed / hardened (quick-wins from the QA pass)
+
+- **BUG-006:** added per-IP rate limiting (10/min, 30/hour) on
+  `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, and the
+  HTML `POST /app/login`. Hits over the limit now return 429
+  `rate_limited`. Backed by Flask-Limiter, in-memory storage.
+- **BUG-007:** `groups.name` and `sites.name` are now `UNIQUE`. Creating
+  a duplicate returns 409 `name_conflict` with a friendly message.
+- **BUG-008:** firmware uploads of 0-byte files are rejected with
+  400 `validation_failed` ("uploaded firmware is empty (0 bytes)").
+
+### Added
+
+- `app/middleware/rate_limit.py` — Flask-Limiter integration with the
+  envelope-shaped 429 handler.
+
 ## [0.1.3] - 2026-05-08
 
 ### Fixed

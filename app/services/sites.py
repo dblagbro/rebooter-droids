@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.db import session_scope
 from app.models import Site
+
+
+class DuplicateNameError(ValueError):
+    pass
 
 
 def _iso(dt) -> str | None:
@@ -29,10 +34,13 @@ def list_sites() -> list[dict]:
 
 def create_site(name: str, description: str | None) -> dict:
     s = Site(name=name, description=description)
-    with session_scope() as session:
-        session.add(s)
-        session.flush()
-        return serialize_site(s)
+    try:
+        with session_scope() as session:
+            session.add(s)
+            session.flush()
+            return serialize_site(s)
+    except IntegrityError:
+        raise DuplicateNameError(f"a site named '{name}' already exists")
 
 
 def delete_site(site_id: str) -> bool:

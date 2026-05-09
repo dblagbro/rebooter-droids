@@ -78,6 +78,8 @@ def upload_release(
             )
 
         size = os.path.getsize(tmp_path)
+        if size == 0:
+            raise ValueError("uploaded firmware is empty (0 bytes)")
         final_name = f"rebooter-{version}.bin"
         if channel != "stable":
             final_name = f"rebooter-{version}-{channel}.bin"

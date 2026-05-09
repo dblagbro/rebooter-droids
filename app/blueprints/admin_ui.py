@@ -14,6 +14,7 @@ from flask import (
 )
 
 from app.middleware.admin_auth import admin_required_ui
+from app.middleware.rate_limit import limiter
 from app.services.auth import authenticate
 from app.services.commands import enqueue_for_device, enqueue_for_group
 from app.services.devices import get_device_detail, list_devices, update_device
@@ -80,6 +81,7 @@ def login_page():
 
 
 @bp.post("/login")
+@limiter.limit("30 per minute; 200 per hour")
 def login_submit():
     email = (request.form.get("email") or "").strip()
     password = request.form.get("password") or ""
