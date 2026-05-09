@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-05-09
+
+### Fixed — Quick wins from the post-v0.4.2 deep regression
+
+- **BUG-022 (high) — Sign out link added to header.** The
+  redesign collapsed the header and Sign out ended up only on the
+  Profile page. Restored it to `topbar-actions`.
+- **BUG-023 (medium) — Role badge added to header.** Super-admin
+  shows a red `super admin` badge; admin shows a neutral `admin`
+  badge. Helps the operator see the elevated role at a glance —
+  important since super-admin actions affect the whole fleet.
+- **BUG-028 (low) — Authentication-tab page title.** Changed from
+  "Auth settings" to "Authentication settings" so the title
+  matches the visible tab label.
+
+### Compatibility
+
+- Pure UI / template changes. No model, route, or API changes.
+
 ## [0.4.2] - 2026-05-09
 
 ### Added — Watchdog probe runtime (B6 from BACKLOG)
