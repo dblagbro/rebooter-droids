@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-09
+
+### Added — Watchdog rules first slice (P4 of webui-redesign-plan)
+
+Net-new feature surface. v0.4.0 ships **data model + CRUD +
+plain-English render**; the probe runtime that actually executes
+rules and writes events is queued for v0.4.1+.
+
+- New tables: `watchdog_rules` (full schema per
+  `webui-redesign-plan.md` §7.1) + `watchdog_probe_events`
+  (table shape only; inserts come in v0.4.1+).
+- Plain-English rule renderer (R-WD-1). Every rule shows its
+  full sentence form on the list page:
+  > *"If ping to `192.168.1.1` fails 3 consecutive times over
+  > 60 s, power-cycle (5s off) on device `Office Modem`, then
+  > wait 5 min and check 2 successes before re-arming."*
+- Rule-builder UI at `/app/rules` replaces the v0.3.0
+  empty-state stub. Form picks probe kind (internet / ping /
+  tcp / http / dns / gateway), action (cycle / hold_off /
+  notify_only), target (device / group / tag), and thresholds.
+- Per-rule enable/disable + delete actions.
+- New API: `GET /api/v1/admin/rules`, `POST` (admin+), `DELETE`.
+- Audit hooks: `watchdog_rule.{created,deleted,enabled_changed}`.
+
+### NOT in v0.4.0 (queued)
+
+- Probe runtime — rules ARE stored but DO NOT FIRE yet (UI
+  flags this).
+- Per-rule event log UI, probe-now / simulate buttons.
+- Maintenance windows UI + portal-wide maintenance-mode.
+- Schedules as a separate primitive.
+- Notifications on rule trigger (gated on v0.4.1 email-SMTP).
+
+### Compatibility
+
+- All v0.3.9 routes preserved.
+- New tables via `Base.metadata.create_all()` at boot — no
+  migration step.
+
 ## [0.3.9] - 2026-05-09
 
 ### Added — firmware mirror chain P1 (RFC-002)
