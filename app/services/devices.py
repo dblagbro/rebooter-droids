@@ -32,6 +32,7 @@ def serialize_device(d: Device, include_secret_status: bool = True) -> dict:
         "capabilities": d.capabilities or {},
         "notes": d.notes,
         "last_heartbeat_at": _iso(d.last_heartbeat_at),
+        "is_qa_fixture": bool(d.is_qa_fixture),
         "created_at": _iso(d.created_at),
         "updated_at": _iso(d.updated_at),
     }
@@ -50,6 +51,7 @@ def list_devices(
     search: str | None = None,
     status: str | None = None,
     offline_threshold_seconds: int = 180,
+    include_qa_fixtures: bool = True,
 ) -> list[dict]:
     now = datetime.now(timezone.utc)
     with session_scope() as session:
@@ -60,6 +62,8 @@ def list_devices(
             stmt = stmt.where(Device.registration_state == "active")
         if status == "disabled":
             stmt = stmt.where(Device.registration_state == "disabled")
+        if not include_qa_fixtures:
+            stmt = stmt.where(Device.is_qa_fixture.is_(False))
         if search:
             like = f"%{search.lower()}%"
             from sqlalchemy import or_, func
