@@ -14,6 +14,16 @@ All shipped in **v0.1.3**:
 Retest: full `tests/qa` suite (77 tests, ~38 s). Already green on
 v0.1.3.
 
+## Locked architectural rule (2026-05-09)
+
+- **No direct DB exposure ever.** `rebooter-droids-pg` stays on its
+  docker network only.
+- **All cross-component / cross-node access via HTTPS API on
+  `rebooter-droids`.** Includes future node-2, ops tooling, firmware
+  team, mobile app.
+- Implication: node-2 deploy waits on the v0.3 inter-node sync API
+  design (own Postgres on tmrwww02, sync via HTTPS endpoints).
+
 ## v0.2 sprint (security + RBAC)
 
 These are the highest-value next batch and align with the user-invite /
@@ -29,6 +39,18 @@ RBAC roadmap:
 | ENH | Audit-log table (`audit_events`) with admin/device write events | M |
 | ENH | RBAC roles: `super_admin`, `admin`, `operator`, `viewer` | M |
 | ENH | Email-invite flow lifted from DevinGPT | M |
+
+## v0.3 sprint (multi-node)
+
+- Design + ship **inter-node HTTPS sync API**. Two-node primary +
+  read-replica posture initially; eventually both can serve writes
+  with conflict resolution.
+- New endpoints under `/api/v1/internal/sync/*` — authenticated by
+  a per-node service token, never exposed to firmware or admin.
+- Add Redis (or equivalent shared backend) for rate-limit + session
+  state so both nodes apply the same buckets.
+- Deploy node-2 on tmrwww02. Public URL: <https://www2.voipguru.org/rebooter/>.
+- Promotion / failover documented; manual at first, automatic later.
 
 ## v0.3+ hardening
 
