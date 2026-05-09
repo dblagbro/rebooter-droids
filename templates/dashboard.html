@@ -2,13 +2,23 @@
 {% block title %}Dashboard - Rebooter-Droids{% endblock %}
 {% block content %}
 <section class="placeholder">
-  <h1>Rebooter-Droids</h1>
-  <p>Central coordination server for Sonoff S31-based Rebooter devices.</p>
-  <p>Scaffold deployed. Functional pages land in subsequent versions.</p>
+  <h1>Dashboard</h1>
+  <p>Signed in as <strong>{{ current_user.email }}</strong>.
+  <a href="{{ url_for('admin_ui.logout') }}">Sign out</a></p>
+
+  <div class="actions">
+    <a class="badge green">{{ online_count }} online</a>
+    <a class="badge red">{{ offline_count }} offline</a>
+    <a class="badge">{{ device_count }} total</a>
+  </div>
+
   <ul>
-    <li>API root: <code>/rebooter/api/v1/</code></li>
-    <li>Firmware: <code>/rebooter/firmware/</code></li>
-    <li><a href="/rebooter/api/v1/version">Version endpoint</a></li>
+    <li><a href="{{ url_for('admin_ui.list_devices_page') }}">Devices</a></li>
+    <li><a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">Enrollment Tokens</a></li>
+    <li><a href="{{ url_for('admin_ui.list_groups_page') }}">Groups</a></li>
+    <li><a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a></li>
+    <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a></li>
+    <li><a href="{{ url_for('admin_ui.events_page') }}">Events</a></li>
   </ul>
 </section>
 {% endblock %}

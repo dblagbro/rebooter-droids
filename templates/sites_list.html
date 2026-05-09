@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block title %}Sites - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>Sites</h1>
+
+<section class="placeholder">
+  <h2>Create a site</h2>
+  <form method="post" action="{{ url_for('admin_ui.create_site_submit') }}">
+    <label>Name <input type="text" name="name" required></label>
+    <label>Description <input type="text" name="description"></label>
+    <button type="submit">Create</button>
+  </form>
+</section>
+
+{% if sites %}
+<table>
+  <thead><tr><th>Name</th><th>Description</th><th>Created</th><th></th></tr></thead>
+  <tbody>
+  {% for s in sites %}
+    <tr>
+      <td>{{ s.name }}</td>
+      <td>{{ s.description or '—' }}</td>
+      <td>{{ s.created_at }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_ui.delete_site_submit', site_id=s.id) }}">
+          <button type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No sites yet.</p>
+{% endif %}
+{% endblock %}

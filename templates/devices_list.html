@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block title %}Devices - Rebooter-Droids{% endblock %}
+{% block content %}
+<h1>Devices</h1>
+
+<form method="get" class="actions">
+  <input type="search" name="search" value="{{ filters.search }}" placeholder="search by name, mac, id">
+  <select name="status">
+    <option value="">any status</option>
+    <option value="active" {% if filters.status == 'active' %}selected{% endif %}>active</option>
+    <option value="disabled" {% if filters.status == 'disabled' %}selected{% endif %}>disabled</option>
+  </select>
+  <button type="submit">Filter</button>
+  <a class="badge" href="{{ url_for('admin_ui.enrollment_tokens_page') }}">+ Enroll a device</a>
+</form>
+
+{% if not devices %}
+  <p class="muted">No devices yet. <a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">Mint an enrollment token</a> to add one.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>State</th>
+      <th>Online</th>
+      <th>Firmware</th>
+      <th>Last heartbeat</th>
+      <th>Local IP</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for d in devices %}
+    <tr>
+      <td><a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a></td>
+      <td><span class="badge">{{ d.registration_state }}</span></td>
+      <td>{% if d.online %}<span class="badge green">online</span>{% else %}<span class="badge red">offline</span>{% endif %}</td>
+      <td>{{ d.firmware_version or '—' }}</td>
+      <td>{{ d.last_heartbeat_at or '—' }}</td>
+      <td>{{ d.local_ip or '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

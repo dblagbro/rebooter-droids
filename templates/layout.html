@@ -4,13 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Rebooter-Droids{% endblock %}</title>
-  <link rel="stylesheet" href="/rebooter/app/static/css/app.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/rebooter/app/">Rebooter-Droids</a>
+    <a class="brand" href="{{ url_for('admin_ui.index') }}">Rebooter-Droids</a>
     <nav>
-      <a href="/rebooter/app/">Dashboard</a>
+      <a href="{{ url_for('admin_ui.index') }}">Dashboard</a>
+      <a href="{{ url_for('admin_ui.list_devices_page') }}">Devices</a>
+      <a href="{{ url_for('admin_ui.list_groups_page') }}">Groups</a>
+      <a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a>
+      <a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a>
+      <a href="{{ url_for('admin_ui.events_page') }}">Events</a>
     </nav>
     <span class="version">v{{ version }}</span>
   </header>
