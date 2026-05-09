@@ -34,6 +34,8 @@ from app.services.watchdog import (
     create_rule as svc_create_rule,
     delete_rule as svc_delete_rule,
     list_rules as svc_list_rules,
+    list_recent_events as svc_list_events,
+    probe_now as svc_probe_now,
     set_enabled as svc_set_enabled,
 )
 
@@ -46,11 +48,16 @@ def rules_page():
     rules = svc_list_rules()
     devices = svc_list_devices(include_qa_fixtures=False)
     groups = svc_list_groups()
+    # v0.4.2: attach the latest 10 events per rule for the inline log.
+    rules_with_events = []
+    for r in rules:
+        r["recent_events"] = svc_list_events(r["id"], limit=10)
+        rules_with_events.append(r)
     return render_template(
         "rules/index.html",
         **_ctx({
             "active": "rules",
-            "rules": rules,
+            "rules": rules_with_events,
             "devices": devices,
             "groups": groups,
         }),
@@ -156,6 +163,29 @@ def rules_set_enabled_submit(rule_id: str):
     return redirect(url_for("admin_ui.rules_page"))
 
 
+@admin_ui_bp.post("/rules/<rule_id>/probe-now")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_probe_now_submit(rule_id: str):
+    """v0.4.2: synchronous probe-now diagnostic. Records an event
+    but does NOT advance the state machine or fire any action."""
+    from flask import flash
+
+    res = svc_probe_now(rule_id)
+    if res is None:
+        flash("Rule not found.", "error")
+        return redirect(url_for("admin_ui.rules_page"))
+    audit_service.record(
+        "watchdog_rule.probed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule_id,
+        details={"outcome": res["outcome"], "via": "probe_now"},
+    )
+    flash(f"Probe ran: {res['outcome']}.", "info")
+    return redirect(url_for("admin_ui.rules_page"))
+
+
 @admin_ui_bp.post("/rules/<rule_id>/delete")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def rules_delete_submit(rule_id: str):
@@ -212,6 +242,29 @@ def create_rule_api():
         details={"name": rule["name"], "reason": "operator"},
     )
     return ok(rule, status=201)
+
+
+@admin_api_bp.get("/rules/<rule_id>/events")
+@admin_required_api
+def list_rule_events_api(rule_id: str):
+    return ok(svc_list_events(rule_id))
+
+
+@admin_api_bp.post("/rules/<rule_id>/probe-now")
+@role_required_api(*ADMIN_AND_UP)
+def probe_now_api(rule_id: str):
+    res = svc_probe_now(rule_id)
+    if res is None:
+        return err("rule_unknown", "Watchdog rule not found.", status=404)
+    audit_service.record(
+        "watchdog_rule.probed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule_id,
+        details={"outcome": res["outcome"], "via": "probe_now_api"},
+    )
+    return ok(res)
 
 
 @admin_api_bp.delete("/rules/<rule_id>")
