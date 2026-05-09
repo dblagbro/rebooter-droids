@@ -263,6 +263,42 @@ def delete_device(device_id: str) -> bool:
         return True
 
 
+def delete_devices_bulk(
+    device_ids: list[str], override_lockout: bool = False
+) -> dict:
+    """v0.3.4 (P3): bulk-delete a list of devices.
+
+    Mirrors the single-device delete contract per row but:
+    - Skips protected devices unless override_lockout=True; the
+      skipped IDs are returned to the caller for surfacing.
+    - Skips IDs that don't exist (silently — returned as `unknown`).
+    - Applies the cascade per device (same as delete_device).
+
+    Returns: {"deleted": [...ids...], "skipped_protected": [...],
+              "skipped_unknown": [...]}.
+    """
+    deleted: list[str] = []
+    skipped_protected: list[str] = []
+    skipped_unknown: list[str] = []
+    with session_scope() as session:
+        for did in device_ids:
+            d = session.get(Device, did)
+            if d is None:
+                skipped_unknown.append(did)
+                continue
+            if d.is_protected and not override_lockout:
+                skipped_protected.append(did)
+                continue
+            session.delete(d)
+            deleted.append(did)
+        session.flush()
+    return {
+        "deleted": deleted,
+        "skipped_protected": skipped_protected,
+        "skipped_unknown": skipped_unknown,
+    }
+
+
 class UnknownPatchFieldError(ValueError):
     def __init__(self, fields: set[str]):
         super().__init__(

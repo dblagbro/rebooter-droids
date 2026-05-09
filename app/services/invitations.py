@@ -77,6 +77,34 @@ def cancel_invitation(invitation_id: str) -> bool:
         return True
 
 
+def cancel_invitations_bulk(invitation_ids: list[str]) -> dict:
+    """v0.3.4 (P3): bulk-cancel pending invitations.
+
+    Returns {"cancelled": [...], "skipped_unknown": [...],
+    "skipped_consumed": [...]}. Mirrors `cancel_invitation` per row.
+    """
+    cancelled: list[str] = []
+    skipped_unknown: list[str] = []
+    skipped_consumed: list[str] = []
+    with session_scope() as session:
+        for iid in invitation_ids:
+            inv = session.get(Invitation, iid)
+            if inv is None:
+                skipped_unknown.append(iid)
+                continue
+            if inv.consumed_at is not None:
+                skipped_consumed.append(iid)
+                continue
+            session.delete(inv)
+            cancelled.append(iid)
+        session.flush()
+    return {
+        "cancelled": cancelled,
+        "skipped_unknown": skipped_unknown,
+        "skipped_consumed": skipped_consumed,
+    }
+
+
 def lookup_pending(token: str) -> Invitation | None:
     h = _hash(token)
     now = datetime.now(timezone.utc)

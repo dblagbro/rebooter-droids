@@ -25,6 +25,7 @@ from app.services.groups import (
     add_members,
     create_group as svc_create_group,
     delete_group as svc_delete_group,
+    delete_groups_bulk as svc_delete_groups_bulk,
     get_group_detail,
     list_groups as svc_list_groups,
     remove_member,
@@ -109,6 +110,51 @@ def group_delete_submit(group_id: str):
             target_type="group",
             target_id=group_id,
         )
+    return redirect(url_for("admin_ui.list_groups_page"))
+
+
+# v0.3.4 (P3): bulk-delete groups from the groups list.
+@admin_ui_bp.post("/groups/bulk-delete")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def groups_bulk_delete_submit():
+    ids = [i for i in request.form.getlist("group_id") if i]
+    if not ids:
+        flash("Select at least one group first.", "warning")
+        return redirect(url_for("admin_ui.list_groups_page"))
+    try:
+        mass_action.validate(
+            target_count=len(ids),
+            expected_typed_value="delete",
+            confirmation_level=request.form.get("confirmation_level"),
+            confirmation_typed_value=request.form.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        flash(
+            f"Bulk delete affects {len(ids)} groups and requires "
+            f"confirmation ({e.required_level}).",
+            "error",
+        )
+        return redirect(url_for("admin_ui.list_groups_page"))
+    result = svc_delete_groups_bulk(ids)
+    audit_service.record(
+        "group.bulk_deleted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="group",
+        target_id=None,
+        details={
+            "deleted_count": len(result["deleted"]),
+            "skipped_unknown": len(result["skipped_unknown"]),
+            "deleted_ids": result["deleted"],
+            "confirmation_level": mass_action.required_level(len(ids)),
+            "reason": "operator",
+        },
+    )
+    flash(
+        f"Deleted {len(result['deleted'])} group(s)."
+        + (f" {len(result['skipped_unknown'])} unknown id(s) skipped." if result["skipped_unknown"] else ""),
+        "info",
+    )
     return redirect(url_for("admin_ui.list_groups_page"))
 
 

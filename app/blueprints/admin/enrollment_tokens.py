@@ -8,7 +8,14 @@ from app.blueprints.admin import admin_api_bp, admin_ui_bp
 from app.blueprints.admin._common import _ctx
 from app.middleware.admin_auth import admin_required_api, admin_required_ui
 from app.middleware.response import ok
-from app.services.enrollment import list_enrollment_tokens, mint_enrollment_token
+from app.services import audit as audit_service
+from app.services import mass_action
+from app.services.enrollment import (
+    list_enrollment_tokens,
+    mint_enrollment_token,
+    revoke_enrollment_token,
+    revoke_enrollment_tokens_bulk,
+)
 
 
 # ── UI ─────────────────────────────────────────────────────────────────────
@@ -38,6 +45,78 @@ def enrollment_tokens_create():
         "enrollment_token": raw_secret,
         "expires_at": record.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    return redirect(url_for("admin_ui.enrollment_tokens_page"))
+
+
+# v0.3.4 (P3): single + bulk revoke pending enrollment tokens.
+@admin_ui_bp.post("/enrollment-tokens/<token_id>/revoke")
+@admin_required_ui
+def enrollment_token_revoke_submit(token_id: str):
+    from flask import flash
+
+    if revoke_enrollment_token(token_id):
+        audit_service.record(
+            "enrollment_token.revoked",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="enrollment_token",
+            target_id=token_id,
+            details={"reason": "operator"},
+        )
+        flash("Enrollment token revoked.", "info")
+    else:
+        flash(
+            "Could not revoke that token — it may already be consumed.",
+            "warning",
+        )
+    return redirect(url_for("admin_ui.enrollment_tokens_page"))
+
+
+@admin_ui_bp.post("/enrollment-tokens/bulk-revoke")
+@admin_required_ui
+def enrollment_tokens_bulk_revoke_submit():
+    from flask import flash
+
+    ids = [i for i in request.form.getlist("token_id") if i]
+    if not ids:
+        flash("Select at least one token first.", "warning")
+        return redirect(url_for("admin_ui.enrollment_tokens_page"))
+    try:
+        mass_action.validate(
+            target_count=len(ids),
+            expected_typed_value="revoke",
+            confirmation_level=request.form.get("confirmation_level"),
+            confirmation_typed_value=request.form.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        flash(
+            f"Bulk revoke affects {len(ids)} tokens and requires "
+            f"confirmation ({e.required_level}).",
+            "error",
+        )
+        return redirect(url_for("admin_ui.enrollment_tokens_page"))
+    result = revoke_enrollment_tokens_bulk(ids)
+    audit_service.record(
+        "enrollment_token.bulk_revoked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="enrollment_token",
+        target_id=None,
+        details={
+            "revoked_count": len(result["revoked"]),
+            "skipped_unknown": len(result["skipped_unknown"]),
+            "skipped_consumed": len(result["skipped_consumed"]),
+            "revoked_ids": result["revoked"],
+            "confirmation_level": mass_action.required_level(len(ids)),
+            "reason": "operator",
+        },
+    )
+    flash(
+        f"Revoked {len(result['revoked'])} token(s)."
+        + (f" {len(result['skipped_consumed'])} already consumed." if result["skipped_consumed"] else "")
+        + (f" {len(result['skipped_unknown'])} unknown." if result["skipped_unknown"] else ""),
+        "info",
+    )
     return redirect(url_for("admin_ui.enrollment_tokens_page"))
 
 

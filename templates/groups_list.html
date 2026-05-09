@@ -15,12 +15,28 @@
   </form>
 </section>
 
+{% set can_bulk_delete = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+
 {% if groups %}
+<form method="post" action="{{ url_for('admin_ui.groups_bulk_delete_submit') }}"
+      data-bulk-form>
+  <input type="hidden" name="confirmation_level" value="">
+  <input type="hidden" name="confirmation_typed_value" value="">
+
 <div class="table-wrap"><table>
-  <thead><tr><th>Name</th><th>Members</th><th>Description</th><th>Created</th></tr></thead>
+  <thead><tr>
+    {% if can_bulk_delete %}<th class="v3-bulk-checkbox-cell">
+      <input type="checkbox" class="v3-bulk-master" data-bulk-master aria-label="Select all groups">
+    </th>{% endif %}
+    <th>Name</th><th>Members</th><th>Description</th><th>Created</th>
+  </tr></thead>
   <tbody>
   {% for g in groups %}
     <tr>
+      {% if can_bulk_delete %}<td class="v3-bulk-checkbox-cell">
+        <input type="checkbox" class="v3-bulk-checkbox" name="group_id" value="{{ g.id }}"
+               data-bulk-row aria-label="Select {{ g.name }}">
+      </td>{% endif %}
       <td><a href="{{ url_for('admin_ui.group_detail_page', group_id=g.id) }}">{{ g.name }}</a></td>
       <td><span class="badge">{{ g.member_count }}</span></td>
       <td>{{ g.description or '—' }}</td>
@@ -29,6 +45,20 @@
   {% endfor %}
   </tbody>
 </table></div>
+
+{% if can_bulk_delete %}
+<div class="v3-bulk-bar" data-bulk-bar role="region" aria-label="Bulk actions">
+  <div><span class="v3-bulk-bar-count" data-bulk-bar-count>0</span> selected</div>
+  <div class="v3-bulk-bar-actions">
+    <button type="submit" class="btn-danger" data-bulk-submit
+            data-bulk-verb="delete" data-bulk-noun="group">
+      Delete selected
+    </button>
+  </div>
+</div>
+{% endif %}
+
+</form>
 {% else %}
 <p class="muted">No groups yet.</p>
 {% endif %}

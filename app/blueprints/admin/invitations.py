@@ -14,9 +14,11 @@ from app.middleware.admin_auth import (
 from app.middleware.response import err, ok
 from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services import audit as audit_service
+from app.services import mass_action
 from app.services.invitations import (
     InvitationError,
     cancel_invitation as svc_cancel_invitation,
+    cancel_invitations_bulk as svc_cancel_invitations_bulk,
     list_invitations,
     mint_invitation,
 )
@@ -45,6 +47,55 @@ def invitations_cancel_submit(invitation_id: str):
             target_type="invitation",
             target_id=invitation_id,
         )
+    return redirect(url_for("admin_ui.invitations_page"))
+
+
+# v0.3.4 (P3): bulk-cancel pending invitations.
+@admin_ui_bp.post("/invitations/bulk-cancel")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def invitations_bulk_cancel_submit():
+    from flask import flash
+
+    ids = [i for i in request.form.getlist("invitation_id") if i]
+    if not ids:
+        flash("Select at least one invitation first.", "warning")
+        return redirect(url_for("admin_ui.invitations_page"))
+    try:
+        mass_action.validate(
+            target_count=len(ids),
+            expected_typed_value="cancel",
+            confirmation_level=request.form.get("confirmation_level"),
+            confirmation_typed_value=request.form.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        flash(
+            f"Bulk cancel affects {len(ids)} invitations and requires "
+            f"confirmation ({e.required_level}).",
+            "error",
+        )
+        return redirect(url_for("admin_ui.invitations_page"))
+    result = svc_cancel_invitations_bulk(ids)
+    audit_service.record(
+        "invitation.bulk_cancelled",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="invitation",
+        target_id=None,
+        details={
+            "cancelled_count": len(result["cancelled"]),
+            "skipped_unknown": len(result["skipped_unknown"]),
+            "skipped_consumed": len(result["skipped_consumed"]),
+            "cancelled_ids": result["cancelled"],
+            "confirmation_level": mass_action.required_level(len(ids)),
+            "reason": "operator",
+        },
+    )
+    flash(
+        f"Cancelled {len(result['cancelled'])} invitation(s)."
+        + (f" {len(result['skipped_consumed'])} already consumed." if result["skipped_consumed"] else "")
+        + (f" {len(result['skipped_unknown'])} unknown." if result["skipped_unknown"] else ""),
+        "info",
+    )
     return redirect(url_for("admin_ui.invitations_page"))
 
 
