@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+{% block title %}Notifications - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>Outgoing email (SMTP)</h2>
+  <p class="muted" style="margin-top:0">
+    Used for: invitations to new admins, password-reset links,
+    test messages, and (post v0.4.1) watchdog-rule notifications.
+  </p>
+
+  {% if smtp.configured %}
+    <p><span class="badge green">configured</span></p>
+  {% else %}
+    <p><span class="badge red">not configured</span> — invitations are still issued (the link shows in the admin console) but no email is sent. Set the env vars below and recreate the container.</p>
+  {% endif %}
+
+  <table style="margin-top:1rem">
+    <tr><th>Host</th><td><code>{{ smtp.host or '—' }}</code></td></tr>
+    <tr><th>Port</th><td><code>{{ smtp.port }}</code></td></tr>
+    <tr><th>Username</th><td><code>{{ smtp.user or '—' }}</code></td></tr>
+    <tr><th>Password</th><td>{% if smtp.password_set %}<span class="badge green">set</span>{% else %}<span class="badge red">unset</span>{% endif %}</td></tr>
+    <tr><th>From</th><td><code>{{ smtp.from_addr or '—' }}</code></td></tr>
+    <tr><th>HELO</th><td><code>{{ smtp.helo or '—' }}</code></td></tr>
+  </table>
+
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    These are read from environment variables — they're set on the
+    docker-compose service, not in the database. To change them, edit
+    <code>/home/dblagbro/docker/docker-compose.yml</code> or the
+    coordinator-hub-managed env file, then recreate the
+    <code>rebooter-droids</code> container.
+  </p>
+  <details style="margin-top:.5rem">
+    <summary class="muted" style="cursor:pointer">Env-var names</summary>
+    <pre style="font-size:.8rem; margin:.5rem 0">REBOOTER_SMTP_HOST
+REBOOTER_SMTP_PORT      (default 587)
+REBOOTER_SMTP_USER
+REBOOTER_SMTP_PASSWORD
+REBOOTER_SMTP_FROM
+REBOOTER_SMTP_HELO      (optional)</pre>
+  </details>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Send a test email</h2>
+  <p class="muted" style="margin-top:0">
+    Sends a one-line "SMTP test OK" message. Audit-logged as
+    <code>smtp.test_sent</code>.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.settings_notifications_test_submit') }}">
+    <label>To <input type="email" name="to" value="{{ current_user_email or '' }}" required></label>
+    <button type="submit">Send test</button>
+  </form>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>What's coming</h2>
+  <ul class="muted">
+    <li><strong>Watchdog-rule notifications</strong> — when a
+      watchdog rule fires (v0.4.1+ probe runtime), email the operator
+      via this same SMTP channel.</li>
+    <li><strong>Per-recipient rule subscriptions</strong> — multiple
+      admins can subscribe to specific rules.</li>
+    <li><strong>Webhooks</strong> — POST rule events to an arbitrary
+      URL for chatops integrations.</li>
+  </ul>
+</div>
+{% endblock %}

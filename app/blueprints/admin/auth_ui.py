@@ -72,6 +72,107 @@ def login_submit():
     return redirect(url_for("admin_ui.index"))
 
 
+# ── v0.4.1: forgot-password + reset-password flow ─────────────────────────
+
+
+@admin_ui_bp.get("/forgot-password")
+def forgot_password_page():
+    return render_template("forgot_password.html", version=__version__, sent=False)
+
+
+@admin_ui_bp.post("/forgot-password")
+@limiter.limit("10 per minute; 50 per hour")
+def forgot_password_submit():
+    from app.config import load_settings
+    from app.services import audit as audit_service
+    from app.services.email import send_password_reset_email
+    from app.services.password_resets import request_reset
+
+    email = (request.form.get("email") or "").strip()
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    token, masked = request_reset(email, ip=ip)
+    if token:
+        settings = load_settings()
+        url = f"{settings.public_base_url.rstrip('/')}/app/reset-password?token={token}"
+        send_password_reset_email(email, url)
+        audit_service.record(
+            "password_reset.requested",
+            actor_user_id=None,
+            actor_email_snapshot=email,
+            target_type="user",
+            target_id=None,
+            details={"ip": ip},
+        )
+    # Always render the same "we sent it if it exists" page — don't
+    # leak whether the email was registered.
+    return render_template(
+        "forgot_password.html",
+        version=__version__,
+        sent=True,
+        masked=masked,
+    )
+
+
+@admin_ui_bp.get("/reset-password")
+def reset_password_page():
+    token = request.args.get("token", "")
+    return render_template(
+        "reset_password.html", version=__version__, token=token, error=None, done=False
+    )
+
+
+@admin_ui_bp.post("/reset-password")
+@limiter.limit("10 per minute; 50 per hour")
+def reset_password_submit():
+    from app.services import audit as audit_service
+    from app.services.password_resets import consume_reset
+
+    token = (request.form.get("token") or "").strip()
+    pw = request.form.get("password") or ""
+    pw2 = request.form.get("password_confirm") or ""
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    if not pw or pw != pw2:
+        return render_template(
+            "reset_password.html",
+            version=__version__,
+            token=token,
+            error="Passwords don't match or are empty.",
+            done=False,
+        )
+    if len(pw) < 8:
+        return render_template(
+            "reset_password.html",
+            version=__version__,
+            token=token,
+            error="Password must be at least 8 characters.",
+            done=False,
+        )
+    user = consume_reset(token, pw, ip=ip)
+    if user is None:
+        return render_template(
+            "reset_password.html",
+            version=__version__,
+            token=token,
+            error="This reset link is invalid or has expired. Request a new one.",
+            done=False,
+        )
+    audit_service.record(
+        "password_reset.consumed",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        target_type="user",
+        target_id=user.id,
+        details={"ip": ip},
+    )
+    return render_template(
+        "reset_password.html",
+        version=__version__,
+        token="",
+        error=None,
+        done=True,
+    )
+
+
 @admin_ui_bp.get("/logout")
 def logout():
     """Sign out of THIS browser session.
