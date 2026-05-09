@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-09
+
+### Added — Watchdog probe runtime (B6 from BACKLOG)
+
+Watchdog rules created in v0.4.0 now actually FIRE.
+
+- **APScheduler watchdog tick** every 10 s. For each enabled rule
+  whose `last_probed_at + window_seconds` has elapsed, runs the
+  probe and writes a `WatchdogProbeEvent`.
+- **Probe kinds shipped** (stdlib only):
+  - `internet` — TCP connect to 1.1.1.1:53.
+  - `tcp` — TCP connect to host:port.
+  - `ping` — falls back to TCP-port-80 to host (no raw ICMP from
+    container by default; native-ICMP queued).
+  - `http` — `GET <url>`, success on 2xx.
+  - `dns` — resolve hostname.
+  - `gateway` — no-op until device firmware reports its LAN gateway
+    in heartbeat (queued for v0.4.3+).
+- **State machine.** failure_streak / recovery_streak / status
+  / last_probed_at / last_action_at / last_outcome stored on the
+  rule row (idempotent ADD COLUMN at startup).
+- **Action dispatch.** When `failure_streak >= failure_threshold`
+  AND outside cooldown:
+  - `cycle` → enqueues `relay_cycle` for each device in the target.
+  - `hold_off` → enqueues `relay_off` + sets `is_held_off`.
+  - `notify_only` → no power action (audit only).
+- **Recovery.** `recovery_threshold` consecutive successes after a
+  failure clears the streaks and re-arms the rule.
+- **Cooldown.** During cooldown failures still log
+  (`outcome=cooldown_skip`); the action does not fire again.
+- **Probe-now diagnostic.** UI button + API
+  `POST /api/v1/admin/rules/<id>/probe-now` runs a single probe
+  synchronously and logs an event. Does NOT advance state or fire
+  actions — purely operator-facing.
+- **Per-rule event log.** New API `GET /api/v1/admin/rules/<id>/events`
+  returns the last 50 events (newest first). Inline expander on
+  the rule list shows the latest 10.
+
+### Operational controls
+
+- `REBOOTER_WATCHDOG_DISABLED=1` — emergency-stop the runtime
+  without touching code (the tick is a no-op).
+
+### Audit hooks
+
+- `watchdog_rule.probed` (per probe-now invocation; per scheduled
+  tick events go through the WatchdogProbeEvent log, not audit).
+
+### Compatibility
+
+- 5 new columns on `watchdog_rules` (failure_streak, recovery_streak,
+  last_probed_at, last_action_at, last_outcome) added via the
+  idempotent ADD COLUMN bootstrap. No migration step.
+- All v0.4.1 routes preserved.
+- Tests for the runtime exercise the synchronous probe-now path
+  (10 tests).
+
 ## [0.4.1] - 2026-05-09
 
 ### Added — Password reset + Notifications tab + 30-day invite default
