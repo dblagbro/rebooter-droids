@@ -516,3 +516,117 @@ When the project resumes:
    in the interim).
 6. Decide which approval gate is being acted on (see §15.3 BLOCKED
    rows) and pick up the corresponding phase.
+
+---
+
+## 16. Engineering snapshot — second pause point (post v0.3.5 + RFC-004)
+
+Added 2026-05-09 (later same day) at the operator's "save state
+and prepare for a pause" call. The §15 snapshot above captured
+the v0.2.11 pause point; this section captures the v0.3.5 + RFC-
+004 pause point. **Both are accurate at their respective
+moments. Read both on resume.**
+
+### 16.1 Live deployment
+
+- Both `https://www.voipguru.org/rebooter` and
+  `https://www2.voipguru.org/rebooter` serve **v0.3.5**.
+  (Architecturally: one logical hub on two URLs — see §16.4.)
+- Container image: `dblagbro/rebooter-droids:0.3.5` /
+  `dblagbro/rebooter-droids:latest`
+  (Docker Hub digest `sha256:c216b8c89e8f...`).
+- Postgres: live; `devices` table is **empty** (operator hit the
+  v0.3.4 bulk-delete bug while testing; the cascade wiped
+  everything including `device_heartbeats`. Real fleet records
+  need re-enrolment when the firmware-side work resumes.)
+
+### 16.2 Repo state
+
+- **Active branch:** `fix/v035-bulk-delete-pair-sync` on
+  `https://github.com/dblagbro/rebooter-droids`.
+- **HEAD:** commit `357c34e` ("docs: RFC-004 multi-hub sync +
+  Settings/Sync stub"). Working tree clean, pushed to origin.
+- **Tags shipped this extension of the session:** `v0.2.7` →
+  `v0.2.11` (covered by §15) plus `v0.3.0`, `v0.3.1`, `v0.3.2`,
+  `v0.3.3`, `v0.3.4`, `v0.3.5`. All annotated tags + GitHub
+  Releases + Docker Hub `:tag` and `:latest` images.
+
+### 16.3 WebUI redesign phase status (per `docs/webui-redesign-plan.md` §9)
+
+| Phase | Description | Shipped as |
+|---|---|---|
+| P1 | Design system + 5-item nav (Status / Devices / Rules / History / Settings) | **v0.3.0** |
+| P2 | Status feed + device list/detail restructure + saved-filter chips + mobile cards + enrollment wizard | **v0.3.1** |
+| P3 | Power controls + safety + `is_protected` lockout + hold-off + cancel-pending + reason field | **v0.3.2** |
+| Auth fix | Cookie domain + `rebooter_session` rename to fix frequent sign-outs | **v0.3.3** (out-of-band hotfix) |
+| Bulk-action UI | Checkboxes + select-all + sticky bar on devices/groups/invitations/tokens | **v0.3.4** |
+| Bulk-action hotfix | Pair-sync paired checkboxes + server-side dedupe + RCA writeup | **v0.3.5** |
+| P4 (watchdog rules + schedules) | Net-new tables, plain-English rule editor, probe runtime | **NOT STARTED** |
+| P5 (RBAC + auth foundation) | Site-as-scope migration, TOTP, OIDC, password reset | **BLOCKED on RFC-003 redlines #1–#3** |
+| P6 (history / notifications / settings UX) | Unified history, notification rules, full settings surface | **BLOCKED on RFC-003 redline #4** |
+| P7 (polish + a11y + Passkeys) | Final polish | last |
+
+### 16.4 RFCs and design docs on disk
+
+| File | Status |
+|---|---|
+| `docs/RFC-001-presence.md` | Draft, awaiting redline |
+| `docs/RFC-002-firmware-mirrors.md` | Draft, ack'd in principle by firmware team (per `docs/notes/2026-05-09-from-firmware-team-rca-response.md`) |
+| `docs/RFC-003-web-ui-redesign.md` | Draft; P1–P3 + bulk-action work executed against it; redlines #1–#4 still open |
+| `docs/RFC-004-multi-hub-sync.md` | **NEW (this pause)** — multi-hub sync design; recommends Option B (Postgres logical replication, active-passive); awaiting operator pick of architecture before any P1+ implementation |
+| `docs/REMEDIATION-PLAN-2026-05-WEB-UI.md` | R1, R2, R3, R7-shadow, R8-CORS shipped; R4–R9 superseded by the webui-redesign-plan above |
+| `docs/webui-redesign-{research,requirements,plan}.md` | Trio shipped earlier in the session; plan §9 is the canonical phase definition |
+| `docs/rca-2026-05-09-no-device-online.md` | RCA for "no device online"; §7 carries the firmware-team reply with corrected current lab state (all 4 devices reachable; only `test-s31-01` has central-transport bug remaining) |
+| `docs/notes/2026-05-09-to-firmware-team-rca-and-hosting.md` | Outgoing cross-team note |
+| `docs/notes/2026-05-09-from-firmware-team-rca-response.md` | Reply (acks RFC-002 in principle; bootstrap is just an ESP8266 .bin at offset 0x00000, can co-host; flash-time URL list is build-flag work) |
+
+### 16.5 What's BLOCKED at this pause point
+
+1. **Multi-hub sync (RFC-004)** — operator must redline
+   §9 questions before P1+ starts. Recommended path: Option B.
+2. **Webui redesign P4 (watchdog rules + schedules)** — net-new
+   feature; needs scoping commitment before any code starts.
+3. **Webui redesign P5 (site-as-scope, OIDC, MFA)** — gated on
+   RFC-003 redlines #1–#3.
+4. **Webui redesign P6 (history / notifications)** — gated on
+   RFC-003 redline #4 + the watchdog data model from P4.
+5. **Firmware-side `test-s31-01` central-transport bug** — only
+   real device-side issue remaining per the firmware-team
+   reply. Backend has nothing to fix here.
+6. **Test fleet** — `devices` table is empty after the v0.3.4
+   bulk-delete cascade. Resuming any QA work needs operator to
+   re-enrol at least one device, OR the QA suite to self-create.
+
+### 16.6 Diagnostic tooling shipped this extension
+
+- `tools/diagnostics/diagnose_signouts.py` — Playwright
+  reproduction of the v0.3.2 → v0.3.3 cookie-domain bug.
+- `tools/diagnostics/README.md` — convention for what lives
+  there and when to promote to `tests/qa/`.
+
+### 16.7 Known pre-existing failures NOT in scope of any current phase
+
+- Group / site / firmware **create** paths still don't
+  audit-log. Surfaced by the v0.2.9 group-detail test; small
+  follow-up minor; no current phase owns it.
+
+### 16.8 Resume-here checklist (refreshed)
+
+When the project resumes:
+
+1. Read this document end-to-end. **§15 captures the v0.2.11
+   pause; §16 captures the v0.3.5 + RFC-004 pause. Both are
+   accurate at their respective moments.**
+2. Read the latest auto-memory entry for rebooter-droids — it
+   points at this file and any further updates since.
+3. Read the cross-team notes under `docs/notes/`.
+4. `curl -s https://www.voipguru.org/rebooter/api/v1/version`
+   should return `0.3.5` (or higher if a teammate shipped
+   further in the interim).
+5. `git status` on `fix/v035-bulk-delete-pair-sync` should be
+   clean. HEAD ≥ `357c34e`.
+6. **Decide which blocked item from §16.5 to pick up** —
+   typically the next move is RFC-003 or RFC-004 redline by the
+   operator (which is product/PM work, not engineering), or
+   re-enrolling at least one device for the firmware team to
+   continue debugging the central-transport bug.
