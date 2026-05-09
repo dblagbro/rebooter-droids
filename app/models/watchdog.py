@@ -125,6 +125,14 @@ class WatchdogRule(Base):
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()
 
+    # ── v0.4.2 runtime state (ADD COLUMN at startup; safe defaults) ──
+    # Counters reset by recovery / cooldown logic in the probe runtime.
+    failure_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recovery_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_probed_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
+    last_action_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
+    last_outcome: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
 
 Index("ix_watchdog_rules_site_enabled_status",
       WatchdogRule.site_id, WatchdogRule.enabled, WatchdogRule.status)

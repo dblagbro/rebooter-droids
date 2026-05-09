@@ -64,6 +64,11 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("devices", "is_qa_fixture", "BOOLEAN NOT NULL DEFAULT FALSE"),  # v0.2.8
     ("devices", "is_protected",  "BOOLEAN NOT NULL DEFAULT FALSE"),  # v0.3.2
     ("devices", "is_held_off",   "BOOLEAN NOT NULL DEFAULT FALSE"),  # v0.3.2
+    ("watchdog_rules", "failure_streak",  "INTEGER NOT NULL DEFAULT 0"),       # v0.4.2
+    ("watchdog_rules", "recovery_streak", "INTEGER NOT NULL DEFAULT 0"),       # v0.4.2
+    ("watchdog_rules", "last_probed_at",  "TIMESTAMPTZ"),                       # v0.4.2
+    ("watchdog_rules", "last_action_at",  "TIMESTAMPTZ"),                       # v0.4.2
+    ("watchdog_rules", "last_outcome",    "VARCHAR(40)"),                       # v0.4.2
 )
 
 
