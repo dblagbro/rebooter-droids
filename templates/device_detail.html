@@ -17,7 +17,10 @@
       <li>incident_cycles: {{ device.latest_heartbeat.incident_cycles or 0 }}</li>
     </ul>
   {% else %}
-    <p class="muted">No heartbeats received yet.</p>
+    <p>
+      <span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
+      <span class="muted">— this device is enrolled but has not yet sent a first heartbeat. Check the firmware: is the device powered, on Wi-Fi, and configured with the correct <code>central_base_url</code>?</span>
+    </p>
   {% endif %}
 </section>
 
