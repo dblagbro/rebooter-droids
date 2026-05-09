@@ -65,6 +65,19 @@ def _validate_payload(cmd_type: str, payload: dict | None) -> dict:
     return payload
 
 
+_POWER_TYPES: frozenset[str] = frozenset({
+    "relay_on", "relay_off", "relay_toggle", "relay_cycle", "device_restart",
+})
+_POWER_ON_TYPES: frozenset[str] = frozenset({
+    "relay_on", "relay_toggle", "relay_cycle",
+})
+
+
+class DeviceLockedError(Exception):
+    """v0.3.2 (P3): power command rejected because the device is
+    `is_protected`. Caller must opt in via override_lockout=True."""
+
+
 def enqueue_for_device(
     device_id: str,
     cmd_type: str,
@@ -72,7 +85,21 @@ def enqueue_for_device(
     issued_by_user_id: str | None,
     ttl_seconds: int | None = None,
     group_id: str | None = None,
+    override_lockout: bool = False,
+    set_hold_off: bool = False,
 ) -> Command:
+    """v0.3.2 (P3): is_protected gate + is_held_off side effect.
+
+    - If the device's `is_protected` is True and `cmd_type` is in
+      `_POWER_TYPES`, the call raises DeviceLockedError unless
+      `override_lockout=True`.
+    - If `set_hold_off=True`, the device's `is_held_off` flag is
+      flipped on as part of the same transaction. Used by the UI's
+      "hold off until manually restored" button.
+    - Power-on commands (relay_on / relay_toggle / relay_cycle)
+      automatically clear `is_held_off` — the operator's act of
+      turning it back on IS the clear.
+    """
     if cmd_type not in ALLOWED_TYPES:
         raise ValueError(f"unsupported command type: {cmd_type}")
     payload = _validate_payload(cmd_type, payload)
@@ -90,6 +117,17 @@ def enqueue_for_device(
         target = session.get(Device, device_id)
         if target is None:
             raise LookupError(device_id)
+        if cmd_type in _POWER_TYPES and target.is_protected and not override_lockout:
+            raise DeviceLockedError(
+                f"device {device_id} is protected; override_lockout=True required"
+            )
+        # Hold-off semantics
+        if set_hold_off:
+            target.is_held_off = True
+            session.add(target)
+        elif cmd_type in _POWER_ON_TYPES and target.is_held_off:
+            target.is_held_off = False
+            session.add(target)
         session.add(cmd)
         session.flush()
         session.expunge(cmd)
@@ -102,12 +140,17 @@ def enqueue_for_group(
     payload: dict | None,
     issued_by_user_id: str | None,
     ttl_seconds: int | None = None,
-) -> list[Command]:
+    override_lockout: bool = False,
+) -> tuple[list[Command], list[str]]:
+    """v0.3.2 (P3): mass fan-out skips locked devices unless override.
+    Returns (created_commands, skipped_device_ids) — UI surfaces the
+    skipped count in the mass-action confirmation flow."""
     if cmd_type not in ALLOWED_TYPES:
         raise ValueError(f"unsupported command type: {cmd_type}")
     payload = _validate_payload(cmd_type, payload)
     expires = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds or DEFAULT_TTL_SECONDS)
     created: list[Command] = []
+    skipped: list[str] = []
     with session_scope() as session:
         device_ids = list(
             session.scalars(
@@ -115,6 +158,15 @@ def enqueue_for_group(
             )
         )
         for did in device_ids:
+            target = session.get(Device, did)
+            if target is None:
+                continue
+            if cmd_type in _POWER_TYPES and target.is_protected and not override_lockout:
+                skipped.append(did)
+                continue
+            if cmd_type in _POWER_ON_TYPES and target.is_held_off:
+                target.is_held_off = False
+                session.add(target)
             cmd = Command(
                 device_id=did,
                 group_id=group_id,
@@ -129,7 +181,26 @@ def enqueue_for_group(
         session.flush()
         for c in created:
             session.expunge(c)
-    return created
+    return created, skipped
+
+
+def cancel_pending_command(command_id: str, by_user_id: str | None) -> bool:
+    """v0.3.2 (P3): operator-cancel a queued command before delivery.
+
+    Only commands in `pending` status can be cancelled — once the
+    device has accepted (status='accepted') we can't pull it back.
+    Returns True on success, False if the command isn't found or is
+    no longer cancellable.
+    """
+    with session_scope() as session:
+        cmd = session.get(Command, command_id)
+        if cmd is None or cmd.status != "pending":
+            return False
+        cmd.status = "cancelled"
+        cmd.completed_at = datetime.now(timezone.utc)
+        session.add(cmd)
+        session.flush()
+        return True
 
 
 def list_pending_for_device(device_id: str, mark_delivered: bool = True) -> list[Command]:

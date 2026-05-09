@@ -142,15 +142,23 @@ def group_send_command_submit(group_id: str):
         )
         return redirect(url_for("admin_ui.group_detail_page", group_id=group_id))
 
+    override_lockout = (request.form.get("override_lockout") or "").lower() in ("1", "true", "yes")
     try:
-        cmds = enqueue_for_group(
+        cmds, skipped = enqueue_for_group(
             group_id=group_id,
             cmd_type=cmd_type,
             payload=payload,
             issued_by_user_id=g.current_user.id,
+            override_lockout=override_lockout,
         )
     except ValueError:
         abort(400)
+    if skipped:
+        flash(
+            f"{len(skipped)} protected device{'s were' if len(skipped) != 1 else ' was'} "
+            f"skipped. Re-submit with override_lockout=1 to include them.",
+            "warning",
+        )
     audit_service.record(
         "group.mass_command_issued",
         actor_user_id=g.current_user.id,
@@ -161,6 +169,9 @@ def group_send_command_submit(group_id: str):
             "type": cmd_type,
             "target_count": target_count,
             "fan_out_count": len(cmds),
+            "skipped_protected": len(skipped),
+            "override_lockout": override_lockout,
+            "reason": "operator",
             "confirmation_level": mass_action.required_level(target_count),
         },
     )
@@ -276,13 +287,15 @@ def send_group_command(group_id: str):
             },
         )
 
+    override_lockout = bool(body.get("override_lockout"))
     try:
-        cmds = enqueue_for_group(
+        cmds, skipped = enqueue_for_group(
             group_id=group_id,
             cmd_type=cmd_type,
             payload=body.get("payload"),
             issued_by_user_id=g.current_user.id,
             ttl_seconds=body.get("ttl_seconds"),
+            override_lockout=override_lockout,
         )
     except ValueError as e:
         return err("validation_failed", str(e), status=400)
@@ -296,6 +309,9 @@ def send_group_command(group_id: str):
             "type": cmd_type,
             "target_count": target_count,
             "fan_out_count": len(cmds),
+            "skipped_protected": len(skipped),
+            "override_lockout": override_lockout,
+            "reason": "operator",
             "confirmation_level": mass_action.required_level(target_count),
         },
     )
@@ -304,6 +320,7 @@ def send_group_command(group_id: str):
             "fan_out_count": len(cmds),
             "target_count": target_count,
             "command_ids": [c.id for c in cmds],
+            "skipped_protected_device_ids": skipped,
         },
         status=201,
     )

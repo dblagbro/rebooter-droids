@@ -33,6 +33,8 @@ def serialize_device(d: Device, include_secret_status: bool = True) -> dict:
         "notes": d.notes,
         "last_heartbeat_at": _iso(d.last_heartbeat_at),
         "is_qa_fixture": bool(d.is_qa_fixture),
+        "is_protected": bool(d.is_protected),
+        "is_held_off": bool(d.is_held_off),
         "created_at": _iso(d.created_at),
         "updated_at": _iso(d.updated_at),
     }
@@ -236,7 +238,13 @@ def get_device_detail(device_id: str) -> dict | None:
         return out
 
 
-_PATCHABLE = {"display_name", "site_id", "notes", "central_management_enabled"}
+_PATCHABLE = {
+    "display_name",
+    "site_id",
+    "notes",
+    "central_management_enabled",
+    "is_protected",  # v0.3.2 (P3)
+}
 
 
 def delete_device(device_id: str) -> bool:
