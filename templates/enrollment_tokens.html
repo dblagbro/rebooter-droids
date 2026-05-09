@@ -24,11 +24,27 @@
 
 <h2>Existing tokens</h2>
 {% if tokens %}
+<form method="post" action="{{ url_for('admin_ui.enrollment_tokens_bulk_revoke_submit') }}"
+      data-bulk-form>
+  <input type="hidden" name="confirmation_level" value="">
+  <input type="hidden" name="confirmation_typed_value" value="">
+
 <div class="table-wrap"><table>
-  <thead><tr><th>ID</th><th>Hint</th><th>Note</th><th>Created</th><th>Expires</th><th>State</th></tr></thead>
+  <thead><tr>
+    <th class="v3-bulk-checkbox-cell">
+      <input type="checkbox" class="v3-bulk-master" data-bulk-master aria-label="Select all pending tokens">
+    </th>
+    <th>ID</th><th>Hint</th><th>Note</th><th>Created</th><th>Expires</th><th>State</th><th></th>
+  </tr></thead>
   <tbody>
   {% for t in tokens %}
     <tr>
+      <td class="v3-bulk-checkbox-cell">
+        {% if not t.consumed_at %}
+        <input type="checkbox" class="v3-bulk-checkbox" name="token_id" value="{{ t.id }}"
+               data-bulk-row aria-label="Select token {{ t.id }}">
+        {% endif %}
+      </td>
       <td><code>{{ t.id }}</code></td>
       <td>{{ t.display_name_hint or '—' }}</td>
       <td>{{ t.note or '—' }}</td>
@@ -40,10 +56,32 @@
         {% else %}<span class="badge green">available</span>
         {% endif %}
       </td>
+      <td>
+        {% if not t.consumed_at %}
+        <button type="submit" formmethod="post"
+                formaction="{{ url_for('admin_ui.enrollment_token_revoke_submit', token_id=t.id) }}"
+                formnovalidate
+                onclick="return confirm('Revoke this enrollment token?');">
+          Revoke
+        </button>
+        {% endif %}
+      </td>
     </tr>
   {% endfor %}
   </tbody>
 </table></div>
+
+<div class="v3-bulk-bar" data-bulk-bar role="region" aria-label="Bulk actions">
+  <div><span class="v3-bulk-bar-count" data-bulk-bar-count>0</span> selected</div>
+  <div class="v3-bulk-bar-actions">
+    <button type="submit" class="btn-danger" data-bulk-submit
+            data-bulk-verb="revoke" data-bulk-noun="token">
+      Revoke selected
+    </button>
+  </div>
+</div>
+
+</form>
 {% else %}
   <p class="muted">No tokens minted yet.</p>
 {% endif %}

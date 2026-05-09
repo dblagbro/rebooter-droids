@@ -51,6 +51,53 @@ def list_enrollment_tokens() -> list[EnrollmentToken]:
     return rows
 
 
+def revoke_enrollment_token(token_id: str) -> bool:
+    """v0.3.4 (P3): operator-revoke a still-pending enrollment token.
+
+    Hard-deletes only if the token has NOT been consumed — a consumed
+    token is a record of a real device's bring-up and the audit chain
+    needs it. Expired-but-unconsumed tokens delete cleanly.
+    Returns True on delete, False on no-op (unknown / already consumed).
+    """
+    with session_scope() as session:
+        et = session.get(EnrollmentToken, token_id)
+        if et is None:
+            return False
+        if et.consumed_at is not None:
+            return False
+        session.delete(et)
+        session.flush()
+        return True
+
+
+def revoke_enrollment_tokens_bulk(token_ids: list[str]) -> dict:
+    """v0.3.4 (P3): bulk-revoke pending enrollment tokens.
+
+    Returns {"revoked": [...], "skipped_unknown": [...],
+    "skipped_consumed": [...]}.
+    """
+    revoked: list[str] = []
+    skipped_unknown: list[str] = []
+    skipped_consumed: list[str] = []
+    with session_scope() as session:
+        for tid in token_ids:
+            et = session.get(EnrollmentToken, tid)
+            if et is None:
+                skipped_unknown.append(tid)
+                continue
+            if et.consumed_at is not None:
+                skipped_consumed.append(tid)
+                continue
+            session.delete(et)
+            revoked.append(tid)
+        session.flush()
+    return {
+        "revoked": revoked,
+        "skipped_unknown": skipped_unknown,
+        "skipped_consumed": skipped_consumed,
+    }
+
+
 def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[Device, str]:
     """
     Exchange an enrollment token for a new device + bearer credential.

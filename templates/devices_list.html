@@ -61,11 +61,21 @@
   {% include "_components/empty_state.html" %}
 {% else %}
 
+{% set can_bulk_delete = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+
+<form method="post" action="{{ url_for('admin_ui.devices_bulk_delete_submit') }}"
+      data-bulk-form>
+  <input type="hidden" name="confirmation_level" value="">
+  <input type="hidden" name="confirmation_typed_value" value="">
+
 {# ── desktop table layout ────────────────────────────────────────────── #}
 <div class="v3-devices-table">
   <div class="table-wrap"><table>
     <thead>
       <tr>
+        {% if can_bulk_delete %}<th class="v3-bulk-checkbox-cell">
+          <input type="checkbox" class="v3-bulk-master" data-bulk-master aria-label="Select all devices">
+        </th>{% endif %}
         <th>Name</th>
         <th>State</th>
         <th>Online</th>
@@ -78,9 +88,14 @@
     <tbody>
     {% for d in devices %}
       <tr>
+        {% if can_bulk_delete %}<td class="v3-bulk-checkbox-cell">
+          <input type="checkbox" class="v3-bulk-checkbox" name="device_id" value="{{ d.id }}"
+                 data-bulk-row aria-label="Select {{ d.display_name or d.id }}">
+        </td>{% endif %}
         <td>
           <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
           {% if d.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
+          {% if d.is_protected %}<span class="badge red" title="protected — bulk delete will skip unless override">🔒</span>{% endif %}
         </td>
         <td><span class="badge">{{ d.registration_state }}</span></td>
         <td>
@@ -109,10 +124,22 @@
   {% for d in devices %}
   <article class="v3-device-card">
     <div class="v3-device-card-head">
+      {% if can_bulk_delete %}
+      <label style="display:inline-flex;align-items:center;gap:.5rem;cursor:pointer">
+        <input type="checkbox" class="v3-bulk-checkbox" name="device_id" value="{{ d.id }}"
+               data-bulk-row aria-label="Select {{ d.display_name or d.id }}">
+        <span class="v3-device-card-name">
+          <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
+          {% if d.is_qa_fixture %}<span class="badge" style="font-size:.7rem">QA</span>{% endif %}
+          {% if d.is_protected %}<span class="badge red" style="font-size:.7rem">🔒</span>{% endif %}
+        </span>
+      </label>
+      {% else %}
       <div class="v3-device-card-name">
         <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
         {% if d.is_qa_fixture %}<span class="badge" style="font-size:.7rem">QA</span>{% endif %}
       </div>
+      {% endif %}
       <div>
         {% if d.heartbeat_state == 'online' %}<span class="badge green">online</span>
         {% elif d.heartbeat_state == 'never' %}<span class="badge">never heartbeated</span>
@@ -134,5 +161,25 @@
   </article>
   {% endfor %}
 </div>
+
+{% if can_bulk_delete %}
+<div class="v3-bulk-bar" data-bulk-bar role="region" aria-label="Bulk actions">
+  <div>
+    <span class="v3-bulk-bar-count" data-bulk-bar-count>0</span> selected
+  </div>
+  <div class="v3-bulk-bar-actions">
+    <label style="display:inline-flex;align-items:center;gap:.35rem;font-size:.9rem">
+      <input type="checkbox" name="override_lockout" value="1">
+      override 🔒 protected
+    </label>
+    <button type="submit" class="btn-danger" data-bulk-submit
+            data-bulk-verb="delete" data-bulk-noun="device">
+      Delete selected
+    </button>
+  </div>
+</div>
+{% endif %}
+
+</form>
 {% endif %}
 {% endblock %}
