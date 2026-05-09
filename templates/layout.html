@@ -52,7 +52,13 @@
     </nav>
     <div class="topbar-actions">
       <span class="version" title="rebooter-droids version">v{{ version }}</span>
+      {% if current_user.role == 'super_admin' %}
+      <span class="badge red" title="You are signed in as a super admin — actions affect the whole fleet">super admin</span>
+      {% elif current_user.role == 'admin' %}
+      <span class="badge" title="admin role">admin</span>
+      {% endif %}
       <a href="{{ url_for('admin_ui.me_page') }}" class="muted" aria-label="Profile">@me</a>
+      <a href="{{ url_for('admin_ui.logout') }}" class="muted signout" aria-label="Sign out">Sign out</a>
     </div>
   </header>
 {% endif %}

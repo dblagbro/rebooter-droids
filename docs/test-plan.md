@@ -1,7 +1,19 @@
 # Test Plan
 
-**Status:** v0.1.2 baseline — first formal test plan. Suite lives in
-`tests/qa/`.
+**Status:** v0.4.2 baseline — refreshed 2026-05-09 PM after the
+session that shipped v0.4.0 → v0.4.2 (watchdog rules + password
+reset + watchdog runtime). Suite lives in `tests/qa/` (31 files,
+242 tests).
+
+**Health snapshot (2026-05-09 PM):**
+- Isolated-file run of every test file: 7 real failures
+  (BUG-024 stale tests + BUG-025 timeout config + BUG-026 cookie
+  name + BUG-022 + BUG-023). 235 pass.
+- Full-suite run: 34 failures — 27 of those are cascade victims
+  of BUG-021 (non-isolated session-scoped admin token).
+- New test files added this session: `test_v040_watchdog_rules.py`,
+  `test_v041_password_reset.py`, `test_v042_watchdog_runtime.py`.
+  All 26 new tests pass in isolation AND in the v0.4.x bundle.
 
 ## Surface inventory
 
@@ -63,8 +75,35 @@
 - No DR drill (no backup procedure documented for the Postgres volume)
 - No chaos test (kill `rebooter-droids-pg` mid-request)
 - No XSS / SSRF probing (basic input handling only)
-- No rate-limiting test — system has no rate limiting (logged as a
-  hardening finding)
+- ~~No rate-limiting test~~ — shipped post-v0.2.x; lives in
+  `test_hardening_probes.py::test_login_rate_limit_kicks_in` (note:
+  BUG-025 — needs ≥80 s timeout to complete the post-window verify).
+- **No watchdog-runtime end-to-end probe-tick coverage** — v0.4.2
+  ships the runtime but tests only exercise the synchronous
+  probe-now path. A full end-to-end test (create rule, wait for
+  three ticks against a known-failing probe, assert action_fired
+  event) would need a 30 s+ wall-clock test — recommend marking
+  `@pytest.mark.slow`.
+- **No multi-hub sync coverage** — entire RFC-004 surface is
+  pre-implementation; no test scaffolding exists yet.
+- **No firmware OTA end-to-end coverage** — RFC-002 P1 mirror
+  chain is shipped (v0.3.9 + v0.4.0 tests cover URL shapes) but
+  no test covers a real device pulling the OTA + applying it.
+- **No invitation-redemption end-to-end with email delivery** —
+  the redeem flow is tested at the API level, but the email
+  pipeline (SMTP → user mailbox) is not exercised end-to-end.
+
+## Coverage added 2026-05-09 PM (this session)
+
+- v0.4.0 — `test_v040_watchdog_rules.py` (10 tests): rule CRUD,
+  validation, sentence render, UI render, enable/disable toggle.
+- v0.4.1 — `test_v041_password_reset.py` (10 tests): forgot/reset
+  GET+POST, non-disclosure, weak-password rejection, mismatched
+  password rejection, Notifications tab render, settings-strip
+  inclusion.
+- v0.4.2 — `test_v042_watchdog_runtime.py` (6 tests): probe-now
+  HTTP success/failure, TCP success/failure, no-state-advance
+  invariant, unknown-rule 404, button presence on UI.
 
 ## How to run
 
