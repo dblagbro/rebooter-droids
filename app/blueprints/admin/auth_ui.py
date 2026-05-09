@@ -18,8 +18,22 @@ from app.version import __version__
 
 @admin_ui_bp.get("/login")
 def login_page():
-    if session.get("user_id"):
-        return redirect(url_for("admin_ui.index"))
+    """v0.3.7: don't redirect-on-cookie-truthiness alone. Verify the
+    cookie's user_id resolves to an active, freshness-valid user
+    before bouncing them to /app/. Otherwise a stale cookie
+    (deleted user, deactivated, or `tokens_valid_after`-bumped
+    cutoff) creates a redirect loop with admin_required_ui:
+       /app/  → 302 /app/login (middleware can't load user)
+       /app/login → 302 /app/  (we saw user_id in the cookie)
+    Verify-or-clear breaks the loop."""
+    user_id = session.get("user_id")
+    if user_id:
+        from app.middleware.admin_auth import _resolve_user
+
+        if _resolve_user() is not None:
+            return redirect(url_for("admin_ui.index"))
+        # Stale cookie — _resolve_user already cleared the session.
+        # Fall through to render the login form.
     return render_template("login.html", version=__version__, error=None)
 
 

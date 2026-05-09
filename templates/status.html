@@ -22,9 +22,18 @@
     <li class="v3-attention-item v3-sev-{{ item.severity }}">
       <div class="v3-attention-summary">
         <strong>{{ item.title }}</strong>
-        <a href="{{ url_for('admin_ui.device_detail_page', device_id=item.device_id) }}" class="v3-attention-target">
-          {{ item.device_name }}
-        </a>
+        {% if item.kind == 'device_auth_rejected' %}
+          {# claimed device id is not a real device row — link to the
+             diagnostic page instead of /app/devices/<id> which would 404. #}
+          <a href="{{ url_for('admin_ui.unregistered_devices_page') }}"
+             class="v3-attention-target" title="{{ item.device_id }} from {{ item.source_ip }}">
+            {{ item.device_name }}{% if item.source_ip %} <span class="muted">({{ item.source_ip }})</span>{% endif %}
+          </a>
+        {% else %}
+          <a href="{{ url_for('admin_ui.device_detail_page', device_id=item.device_id) }}" class="v3-attention-target">
+            {{ item.device_name }}
+          </a>
+        {% endif %}
       </div>
       {% if item.since %}<div class="v3-attention-since muted">since {{ item.since }}</div>{% endif %}
       {% if item.hint %}<div class="v3-attention-hint muted">{{ item.hint }}</div>{% endif %}

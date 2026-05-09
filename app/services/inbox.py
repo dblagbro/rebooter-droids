@@ -22,6 +22,11 @@ Attention item kinds (R-DSH-3):
   - `device_offline_long`    — heartbeated before, gone silent > 24 h
   - `device_never`           — enrolled but never heartbeated > 30 min
   - `enrollment_pending`     — enrolled within last hour, no first heartbeat
+  - `device_auth_rejected`   — device tried to call but bearer token was rejected
+                               (v0.3.6: surfaces the unregistered_auth_attempts
+                               signal so an operator can see "this device IS
+                               trying but I need to re-enrol it" without
+                               diving into /app/unregistered-devices)
   - `firmware_update_seen`   — device booted on new firmware version
 
 Each item carries a stable `id` (composite of kind + target) so a
@@ -46,6 +51,35 @@ SHORT_OFFLINE_SECONDS = 3 * 60       # 3 min — beyond the heartbeat window
 LONG_OFFLINE_SECONDS = 24 * 60 * 60  # 24 h
 NEVER_HEARTBEATED_GRACE_SECONDS = 30 * 60   # ignore brand-new units < 30 min old
 ENROLLMENT_PENDING_WINDOW_SECONDS = 60 * 60 # < 1 h since registration
+
+# v0.3.6 device_auth_rejected:
+# Only surface if the same (claimed_device_id, source_ip, endpoint)
+# has been rejected at least 3 times in the lookback window —
+# avoids noise from a single transient bad request.
+DEVICE_AUTH_REJECTED_LOOKBACK_MINUTES = 60
+DEVICE_AUTH_REJECTED_MIN_HITS = 3
+
+# v0.3.7: source IPs that are NEVER real devices. Filter them out
+# of the attention feed so the operator doesn't see machine-
+# internal noise (QA tests, healthchecks, container-to-container
+# traffic that doesn't go through nginx + ProxyFix).
+_NEVER_REAL_DEVICE_IPS = frozenset({
+    "127.0.0.1",
+    "::1",
+    "192.168.18.1",  # docker bridge gateway as seen inside rebooter-droids container
+})
+
+# v0.3.7: claimed-device-id prefixes that mark a request as
+# QA-test-shaped. Mirror the v0.2.8 fixture-prefix logic
+# (services/enrollment.py::_QA_PREFIXES) plus the dev_QA_ shape
+# the v0.3.6 attention-feed test happens to emit.
+_QA_AUTH_REJECTED_PREFIXES = (
+    "qa ", "qa-", "qa_",
+    "test-", "test_",
+    "playwright",
+    "dev_qa_",  # the v0.3.6 test bucket's synthetic device-id shape
+    "dev_test",
+)
 
 
 def _iso(dt) -> str | None:
@@ -72,6 +106,7 @@ def health_and_attention(limit: int = 50) -> dict:
                 "devices_offline_long": 0,
                 "devices_never": 0,
                 "enrollments_pending": 0,
+                "auth_rejected": 0,
             },
         }
 
@@ -169,6 +204,59 @@ def _compute(limit: int = 50) -> dict:
             else:
                 devices_online += 1
 
+    # v0.3.6: device_auth_rejected items.
+    # Surface unregistered_auth_attempts in the lookback window where the
+    # same (device_id, source_ip, endpoint) tuple has been rejected at
+    # least DEVICE_AUTH_REJECTED_MIN_HITS times — strong signal that a
+    # real device is trying but holding a stale token.
+    auth_rejected_count = 0
+    try:
+        from app.services import unregistered as unreg_service
+
+        for row in unreg_service.list_recent(
+            limit=50,
+            since_minutes=DEVICE_AUTH_REJECTED_LOOKBACK_MINUTES,
+        ):
+            if row["hit_count"] < DEVICE_AUTH_REJECTED_MIN_HITS:
+                continue
+            ip = row["source_ip"] or "?"
+            cdi = row["claimed_device_id"] or "(no device_id)"
+            # v0.3.7: filter QA / machine-internal noise. The operator
+            # cares about "is a real LAN device hitting central with a
+            # bad token"; they do not care about our own QA tests
+            # provoking 401s for regression coverage.
+            if ip in _NEVER_REAL_DEVICE_IPS:
+                continue
+            cdi_lc = cdi.lower()
+            if cdi_lc.startswith(_QA_AUTH_REJECTED_PREFIXES):
+                continue
+            auth_rejected_count += 1
+            attention.append(
+                {
+                    "kind": "device_auth_rejected",
+                    "id": f"device_auth_rejected:{cdi}:{ip}:{row['endpoint']}",
+                    "severity": "warn",
+                    "title": (
+                        f"Device auth rejected ({row['hit_count']} attempts) "
+                        f"on {row['endpoint']}"
+                    ),
+                    "device_id": cdi,
+                    "device_name": cdi,
+                    "source_ip": ip,
+                    "since": row["last_seen_at"],
+                    "hint": (
+                        "A device is calling with a stale or unknown bearer "
+                        "token. Mint a fresh enrollment token and re-enrol "
+                        "the device — the firmware's 401 → re-enroll loop "
+                        "should pick it up automatically."
+                    ),
+                    "rank": 35,
+                }
+            )
+    except Exception:
+        # Best-effort: never let a tracker query failure crash Status.
+        log.exception("inbox.device_auth_rejected query failed")
+
     attention.sort(key=lambda x: (-x["rank"], x.get("since") or ""), reverse=False)
     attention = attention[:limit]
 
@@ -178,6 +266,7 @@ def _compute(limit: int = 50) -> dict:
         + devices_offline_long
         + devices_never
         + enrollments_pending
+        + auth_rejected_count
     )
 
     if devices_total == 0:
@@ -222,5 +311,6 @@ def _compute(limit: int = 50) -> dict:
             "devices_offline_long": devices_offline_long,
             "devices_never": devices_never,
             "enrollments_pending": enrollments_pending,
+            "auth_rejected": auth_rejected_count,
         },
     }
