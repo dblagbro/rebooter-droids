@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, g, request, session
 
 from app.middleware.admin_auth import admin_required_api
+from app.middleware.rate_limit import limiter
 from app.middleware.response import err, ok
 from app.services.auth import (
     authenticate,
@@ -16,6 +17,7 @@ bp = Blueprint("auth", __name__)
 
 
 @bp.post("/login")
+@limiter.limit("30 per minute; 200 per hour")
 def login():
     body = request.get_json(silent=True) or request.form.to_dict()
     email = (body.get("email") or "").strip()
@@ -52,6 +54,7 @@ def logout():
 
 
 @bp.post("/refresh")
+@limiter.limit("30 per minute; 200 per hour")
 def refresh():
     body = request.get_json(silent=True) or {}
     token = body.get("refresh_token")

@@ -16,7 +16,7 @@ class Site(Base):
     id: Mapped[str] = mapped_column(
         String(40), primary_key=True, default=partial(new_id, "site")
     )
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = ts_column()
