@@ -6,6 +6,7 @@ import os
 import tempfile
 
 import jwt
+import pytest
 import requests
 
 from .conftest import unique_suffix
@@ -284,12 +285,16 @@ def test_logout_does_not_revoke_cookie_server_side(base_url):
 
 # ── auth brute-force / rate limiting ───────────────────────────────────────
 
+@pytest.mark.timeout(120)
 def test_login_rate_limit_kicks_in(base_url):
     """v0.1.4 — login is rate-limited (30/minute, 200/hour) per IP.
 
     Fire 35 rapid bad-password attempts and verify at least one 429
-    surfaces. We then sleep enough to clear the per-minute window so
-    later tests in the suite still authenticate cleanly.
+    surfaces. The 35-call burst takes ~5s; we then sleep ~65s so the
+    per-minute window clears and later tests in the suite still
+    authenticate cleanly. Total wall time is ~70s so this test
+    explicitly carries `@pytest.mark.timeout(120)` (BUG-025) — the
+    suite default is 60s which would kill it.
     """
     import time as _t
 
@@ -307,6 +312,9 @@ def test_login_rate_limit_kicks_in(base_url):
     )
     # And no 5xx surfaced on the way to the limit.
     assert not any(s >= 500 for s in statuses)
+    # Sleep so the per-minute window clears for downstream tests
+    # that use the same source IP.
+    _t.sleep(65)
     # Drain the per-minute bucket so later tests can still log in.
     _t.sleep(61)
 

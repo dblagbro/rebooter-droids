@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-05-09
+
+### Test-infrastructure hardening (BUG-021 / 024 / 025 / 026)
+
+Closes the four test-infra defects from the post-v0.4.2 deep
+regression. The QA suite now runs clean against the live deployment
+without cascade failures.
+
+- **BUG-021 — disposable_admin_session fixture.** Tests that mutate
+  auth state on the admin user (call `/api/v1/auth/logout`,
+  redeem a password reset, run revoke-all) now use a fresh,
+  fixture-managed admin user instead of poisoning the
+  bootstrap admin's `tokens_valid_after`. The session-scoped
+  `admin_token` fixture stays — but no test file calls
+  `/api/v1/auth/logout` on the bootstrap admin anymore.
+- **BUG-024 — stale tests updated.** `test_login_logout_round_trip`
+  now asserts page title contains "Status" (v0.3.1 R-DSH-1).
+  `test_create_group_does_not_log_user_out` checks for
+  `rebooter_session` cookie name (v0.3.3 cookie-domain rework).
+- **BUG-025 — rate-limit test gets `@pytest.mark.timeout(120)`.**
+  Includes a 65 s post-burst sleep to clear the per-minute window
+  for downstream tests.
+- **BUG-026 — invitation-redeem cookie name fixed.** Asserts
+  `rebooter_session` not `session`.
+
+### New env var: `REBOOTER_RATE_LIMIT_EXEMPT_IPS`
+
+Comma-separated list of client IPs whose requests bypass the
+rate limiter. Used for the QA test host so a full suite run
+(~50 logins) doesn't burn through the per-IP 200/hour budget.
+**NEVER set this for arbitrary client IPs in production.**
+Implemented via Flask-Limiter `request_filter` which short-
+circuits the entire decorator chain when the IP matches.
+
+### Compatibility
+
+- All v0.4.3 routes preserved.
+- New env var has a safe default (`192.168.18.1,127.0.0.1` —
+  docker bridge gateway + loopback) which is harmless in any
+  internet-facing deployment because those addresses can never
+  appear as a real client IP after `ProxyFix(x_for=1)` parses
+  `X-Forwarded-For`.
+
 ## [0.4.3] - 2026-05-09
 
 ### Fixed — Quick wins from the post-v0.4.2 deep regression

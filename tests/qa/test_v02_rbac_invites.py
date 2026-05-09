@@ -62,7 +62,8 @@ def test_invitation_redeem_creates_user_and_signs_in(base_url, admin_headers):
         allow_redirects=False,
     )
     assert redeem.status_code in (302, 303), redeem.text
-    assert "session" in sess.cookies, "redeem should issue a session cookie"
+    # v0.3.3 cookie-domain rework renamed `session` → `rebooter_session`.
+    assert "rebooter_session" in sess.cookies, "redeem should issue a rebooter_session cookie"
 
     # The user should now exist and have role=operator
     r2 = sess.get(
