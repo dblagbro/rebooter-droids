@@ -155,3 +155,46 @@ Statuses: `open · fixed-in-vX.Y.Z · wontfix · monitoring · suspected`.
 - **Detail:** A PATCH with `{}` bumps `updated_at` even though nothing
   changed. Trivial; recommend skipping the bump when the patch is a
   no-op.
+
+## BUG-012 — No mass-action confirmation gate (fixed in v0.2.5)
+
+- **Severity:** medium (operator safety)
+- **Area:** `app/blueprints/admin_ui.py`, `app/blueprints/admin_api.py`,
+  `app/services/mass_action.py` (new)
+- **Status:** **fixed in v0.2.5**
+- **Detail:** A super-admin who clicked "Fan out relay_cycle" on a group
+  with a hundred members had no client-side or server-side prompt; one
+  click could relay-cycle the whole estate. Equally, a single
+  `POST /api/v1/admin/firmware/deployments` with `target_type=all_devices`
+  could OTA the fleet with no confirmation.
+- **Fix:** server-side gate in `app/services/mass_action.py`. Thresholds:
+  `target_count <= 5` → no confirmation; `5 < N <= 20` → caller must
+  supply `confirmation_level=simple`; `N > 20` → caller must supply
+  `confirmation_level=typed` AND `confirmation_typed_value` matching
+  the verb (case-sensitive). UI sets the form fields via a small JS
+  helper (`static/js/mass_action.js`) — server is source of truth.
+- **Audit log:** new event types `group.mass_command_issued` and
+  `firmware.mass_deployment_issued` capture `target_count`,
+  `fan_out_count`, and the confirmation level used.
+
+## BUG-013 — Unregistered firmware heartbeats invisible (fixed in v0.2.5)
+
+- **Severity:** medium (visibility / firmware bring-up)
+- **Area:** `app/middleware/device_auth.py`,
+  `app/services/unregistered.py` (new),
+  `app/models/unregistered.py` (new)
+- **Status:** **fixed in v0.2.5**
+- **Detail:** First-real-device incident, 2026-05-09: firmware shipped
+  with a hard-coded `device_id` (`dev_01KR5EXMVJ7028D5PSAKEV6KWB`) that
+  had never gone through `POST /api/v1/device/register`. The device
+  spent hours hitting `/api/v1/device/heartbeat` from 47.230.251.21
+  with `User-Agent: ESP8266HTTPClient`, every call returning 401.
+  The 401s were buried in nginx logs and there was no UI surface for
+  ops to spot the loop.
+- **Fix:** new `unregistered_auth_attempts` table aggregates one row
+  per `(claimed_device_id, source_ip, endpoint)` with hit count and
+  last-seen timestamps. The `device_auth_required` middleware records
+  every 401 (best-effort, never raises). Admin UI surface at
+  `/app/unregistered-devices` plus a dashboard tile and nav badge with
+  60-min count. API at `GET /api/v1/admin/unregistered-devices`.
+  Rolling cap of 5000 rows; oldest 10% pruned on overflow.

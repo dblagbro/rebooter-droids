@@ -358,15 +358,15 @@ automation controls (later), buffering during partition.
 
 ## 12. Open questions — decisions needed before lock
 
-| # | Question | Owner |
-|---|---|---|
-| Q1 | Cooldown default — **60 s** for relay commands? Firmware team to confirm safe minimum after `relay_cycle`. | firmware |
-| Q2 | iOS active-region rotation strategy and concrete UX. | mobile |
-| Q3 | Confirm `subject_kind` enum is complete: `phone`, `laptop`, `vehicle`, `network_presence_source`. Add a `kiosk` kind? | design |
-| Q4 | Do we ever do `apply_config` from an automation, or are automations strictly group/device commands? Default proposal: **only group/device commands in v1**, no `apply_config` from automations. | design |
-| Q5 | Multi-user occupancy: how do we handle "guest" phones (someone visits Home, briefly registers, leaves)? Don't enrol guests as subjects? | design |
-| Q6 | Mobile app distribution — App Store + Play Store, internal TestFlight first, web-PWA fallback? | mobile |
-| Q7 | Locale + timezone: assume UTC server-side, render in user's TZ in mobile + admin UI? | design |
+| # | Question | Owner | Status |
+|---|---|---|---|
+| Q1 | Cooldown default — **60 s** for relay commands? Firmware team to confirm safe minimum after `relay_cycle`. | firmware | **LOCKED 2026-05-09** — see §15 |
+| Q2 | iOS active-region rotation strategy and concrete UX. | mobile | open |
+| Q3 | Confirm `subject_kind` enum is complete: `phone`, `laptop`, `vehicle`, `network_presence_source`. Add a `kiosk` kind? | design | **LOCKED 2026-05-09** — see §15 |
+| Q4 | Do we ever do `apply_config` from an automation, or are automations strictly group/device commands? Default proposal: **only group/device commands in v1**, no `apply_config` from automations. | design | **LOCKED 2026-05-09** — see §15 |
+| Q5 | Multi-user occupancy: how do we handle "guest" phones (someone visits Home, briefly registers, leaves)? Don't enrol guests as subjects? | design | **LOCKED 2026-05-09** — see §15 |
+| Q6 | Mobile app distribution — App Store + Play Store, internal TestFlight first, web-PWA fallback? | mobile | open |
+| Q7 | Locale + timezone: assume UTC server-side, render in user's TZ in mobile + admin UI? | design | **LOCKED 2026-05-09** — see §15 |
 
 ## 13. Out of scope (deferred to v2 or later)
 
@@ -399,6 +399,38 @@ automation controls (later), buffering during partition.
 
 - **2026-05-09** — RFC seeded from firmware/design team's RFC + backend
   team's reply. Status = Draft.
+- **2026-05-09 (acting-lead approval)** — five of seven open questions
+  locked:
+  - **Q1 — Cooldown defaults.** Generic relay commands default cooldown
+    is **60 s**. `relay_cycle` carries a stricter floor of **180 s**
+    minimum until field data justifies lowering it; explicit higher
+    values are allowed where the workflow needs longer
+    modem/router recovery windows. Implementations MUST reject
+    automation-side overrides that go below these floors.
+  - **Q3 — `subject_kind` enum.** Locked as **`{phone, laptop, vehicle,
+    network_presence_source}`** for v1. **No `kiosk` kind in v1.** A new
+    kind requires a new RFC entry + decision-log line.
+  - **Q4 — automation command surface.** v1 **command-style only**:
+    `relay_on`, `relay_off`, `relay_toggle`, `relay_cycle`,
+    `device_restart`, `set_mode`, `check_firmware`,
+    `start_firmware_update`. **No `apply_config` from automations
+    in v1.** apply_config remains an admin-issued action. Revisit if
+    real-world automations want it.
+  - **Q5 — multi-user occupancy / guests.** **Guests are out of scope
+    in v1.** Only subjects that are explicitly enrolled and have a
+    valid `subject_credential` count toward occupancy. The rule engine
+    MUST NOT attempt to infer or attribute presence to non-enrolled
+    devices. Revisit if mobile teams ship a flow for explicit guest
+    enrollment.
+  - **Q7 — locale + timezone.** **UTC server-side everywhere.** All
+    timestamps stored as `timestamptz`, all API payloads emit ISO-8601
+    UTC (`...Z`). Admin UI, mobile, and any local UIs are responsible
+    for rendering to the viewer's timezone. No per-user timezone
+    storage in v1; rely on the client.
+
+  Items still open after this round: **Q2** (iOS active-region rotation
+  UX) — owned by mobile. **Q6** (mobile app distribution) — owned by
+  mobile. Implementation of §14 Phase 1 may proceed without these.
 
 ## 16. References
 

@@ -40,6 +40,11 @@
     <div class="num">{{ stats.events_24h }}</div>
     <div class="label">device events (24h)</div>
   </a>
+  <a class="stat" href="{{ url_for('admin_ui.unregistered_devices_page') }}">
+    <div class="num">{{ unregistered_active or 0 }}</div>
+    <div class="label">unregistered auth attempts (60m)</div>
+    <div class="sub muted">firmware hitting a 401 loop without /register</div>
+  </a>
 </section>
 
 <section class="placeholder">
@@ -68,6 +73,7 @@
     <li><a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a></li>
     <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a></li>
     <li><a href="{{ url_for('admin_ui.events_page') }}">Events</a></li>
+    <li><a href="{{ url_for('admin_ui.unregistered_devices_page') }}">Unregistered devices</a></li>
     {% if current_user.role in ('super_admin','admin') %}
     <li><a href="{{ url_for('admin_ui.users_page') }}">Users</a></li>
     <li><a href="{{ url_for('admin_ui.invitations_page') }}">Invitations</a></li>
