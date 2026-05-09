@@ -66,11 +66,21 @@ def create_app() -> Flask:
         static_folder="../static",
         template_folder="../templates",
     )
+    from datetime import timedelta
+
     app.config["SETTINGS"] = settings
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["SESSION_COOKIE_HTTPONLY"] = True
+    # 2-day idle timeout: cookie expiry rolls forward on every request
+    # (SESSION_REFRESH_EACH_REQUEST is Flask's default = True). Active
+    # users stay signed in indefinitely; idle users get kicked after the
+    # configured window.
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(
+        seconds=settings.session_idle_timeout_seconds
+    )
+    app.config["SESSION_REFRESH_EACH_REQUEST"] = True
     # Be lenient about trailing slashes — clients (and humans) often add or
     # omit them; Flask 3's default returns 404 instead of redirecting.
     app.url_map.strict_slashes = False
