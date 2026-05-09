@@ -169,3 +169,67 @@ bug was discovered and fixed in v0.3.5:
 - Document in the firmware-side README that an `enrollment_token`
   field can be reset via the device's local web UI in case of
   401 — so the operator has a recovery path without re-flashing.
+
+---
+
+## 7. Update — same-day firmware-team response (2026-05-09)
+
+The original snapshot above was real at its window but is no
+longer the live state. Captured here so the rest of the project
+record reads consistently with reality. Full reply at
+[`docs/notes/2026-05-09-from-firmware-team-rca-response.md`](notes/2026-05-09-from-firmware-team-rca-response.md).
+
+### 7.1 Lab state correction
+
+| IP | Snapshot in §2.2 | Current (per firmware team) |
+|---|---|---|
+| 192.168.1.67 | 100% packet loss | **HTTP OK; central enabled; central registered; `central_state = poll_transport_failed`** |
+| 192.168.1.225 | 100% packet loss | HTTP OK; central disabled (by design) |
+| 192.168.1.207 | ping OK, no HTTP | HTTP OK; central disabled (by design) |
+| 192.168.1.30 | 100% packet loss | HTTP OK; central disabled (by design) |
+
+So the LAN-survivability part of §2 is no longer the bug. **All
+four units are reachable locally.** The remaining real failure
+is on .67 only — local device fully healthy, but central
+heartbeat/poll transport failing despite Wi-Fi up and dual-URL
+config present.
+
+### 7.2 Confirmations from firmware side
+
+- **Dual-URL config in place on all four units.** Schema-v2
+  config carries both `https://www.voipguru.org/rebooter` and
+  `https://www2.voipguru.org/rebooter` in order.
+- **401 → re-enroll path was specifically worked earlier in the
+  session window** (a fake-registered / 401-loop condition was
+  fixed firmware-side: unauthorized heartbeat/poll now clears
+  cached registration and forces a real re-enroll). Successfully
+  re-enrolled one test unit earlier. Worth re-verifying against
+  the v0.3.4 bulk-delete-induced stale-token state explicitly,
+  but the recovery logic exists and has been exercised once.
+- **Bootstrap binary** is just an ESP8266 PlatformIO `.bin` flashed
+  at offset `0x00000`. Same artifact class as main firmware — can
+  co-host in a single library partitioned by path/channel.
+- **Bootstrap flash-time URL list** is implementable via build
+  flags / generated config; not currently polished as a flash-time
+  operator workflow but the firmware team agrees the work fits
+  RFC-002 P4. Caveat carried forward: changing the bootstrap's
+  fallback list still requires a re-flash because the bootstrap
+  itself is the image being serial-flashed; the goal is
+  operator-friendly build/flash-time configuration, not the
+  illusion that the image learns new URLs in place.
+
+### 7.3 Where the highest-value firmware bug now sits
+
+Same as §2.4 of the original RCA, but in sharper relief: the
+**central poll/heartbeat transport on `test-s31-01` (.67) is the
+only remaining real failure** — local device healthy, dual-URL
+config present, central enabled, central registered, but
+`central_state = poll_transport_failed`. That is the firmware
+priority going forward.
+
+### 7.4 RFC-002 status
+
+Direction accepted by the firmware team. They will redline as the
+backend side moves from design into implementation. Fine-grained
+PAT for the GitHub-Releases mirror publisher is acceptable from
+their side once the canonical-hosting work begins.
