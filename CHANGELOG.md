@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-05-09
+
+### Refactor — admin blueprints split into `app/blueprints/admin/`
+
+- The two oversized files `app/blueprints/admin_ui.py` (945 lines) and
+  `app/blueprints/admin_api.py` (784 lines) are gone. Each admin
+  feature now has its own module under `app/blueprints/admin/`
+  (devices, groups, sites, firmware, users, invitations, audit,
+  enrollment-tokens, unregistered, events, dashboard, profile,
+  auth-ui, public-invite). Each module owns both the UI handlers and
+  the JSON API handlers for its feature; largest is now ~310 lines.
+- Endpoint URLs and view-function names are preserved exactly — no
+  client (firmware, mobile, ops tooling) sees any change. All
+  `url_for("admin_ui.<name>")` calls in templates continue to resolve.
+- New living docs: `docs/architecture.md`, `docs/contributing.md`,
+  `docs/refactor-log.md`. Old session logs archived under
+  `docs/sessions/`.
+
+### Notes
+
+- No new runtime dependencies. No schema changes. No behaviour change.
+- Verified by full QA pass against both URLs (www + www2 fallback)
+  before tagging.
+
+## [0.2.5] - 2026-05-09
+
+### Added — mass-action confirmation gate + unregistered-heartbeat tracker
+
+- **Mass-action gate** (`app/services/mass_action.py`): any group
+  fan-out command or firmware deployment affecting >5 devices requires
+  `confirmation_level="simple"`; >20 devices requires
+  `confirmation_level="typed"` with `confirmation_typed_value` echoing
+  the prompted verb. Server-side enforcement; UI populates the form
+  fields via `static/js/mass_action.js`. Closes BUG-012.
+- **Unregistered-heartbeat tracker**
+  (`app/services/unregistered.py`): every `/api/v1/device/*` 401 is
+  best-effort logged with claimed device_id, source IP, endpoint,
+  user-agent, auth-present flag. Surfaces in the admin UI at
+  `/app/unregistered-devices` and via the dashboard tile + nav badge.
+  Closes BUG-013.
+- `services/bootstrap.py::ensure_schema()` no longer short-circuits
+  when `users` exists — `Base.metadata.create_all()` is idempotent and
+  cheap, so we run it under an advisory lock on every container start
+  (auto-creates new tables added in later releases).
+
 ## [0.2.4] - 2026-05-09
 
 ### Added — operator dashboard + self-service profile
