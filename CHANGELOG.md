@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-08
+
+### Changed
+
+- Login accepts either the full email or just the local-part (e.g.
+  `dblagbro` works in addition to `dblagbro@gmail.com`) when there is no
+  ambiguity. Login form input is now `type="text"` so browsers stop
+  rejecting bare usernames as "not a valid email".
+
 ## [0.1.1] - 2026-05-08
 
 ### Added
