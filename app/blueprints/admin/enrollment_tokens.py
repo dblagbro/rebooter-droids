@@ -77,7 +77,8 @@ def enrollment_token_revoke_submit(token_id: str):
 def enrollment_tokens_bulk_revoke_submit():
     from flask import flash
 
-    ids = [i for i in request.form.getlist("token_id") if i]
+    # v0.3.5 fix: dedupe (defense-in-depth against paired checkboxes).
+    ids = list(dict.fromkeys(i for i in request.form.getlist("token_id") if i))
     if not ids:
         flash("Select at least one token first.", "warning")
         return redirect(url_for("admin_ui.enrollment_tokens_page"))

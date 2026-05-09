@@ -105,17 +105,21 @@ def test_mobile_topbar_nav_links_reachable(mobile_logged_in_page):
 
 def test_mobile_devices_list_table_wrap_scrolls(mobile_logged_in_page, base_url):
     """Wide tables must scroll inside `.table-wrap`, never push the
-    page itself wider than the viewport."""
+    page itself wider than the viewport.
+
+    The empty-state renders without a `.table-wrap` wrapper (because
+    there's no table to wrap), so we only assert the wrapper exists
+    when the fleet has at least one device."""
     p = mobile_logged_in_page
-    p.goto(f"{base_url}/app/devices")
+    p.goto(f"{base_url}/app/devices?show_qa_fixtures=1")
     p.wait_for_load_state("networkidle")
     assert not _page_overflows_horizontally(p), (
         "devices list page is overflowing horizontally — table-wrap "
         "didn't contain the table scroll"
     )
-    # Page is fine; the wrapper itself is allowed to scroll. Confirm
-    # the wrapper exists (we'd never have caught a no-wrap regression
-    # if we just checked page overflow).
+    # If the fleet is non-empty, .table-wrap MUST be present.
+    if "v3-empty-state" in p.content():
+        return
     wraps = p.locator(".table-wrap").count()
     assert wraps >= 1, "devices list missing .table-wrap container"
 
