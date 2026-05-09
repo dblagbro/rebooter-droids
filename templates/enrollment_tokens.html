@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% block title %}Enrollment Tokens - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>Enrollment Tokens</h1>
+
+{% if new_token %}
+<section class="placeholder" style="border-color:#2563eb">
+  <h2>New token (shown once)</h2>
+  <p>Copy this into the device's central-management config. It will not be displayed again.</p>
+  <p><code style="word-break:break-all">{{ new_token.enrollment_token }}</code></p>
+  <p class="muted">Expires {{ new_token.expires_at }} · ID {{ new_token.id }}</p>
+</section>
+{% endif %}
+
+<section class="placeholder">
+  <h2>Mint a single-use token</h2>
+  <form method="post" action="{{ url_for('admin_ui.enrollment_tokens_create') }}">
+    <label>Display name hint <input type="text" name="display_name_hint" placeholder="Router Rebooter 01"></label>
+    <label>Note <input type="text" name="note" placeholder="customer / branch / why"></label>
+    <button type="submit">Mint token</button>
+  </form>
+</section>
+
+<h2>Existing tokens</h2>
+{% if tokens %}
+<table>
+  <thead><tr><th>ID</th><th>Hint</th><th>Note</th><th>Created</th><th>Expires</th><th>State</th></tr></thead>
+  <tbody>
+  {% for t in tokens %}
+    <tr>
+      <td><code>{{ t.id }}</code></td>
+      <td>{{ t.display_name_hint or '—' }}</td>
+      <td>{{ t.note or '—' }}</td>
+      <td>{{ t.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</td>
+      <td>{{ t.expires_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</td>
+      <td>
+        {% if t.consumed_at %}<span class="badge">used</span>
+        {% elif t.expires_at < t.created_at %}<span class="badge red">expired</span>
+        {% else %}<span class="badge green">available</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="muted">No tokens minted yet.</p>
+{% endif %}
+{% endblock %}

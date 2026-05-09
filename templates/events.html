@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block title %}Events - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>Events</h1>
+
+<form method="get" class="actions">
+  <label>Device ID <input type="text" name="device_id" value="{{ filters.device_id }}"></label>
+  <label>Type <input type="text" name="type" value="{{ filters.type }}" placeholder="watchdog_trigger"></label>
+  <label>From <input type="datetime-local" name="from" value="{{ filters['from'] }}"></label>
+  <label>To <input type="datetime-local" name="to" value="{{ filters.to }}"></label>
+  <button type="submit">Filter</button>
+</form>
+
+{% if events %}
+<table>
+  <thead><tr><th>Timestamp</th><th>Device</th><th>Type</th><th>Message</th><th>Mode</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+    <tr>
+      <td>{{ e.timestamp }}</td>
+      <td><a href="{{ url_for('admin_ui.device_detail_page', device_id=e.device_id) }}">{{ e.device_id }}</a></td>
+      <td><span class="badge">{{ e.type }}</span></td>
+      <td>{{ e.message or '—' }}</td>
+      <td>{{ e.mode or '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No events match.</p>
+{% endif %}
+{% endblock %}

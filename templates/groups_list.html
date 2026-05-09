@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block title %}Groups - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>Groups</h1>
+
+<section class="placeholder">
+  <h2>Create a group</h2>
+  <form method="post" action="{{ url_for('admin_ui.create_group_submit') }}">
+    <label>Name <input type="text" name="name" required></label>
+    <label>Description <input type="text" name="description"></label>
+    <button type="submit">Create</button>
+  </form>
+</section>
+
+{% if groups %}
+<table>
+  <thead><tr><th>Name</th><th>Members</th><th>Description</th><th>Created</th></tr></thead>
+  <tbody>
+  {% for g in groups %}
+    <tr>
+      <td><a href="{{ url_for('admin_ui.group_detail_page', group_id=g.id) }}">{{ g.name }}</a></td>
+      <td><span class="badge">{{ g.member_count }}</span></td>
+      <td>{{ g.description or '—' }}</td>
+      <td>{{ g.created_at }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No groups yet.</p>
+{% endif %}
+{% endblock %}

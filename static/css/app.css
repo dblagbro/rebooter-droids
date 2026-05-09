@@ -9,3 +9,20 @@ a:hover { text-decoration: underline; }
 main { padding: 1.5rem 2rem; max-width: 1100px; margin: 0 auto; }
 .placeholder, .auth { background: #161a21; border: 1px solid #222; border-radius: 6px; padding: 1.5rem; }
 code { background: #0a0c10; padding: 0.15rem 0.4rem; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+form label { display: block; margin: 0.75rem 0; }
+form input { display: block; width: 100%; max-width: 320px; padding: 0.5rem 0.6rem; background: #0a0c10; border: 1px solid #2c3038; color: #e6e8eb; border-radius: 4px; }
+form input:focus { outline: none; border-color: #6db3ff; }
+button { padding: 0.55rem 1.1rem; background: #2563eb; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+button:hover { background: #1d4ed8; }
+.error { color: #f87171; background: #2a1313; border: 1px solid #5a2222; padding: 0.5rem 0.75rem; border-radius: 4px; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+th, td { padding: 0.55rem 0.75rem; border-bottom: 1px solid #232730; text-align: left; }
+th { background: #11141a; font-weight: 600; }
+tr:hover td { background: #11141a; }
+.muted { color: #8a8f99; }
+.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
+.actions form { margin: 0; }
+.badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.78rem; background: #1f2937; color: #cbd5e1; }
+.badge.green { background: #064e3b; color: #6ee7b7; }
+.badge.red { background: #5a2222; color: #fca5a5; }
+.badge.amber { background: #5a3d1c; color: #fcd34d; }
