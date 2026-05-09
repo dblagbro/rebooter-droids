@@ -15,6 +15,12 @@
     {% else %}
       <span class="badge" title="opts out — local-only is healthy">local-only</span>
     {% endif %}
+    {% if device.is_protected %}
+      <span class="badge red" title="power commands require explicit override">🔒 protected</span>
+    {% endif %}
+    {% if device.is_held_off %}
+      <span class="badge amber" title="operator set hold-off — power on to clear">held off</span>
+    {% endif %}
   </p>
   {% if device.local_ip %}
     <p class="muted">
@@ -58,28 +64,78 @@
 {# ── power ──────────────────────────────────────────────────────────── #}
 <section class="v3-card" id="power">
   <h2>Power</h2>
+
+  {% if device.is_protected %}
+  <div class="v3-lockout-banner" role="alert">
+    <strong>🔒 This device is protected.</strong>
+    Power commands are blocked until you tick <em>Override lockout</em> below.
+    Watchdog rules and schedules cannot fire against it.
+  </div>
+  {% endif %}
+
+  {% if device.is_held_off %}
+  <div class="v3-holdoff-banner" role="status">
+    <strong>Held off.</strong>
+    The operator set this device to stay off until manually restored.
+    Issue <code>relay_on</code> (or any power-on command) to clear the hold-off.
+  </div>
+  {% endif %}
+
   <div class="actions">
     {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
-    <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}">
+    <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
+          onsubmit="{% if t in ('relay_off', 'device_restart') %}return confirm('{{ t }} on {{ device.display_name or device.id }} — proceed?');{% endif %}">
       <input type="hidden" name="type" value="{{ t }}">
+      {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
       <button type="submit"{% if t in ('relay_off', 'device_restart') %} class="btn-danger"{% endif %}>{{ t }}</button>
     </form>
     {% endfor %}
   </div>
-  <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}">
+
+  <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
+        onsubmit="return confirm('relay_cycle on {{ device.display_name or device.id }} — power will drop, then return after {{ '{{' }}power_off_seconds{{ '}}' }} s. Proceed?');">
     <input type="hidden" name="type" value="relay_cycle">
+    {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
     <label>relay_cycle — power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
     <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
     <button type="submit" class="btn-danger">Send relay_cycle</button>
   </form>
 
+  <h3 style="margin-top:1.5rem">Hold off</h3>
+  <p class="muted" style="margin-top:0">
+    Power off and stay off until the operator explicitly restores power.
+    Watchdog rules and schedules will skip a held-off device.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
+        onsubmit="return confirm('Hold off {{ device.display_name or device.id }} — power will drop and STAY OFF until you manually clear it. Type the device name to confirm:') && (function(f){ var ok = prompt('Type the device name to confirm hold-off:'); return ok === '{{ device.display_name or device.id }}'; })(this);">
+    <input type="hidden" name="type" value="relay_off">
+    <input type="hidden" name="hold_off" value="1">
+    {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
+    <button type="submit" class="btn-danger">Hold off (typed confirmation required)</button>
+  </form>
+
   <h3 style="margin-top:1.5rem">Pending commands</h3>
   {% if device.pending_commands %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Type</th><th>Status</th><th>Created</th><th>Expires</th></tr></thead>
+    <thead><tr><th>Type</th><th>Status</th><th>Created</th><th>Expires</th><th></th></tr></thead>
     <tbody>
     {% for c in device.pending_commands %}
-      <tr><td>{{ c.type }}</td><td>{{ c.status }}</td><td>{{ c.created_at }}</td><td>{{ c.expires_at }}</td></tr>
+      <tr>
+        <td>{{ c.type }}</td>
+        <td>{{ c.status }}</td>
+        <td>{{ c.created_at }}</td>
+        <td>{{ c.expires_at }}</td>
+        <td>
+          {% if c.status == 'pending' %}
+          <form method="post" action="{{ url_for('admin_ui.device_cancel_command', device_id=device.id, command_id=c.id) }}"
+                style="margin:0">
+            <button type="submit" class="btn-secondary">Cancel</button>
+          </form>
+          {% else %}
+            <span class="muted">already accepted</span>
+          {% endif %}
+        </td>
+      </tr>
     {% endfor %}
     </tbody>
   </table></div>
@@ -165,6 +221,21 @@
     <label>Notes <textarea name="notes" rows="3">{{ device.notes or '' }}</textarea></label>
     <label><input type="checkbox" name="central_management_enabled" {% if device.central_management_enabled %}checked{% endif %}> Central management enabled</label>
     <button type="submit">Save</button>
+  </form>
+
+  <h3 style="margin-top:1.5rem">Protection</h3>
+  <p class="muted" style="margin-top:0">
+    Mark this device as <strong>protected</strong> to block accidental power
+    cycles. Operator power commands then require an explicit
+    <em>Override lockout</em> on the form. Watchdog rules and schedules
+    (P4) will skip protected devices unconditionally — no override path.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.device_set_protection', device_id=device.id) }}">
+    <label>
+      <input type="checkbox" name="is_protected" value="1" {% if device.is_protected %}checked{% endif %}>
+      🔒 Protected — require override for power commands
+    </label>
+    <button type="submit">Save protection</button>
   </form>
 </section>
 

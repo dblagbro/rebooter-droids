@@ -56,6 +56,24 @@ class Device(Base):
         Boolean, nullable=False, default=False
     )
 
+    # v0.3.2 (P3): operator-set lockout. When True, every power
+    # command (relay_on/off/toggle/cycle/restart/hold_off) is
+    # rejected unless the caller explicitly opts in via
+    # override_lockout=True. Watchdog rules + schedules (P4) MUST
+    # honour this flag — no override path for them in v1.
+    is_protected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    # v0.3.2 (P3): operator's "stay off until I say otherwise"
+    # intent. Set by relay_hold_off; cleared by any power-on
+    # (relay_on, relay_toggle, relay_cycle). Distinct from the
+    # transient `relay_on` field on the latest heartbeat — that's
+    # device-side state; this is the operator's intended state.
+    is_held_off: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()
 
