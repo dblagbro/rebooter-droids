@@ -137,3 +137,19 @@ def delete_group(group_id: str) -> bool:
         session.delete(g)
         session.flush()
         return True
+
+
+def delete_groups_bulk(group_ids: list[str]) -> dict:
+    """v0.3.4 (P3): bulk-delete groups. Returns deleted + unknown lists."""
+    deleted: list[str] = []
+    skipped_unknown: list[str] = []
+    with session_scope() as session:
+        for gid in group_ids:
+            g = session.get(Group, gid)
+            if g is None:
+                skipped_unknown.append(gid)
+                continue
+            session.delete(g)
+            deleted.append(gid)
+        session.flush()
+    return {"deleted": deleted, "skipped_unknown": skipped_unknown}

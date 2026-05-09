@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-05-09
+
+### Added — bulk-action UI on devices, groups, invitations, enrollment tokens
+
+Per-row checkboxes + master select-all + sticky bulk-action bar on
+the four list pages where mass operations are useful.
+
+- **Devices list** — bulk-delete selected devices. Respects the
+  v0.3.2 `is_protected` lockout: protected devices are skipped
+  unless the operator ticks "override 🔒 protected" in the bulk
+  bar. The lock badge appears on every protected row so operators
+  see why the count of deleted-vs-skipped diverges.
+- **Groups list** — bulk-delete selected groups. Cascade behaviour
+  matches the existing per-group delete (memberships go; member
+  devices stay).
+- **Invitations list** — bulk-cancel selected pending invitations.
+  Already-consumed invitations cannot be cancelled (they're audit
+  records of a real user redemption); they're surfaced as
+  `skipped_consumed` in the result flash.
+- **Enrollment tokens list** — bulk-revoke + per-token revoke.
+  v0.3.4 adds the **first revoke primitive** for enrollment tokens
+  (single + bulk); previously tokens were immutable. Consumed tokens
+  cannot be revoked (they're records of a real device's bring-up).
+
+### Mass-action confirmation gate
+
+All four bulk actions go through the existing
+`app/services/mass_action.py` gate:
+- ≤ 5 targets: simple `confirm()` prompt.
+- 6 – 20 targets: simple `confirm()` prompt, count visible.
+- > 20 targets: typed-confirmation prompt — operator must echo the
+  verb (`delete`, `cancel`, `revoke`).
+
+The submit button auto-promotes to `btn-danger` red styling once
+the count crosses 20.
+
+### Frontend foundation
+
+- New `static/js/bulk_select.js` (~120 LOC, vanilla, no deps) —
+  wired up via `data-bulk-form` / `data-bulk-master` /
+  `data-bulk-row` / `data-bulk-bar` attributes. Progressive
+  enhancement: form submit works without JS; the JS adds live
+  count, master-toggle (with `indeterminate` state), and
+  disable-when-empty.
+- New CSS surfaces: `.v3-bulk-checkbox-cell`, `.v3-bulk-master`,
+  `.v3-bulk-checkbox`, `.v3-bulk-bar`, `.v3-bulk-bar-count`. The
+  bar is `position: sticky` above the bottom-tab nav on mobile.
+
+### API additions
+
+| Endpoint | Body | Returns |
+|---|---|---|
+| `POST /api/v1/admin/devices/bulk-delete` | `{device_ids, override_lockout, confirmation_level, confirmation_typed_value}` | `{deleted, skipped_protected, skipped_unknown}` |
+| (groups + invitations + tokens) | UI-only in v0.3.4; API endpoints land in v0.3.5 if a consumer asks. |
+
+All bulk actions emit a single audit row with action ∈
+`{device.bulk_deleted, group.bulk_deleted, invitation.bulk_cancelled,
+enrollment_token.bulk_revoked}` and `details.reason='operator'`.
+
+### Compatibility
+
+- All v0.3.3 routes and endpoint names preserved.
+- No schema change.
+- Rollback: `docker run dblagbro/rebooter-droids:0.3.3`.
+
 ## [0.3.3] - 2026-05-09
 
 ### Fixed — frequent sign-outs when switching between www and www2

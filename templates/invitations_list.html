@@ -30,11 +30,27 @@
   </form>
 </section>
 
+<form method="post" action="{{ url_for('admin_ui.invitations_bulk_cancel_submit') }}"
+      data-bulk-form>
+  <input type="hidden" name="confirmation_level" value="">
+  <input type="hidden" name="confirmation_typed_value" value="">
+
 <div class="table-wrap"><table>
-  <thead><tr><th>Email</th><th>Role</th><th>Created</th><th>Expires</th><th>State</th><th></th></tr></thead>
+  <thead><tr>
+    <th class="v3-bulk-checkbox-cell">
+      <input type="checkbox" class="v3-bulk-master" data-bulk-master aria-label="Select all pending invitations">
+    </th>
+    <th>Email</th><th>Role</th><th>Created</th><th>Expires</th><th>State</th><th></th>
+  </tr></thead>
   <tbody>
   {% for i in invitations %}
   <tr>
+    <td class="v3-bulk-checkbox-cell">
+      {% if not i.consumed_at %}
+      <input type="checkbox" class="v3-bulk-checkbox" name="invitation_id" value="{{ i.id }}"
+             data-bulk-row aria-label="Select invitation for {{ i.email }}">
+      {% endif %}
+    </td>
     <td>{{ i.email }}</td>
     <td><span class="badge">{{ i.role }}</span></td>
     <td>{{ i.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</td>
@@ -46,13 +62,29 @@
     </td>
     <td>
       {% if not i.consumed_at %}
-      <form method="post" action="{{ url_for('admin_ui.invitations_cancel_submit', invitation_id=i.id) }}" onsubmit="return confirm('Cancel pending invitation for {{ i.email }}? The link in their email will stop working.');" style="margin:0">
-        <button type="submit">Cancel</button>
-      </form>
+      {# nested forms not allowed; use formaction to escape the bulk-form #}
+      <button type="submit" formmethod="post"
+              formaction="{{ url_for('admin_ui.invitations_cancel_submit', invitation_id=i.id) }}"
+              formnovalidate
+              onclick="return confirm('Cancel pending invitation for {{ i.email }}? The link in their email will stop working.');">
+        Cancel
+      </button>
       {% endif %}
     </td>
   </tr>
   {% endfor %}
   </tbody>
 </table></div>
+
+<div class="v3-bulk-bar" data-bulk-bar role="region" aria-label="Bulk actions">
+  <div><span class="v3-bulk-bar-count" data-bulk-bar-count>0</span> selected</div>
+  <div class="v3-bulk-bar-actions">
+    <button type="submit" class="btn-danger" data-bulk-submit
+            data-bulk-verb="cancel" data-bulk-noun="invitation">
+      Cancel selected
+    </button>
+  </div>
+</div>
+
+</form>
 {% endblock %}

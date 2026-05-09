@@ -33,10 +33,12 @@ from app.services.commands import (
 from app.services.devices import (
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
+    delete_devices_bulk as svc_delete_devices_bulk,
     get_device_detail,
     list_devices as svc_list_devices,
     update_device,
 )
+from app.services import mass_action
 from app.services.sites import list_sites as svc_list_sites_only
 
 
@@ -132,6 +134,66 @@ def device_delete_submit(device_id: str):
             target_type="device",
             target_id=device_id,
         )
+    return redirect(url_for("admin_ui.list_devices_page"))
+
+
+# v0.3.4 (P3): bulk-delete from the devices list.
+@admin_ui_bp.post("/devices/bulk-delete")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def devices_bulk_delete_submit():
+    from flask import flash
+
+    ids = [i for i in request.form.getlist("device_id") if i]
+    if not ids:
+        flash("Select at least one device first.", "warning")
+        return redirect(url_for("admin_ui.list_devices_page"))
+
+    override_lockout = (request.form.get("override_lockout") or "").lower() in ("1", "true", "yes")
+    try:
+        mass_action.validate(
+            target_count=len(ids),
+            expected_typed_value="delete",
+            confirmation_level=request.form.get("confirmation_level"),
+            confirmation_typed_value=request.form.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        flash(
+            f"Bulk delete affects {len(ids)} devices and requires "
+            f"confirmation ({e.required_level}). "
+            f"Re-submit through the confirmation prompt.",
+            "error",
+        )
+        return redirect(url_for("admin_ui.list_devices_page"))
+
+    result = svc_delete_devices_bulk(ids, override_lockout=override_lockout)
+    audit_service.record(
+        "device.bulk_deleted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=None,
+        details={
+            "deleted_count": len(result["deleted"]),
+            "skipped_protected": len(result["skipped_protected"]),
+            "skipped_unknown": len(result["skipped_unknown"]),
+            "deleted_ids": result["deleted"],
+            "skipped_protected_ids": result["skipped_protected"],
+            "override_lockout": override_lockout,
+            "confirmation_level": mass_action.required_level(len(ids)),
+            "reason": "operator",
+        },
+    )
+    msg_parts = [f"Deleted {len(result['deleted'])} device(s)."]
+    if result["skipped_protected"]:
+        msg_parts.append(
+            f"{len(result['skipped_protected'])} protected — re-submit with "
+            f"override to include them."
+        )
+    if result["skipped_unknown"]:
+        msg_parts.append(
+            f"{len(result['skipped_unknown'])} unknown id(s) skipped."
+        )
+    flash(" ".join(msg_parts), "info")
     return redirect(url_for("admin_ui.list_devices_page"))
 
 
@@ -358,6 +420,55 @@ def delete_device_api(device_id: str):
         target_id=device_id,
     )
     return ok({"deleted": True})
+
+
+# v0.3.4 (P3): bulk delete (API). Body: {"device_ids": [...],
+# "override_lockout": bool, "confirmation_level": ..., "confirmation_typed_value": ...}
+@admin_api_bp.post("/devices/bulk-delete")
+@role_required_api(*ADMIN_AND_UP)
+def devices_bulk_delete_api():
+    body = request.get_json(silent=True) or {}
+    ids = body.get("device_ids") or []
+    if not isinstance(ids, list) or not ids:
+        return err("validation_failed", "device_ids must be a non-empty list", status=400)
+    override_lockout = bool(body.get("override_lockout"))
+    try:
+        mass_action.validate(
+            target_count=len(ids),
+            expected_typed_value="delete",
+            confirmation_level=body.get("confirmation_level"),
+            confirmation_typed_value=body.get("confirmation_typed_value"),
+        )
+    except mass_action.ConfirmationRequired as e:
+        return err(
+            "confirmation_required",
+            str(e),
+            status=409,
+            extra={
+                "target_count": e.target_count,
+                "required_level": e.required_level,
+                "expected_typed_value": e.expected_typed_value,
+            },
+        )
+    result = svc_delete_devices_bulk(ids, override_lockout=override_lockout)
+    audit_service.record(
+        "device.bulk_deleted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=None,
+        details={
+            "deleted_count": len(result["deleted"]),
+            "skipped_protected": len(result["skipped_protected"]),
+            "skipped_unknown": len(result["skipped_unknown"]),
+            "deleted_ids": result["deleted"],
+            "skipped_protected_ids": result["skipped_protected"],
+            "override_lockout": override_lockout,
+            "confirmation_level": mass_action.required_level(len(ids)),
+            "reason": "operator",
+        },
+    )
+    return ok(result, status=200)
 
 
 # v0.3.2 (P3): cancel a queued (pending-status) command (R-CTRL-8).
