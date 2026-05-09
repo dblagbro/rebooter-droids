@@ -84,6 +84,76 @@ def settings_sync_page():
     )
 
 
+@admin_ui_bp.get("/settings/notifications")
+@admin_required_ui
+def settings_notifications_page():
+    """v0.4.1: Notifications / SMTP. Read-only display of env-var
+    SMTP config + 'send test email' action."""
+    from flask import g
+
+    from app.config import load_settings
+    from app.services.email import is_configured
+
+    s = load_settings()
+    return render_template(
+        "settings/notifications.html",
+        **_ctx(
+            {
+                "active": "settings",
+                "settings_tab": "notifications",
+                "smtp": {
+                    "host": s.smtp_host or "",
+                    "port": s.smtp_port,
+                    "user": s.smtp_user or "",
+                    "from_addr": s.smtp_from or "",
+                    "helo": s.smtp_helo or "",
+                    "configured": is_configured(s),
+                    # Never echo the password back. Render fingerprint
+                    # only so the operator can verify it's set without
+                    # the page leaking it.
+                    "password_set": bool(s.smtp_password),
+                },
+                "current_user_email": getattr(g.current_user, "email", None),
+            }
+        ),
+    )
+
+
+@admin_ui_bp.post("/settings/notifications/test")
+@admin_required_ui
+def settings_notifications_test_submit():
+    from flask import flash, g
+
+    from app.services import audit as audit_service
+    from app.services.email import send_test_email
+
+    to = (request.form.get("to") or g.current_user.email or "").strip()
+    if not to or "@" not in to:
+        flash("Enter a valid email address.", "error")
+        return redirect(url_for("admin_ui.settings_notifications_page"))
+    try:
+        ok_send = send_test_email(to)
+    except Exception as e:
+        flash(f"SMTP send failed: {e}", "error")
+        return redirect(url_for("admin_ui.settings_notifications_page"))
+    audit_service.record(
+        "smtp.test_sent",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="smtp",
+        target_id=None,
+        details={"to": to, "ok": bool(ok_send)},
+    )
+    if ok_send:
+        flash(f"Test email sent to {to}.", "info")
+    else:
+        flash(
+            "SMTP not configured — set REBOOTER_SMTP_* env vars and recreate the container.",
+            "error",
+        )
+    return redirect(url_for("admin_ui.settings_notifications_page"))
+
+
 _THEME_COOKIE = "rebooter_theme"
 
 
