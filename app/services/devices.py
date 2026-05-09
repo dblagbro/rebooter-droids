@@ -183,6 +183,14 @@ def get_device_detail(device_id: str) -> dict | None:
             }
             for c in pending_cmds
         ]
+
+        # v0.2.9: per-record audit slice. Last 25 audit events that target
+        # this device. Composite index ix_audit_target makes this cheap.
+        from app.services import audit as audit_service
+
+        out["audit_history"] = audit_service.query(
+            target_type="device", target_id=device_id, limit=25
+        )
         return out
 
 

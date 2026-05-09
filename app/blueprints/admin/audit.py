@@ -21,6 +21,7 @@ def audit_page():
         actor_user_id=request.args.get("actor_user_id") or None,
         action=request.args.get("action") or None,
         target_type=request.args.get("target_type") or None,
+        target_id=request.args.get("target_id") or None,
         limit=int(request.args.get("limit") or 200),
     )
     return render_template("audit_list.html", **_ctx({"events": rows}))
