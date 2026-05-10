@@ -42,4 +42,5 @@ from app.blueprints.admin import (  # noqa: E402,F401
     history,         # v0.3.0 P1
     settings,        # v0.3.0 P1
     schedules,       # v0.4.8 (B8)
+    pending_adoption, # v0.4.20
 )
