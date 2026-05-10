@@ -204,10 +204,16 @@ actually do to this device?".
 
 ### B16. Power-usage monitoring + analytics — **NEW 2026-05-10 PM**
 
+📐 **Full design doc**: `docs/B16-power-analytics-design.md`
+(written 2026-05-10 PM after research pass; 4-tier architecture,
+8-ship roadmap, privacy posture, firmware-team open questions).
+
 Operator-added 2026-05-10 PM: the Sonoff S31 hardware ships with
-an HLW8032 chip that measures **voltage / current / instantaneous
-power / cumulative energy**. We currently throw all of that away.
-Add full ingestion + storage + analytics.
+a **CSE7766** chip (originally noted as HLW8032; corrected in the
+design doc per Tasmota / ESPHome). Measures
+**voltage / current / instantaneous power / cumulative energy +
+frequency via zero-crossing**. We currently throw all of that
+away. Add full ingestion + storage + analytics.
 
 **Scope.**
 
