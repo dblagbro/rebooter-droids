@@ -15,6 +15,7 @@ class Settings:
     firmware_public_base: str
     bootstrap_admin_email: str | None
     bootstrap_admin_password: str | None
+    bootstrap_admin_force_password_on_startup: bool
     log_level: str
     heartbeat_interval_seconds: int
     poll_interval_seconds: int
@@ -51,6 +52,14 @@ def load_settings() -> Settings:
         ),
         bootstrap_admin_email=os.environ.get("REBOOTER_BOOTSTRAP_ADMIN_EMAIL"),
         bootstrap_admin_password=os.environ.get("REBOOTER_BOOTSTRAP_ADMIN_PASSWORD"),
+        # v0.4.16 (BUG-046): default behavior changes — startup
+        # only sets the password on initial create. To keep the
+        # legacy "force-reset to env var on every restart" path
+        # (useful for "I forgot my password" recovery), set
+        # REBOOTER_BOOTSTRAP_ADMIN_FORCE_PASSWORD_ON_STARTUP=1.
+        bootstrap_admin_force_password_on_startup=os.environ.get(
+            "REBOOTER_BOOTSTRAP_ADMIN_FORCE_PASSWORD_ON_STARTUP", "0"
+        ).strip().lower() in ("1", "true", "yes", "on"),
         log_level=os.environ.get("REBOOTER_LOG_LEVEL", "INFO").upper(),
         heartbeat_interval_seconds=int(
             os.environ.get("REBOOTER_HEARTBEAT_INTERVAL_SECONDS", "60")
