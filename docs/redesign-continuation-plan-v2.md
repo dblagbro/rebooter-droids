@@ -138,8 +138,8 @@ Smaller wins; can land any time.
 
 | # | Item | Effort | Notes |
 |---|---|---|---|
-| D1 | Theme picker (`/app/settings/theme`) | 2 h | light/dark/system already-supported by data-theme; this is just the picker UI + persistence |
-| D2 | Backup config visibility on System tab — last-successful-backup-at, link to coordinator-hub | 1 h | read-only display first; CRUD later if needed |
+| D1 | Theme picker (`/app/settings/theme`) | ✅ **shipped v0.3.3** | already on disk; no work to do |
+| D2 | Backup config visibility on System tab — last-successful-backup-at, link to coordinator-hub | 1 h | **deferred** until there's an automated backup mechanism to track (today's backups are operator-driven; nothing to surface) |
 | D3 | Firmware settings sub-page (`/app/settings/firmware`) — moves `/app/firmware` UI under Settings, leaves a redirect | 2 h | mirror chain config from RFC-002 lands here |
 | D4 | Backup / restore flow with dry-run diff | 6 h | original Phase 6; defer until D2 has run for a while |
 
@@ -159,6 +159,24 @@ itself.
 **Total: ~19 hours.** Order: E5 first (real operator-value-add), then
 E1 (compliance), then E3 (productivity), then E4, then E2 (least
 load-bearing).
+
+### Tier F — Power-usage monitoring + analytics (BACKLOG B16)
+
+Operator-added 2026-05-10 PM. Sonoff S31 hardware has an HLW8032
+chip that measures voltage / current / power / energy and we
+currently throw all of that away. Full ingestion + storage +
+analytics. See `docs/BACKLOG.md` **B16** for the full scope.
+
+Slots between Tier C and Tier D in the natural sprint order
+because it benefits from C1 (history source extension) for
+queryability and pairs nicely with C4-C5's notification surface
+for "device drawing 0 W while relay_on=true → alert" anomaly
+detection. **Hub-side ingestion + storage can ship before
+firmware** emits the data, against synthetic samples for testing.
+
+Effort: ~20-30 h split across 4-5 ships (v0.6.x or v0.7.x).
+Gated on firmware-team coordination for the device-side
+sampling + buffered-upload protocol.
 
 ### Deferred (no near-term operator demand)
 

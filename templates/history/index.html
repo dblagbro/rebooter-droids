@@ -4,16 +4,37 @@
 <div class="v3-page-header">
   <h1>History</h1>
   <p class="v3-page-sub">
-    Unified log feed.
-    {% if source == "audit" %}<span class="badge">source: audit</span>{% endif %}
-    Watchdog probe events, power events, schedule fires, and notification sends will join this view as separate sources; for now this is the audit log only.
+    Unified log feed across audit events, watchdog probe outcomes, and
+    device-emitted events. Schedule fires and notification sends arrive
+    via the audit slice today; they'll get their own source when the
+    notification surface ships (Tier C).
   </p>
 </div>
 
+{# v0.4.30 (C1): source picker. Chooses which event stream to render.
+   Resets the per-source action chip when switched so filter combos
+   that don't apply across sources don't surprise the operator. #}
+{% set source_defs = [
+    ('audit',           'Audit'),
+    ('watchdog_probe',  'Watchdog probes'),
+    ('device_event',    'Device events'),
+    ('all',             'All sources'),
+] %}
+<nav class="v3-chips" aria-label="History sources" style="margin:1rem 0;display:flex;flex-wrap:wrap;gap:.4rem">
+  {% for code, label in source_defs %}
+    <a class="v3-chip {% if source == code %}v3-chip-active{% endif %}"
+       href="{{ url_for('admin_ui.history_page', source=code) }}"
+       aria-pressed="{{ 'true' if source == code else 'false' }}">
+      {% if source == code %}✓ {% endif %}{{ label }}
+    </a>
+  {% endfor %}
+</nav>
+
 {# v0.4.27: preset action-category chips. Each one drops a
-   `?action_prefix=<x>` query param and the handler filters by
-   `LIKE '<x>.%'`. Built from the 30 distinct audit-action prefixes
-   live in the DB today. #}
+   `?action_prefix=<x>` query param. Only meaningful for the audit
+   source today — keeps showing on every source for layout stability
+   but its rows simply filter to nothing on watchdog_probe /
+   device_event unless the prefix is `watchdog_probe` / `device_event`. #}
 {% set chip_defs = [
     ('device', 'Devices'),
     ('device_announcement', 'Adoption'),
@@ -30,22 +51,25 @@
     ('system', 'System config'),
     ('group', 'Groups'),
 ] %}
-<nav class="v3-chips" aria-label="History categories" style="margin:1rem 0;display:flex;flex-wrap:wrap;gap:.4rem">
+{% if source == 'audit' %}
+<nav class="v3-chips" aria-label="History action categories" style="margin:1rem 0;display:flex;flex-wrap:wrap;gap:.4rem">
   <a class="v3-chip {% if not action_prefix %}v3-chip-active{% endif %}"
-     href="{{ url_for('admin_ui.history_page') }}"
+     href="{{ url_for('admin_ui.history_page', source=source) }}"
      aria-pressed="{{ 'true' if not action_prefix else 'false' }}">All</a>
   {% for prefix, label in chip_defs %}
     <a class="v3-chip {% if action_prefix == prefix %}v3-chip-active{% endif %}"
-       href="{{ url_for('admin_ui.history_page', action_prefix=prefix) }}"
+       href="{{ url_for('admin_ui.history_page', source=source, action_prefix=prefix) }}"
        aria-pressed="{{ 'true' if action_prefix == prefix else 'false' }}">
       {% if action_prefix == prefix %}✓ {% endif %}{{ label }}
     </a>
   {% endfor %}
 </nav>
+{% endif %}
 
 <form method="get" class="actions">
+  <input type="hidden" name="source" value="{{ source }}">
   <label class="muted">
-    actor user id
+    actor / device id
     <input type="text" name="actor_user_id" value="{{ request.args.get('actor_user_id', '') }}">
   </label>
   <label class="muted">
@@ -54,7 +78,7 @@
   </label>
   <label class="muted">
     target type
-    <input type="text" name="target_type" value="{{ request.args.get('target_type', '') }}" placeholder="device · group · user">
+    <input type="text" name="target_type" value="{{ request.args.get('target_type', '') }}" placeholder="device · group · user · watchdog_rule">
   </label>
   <label class="muted">
     target id
@@ -69,17 +93,25 @@
 {% if events %}
 <p class="muted" style="font-size:.85rem">
   {{ events|length }} event{{ '' if events|length == 1 else 's' }}
-  {% if action_prefix %}matching <code>{{ action_prefix }}.*</code>{% endif %}
+  · source <code>{{ source }}</code>{% if action_prefix %} · prefix <code>{{ action_prefix }}.*</code>{% endif %}
 </p>
 <div class="table-wrap"><table>
   <thead>
-    <tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th></tr>
+    <tr>
+      <th>When</th>
+      {% if source == 'all' %}<th>Source</th>{% endif %}
+      <th>Actor</th>
+      <th>Action</th>
+      <th>Target</th>
+      <th>IP</th>
+    </tr>
   </thead>
   <tbody>
   {% for e in events %}
     <tr>
       <td>{{ e.at }}</td>
-      <td>{{ e.actor_email_snapshot or e.actor_user_id or '—' }}</td>
+      {% if source == 'all' %}<td><span class="badge">{{ e.source }}</span></td>{% endif %}
+      <td>{{ e.actor or '—' }}</td>
       <td><code>{{ e.action }}</code></td>
       <td>
         {% if e.target_type %}<span class="badge">{{ e.target_type }}</span>{% endif %}
@@ -92,7 +124,7 @@
 </table></div>
 {% else %}
   {% set empty_title = "No history events" %}
-  {% set empty_body = "Nothing matches the current filter. Clear it to see recent activity." %}
+  {% set empty_body = "Nothing matches the current filter. Clear it or switch source to see recent activity." %}
   {% include "_components/empty_state.html" %}
 {% endif %}
 {% endblock %}

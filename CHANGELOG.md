@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.30] - 2026-05-10
+
+### Added — Unified history feed (C1 from continuation plan v2)
+
+`/app/history` now surfaces three event streams behind a single chip
+nav:
+
+- **Audit** (`source=audit`, default) — same `audit_events` view that
+  shipped in v0.3.0 / v0.4.27, with chip filters preserved.
+- **Watchdog probes** (`source=watchdog_probe`) — outcomes from the
+  `watchdog_probe_events` table; each row is rendered as a
+  `watchdog_probe.<outcome>` action.
+- **Device events** (`source=device_event`) — rows from
+  `device_events` posted via `POST /api/v1/device/events`.
+- **All sources** (`source=all`) — time-merged union of the three,
+  with an extra Source column showing per-row provenance.
+
+Backed by a new `app/services/history.py` that normalises the three
+on-disk tables into one shape (`source, at, actor, action, target,
+details, ip`). Defaults preserve back-compat — anyone bookmarked at
+`/app/history?action_prefix=...` keeps seeing audit events.
+
+Schedule fires and notification sends keep arriving via the audit
+slice today; they'll get their own sources when the notification
+surface ships (Tier C of `redesign-continuation-plan-v2.md`).
+
+### Tests
+
+- `tests/qa/test_v0430_history_sources.py` — verifies the source
+  picker renders, switching flips active state, `watchdog_probe`
+  rows actually appear, the new "all" view adds a Source column,
+  and the v0.4.27 audit chip filter still narrows correctly.
+
 ## [0.4.29] - 2026-05-10
 
 ### Fixed — Upgrade button could offer downgrades
