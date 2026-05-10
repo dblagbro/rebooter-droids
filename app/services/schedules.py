@@ -86,6 +86,9 @@ def create(
     name = (name or "").strip()
     if not name:
         raise ScheduleValidationError("name is required")
+    # v0.4.11 (BUG-036 follow-up): bound to column width.
+    if len(name) > 120:
+        raise ScheduleValidationError("name must be 120 characters or fewer")
     if kind not in KNOWN_KINDS:
         raise ScheduleValidationError(f"kind must be one of {KNOWN_KINDS}")
     if recurrence not in KNOWN_RECURRENCES:
