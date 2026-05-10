@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-05-09
+
+### Fixed — schema validation hardening (BUG-038, 040, 041)
+
+- **BUG-038 — Rule target requires a concrete identifier.**
+  `target={"kind":"device"}` (no `id`) was accepted; runtime
+  silently no-ops. Now: returns 400 unless `id` (device/group)
+  or `tag` is present and non-empty.
+- **BUG-040 — Schedule weekly weekdays deduped + sorted.**
+  Pre-fix: `weekdays=[5,5,5,5]` rendered "Sat, Sat, Sat, Sat".
+  Now: stored as `[5]`.
+- **BUG-041 — Schedule weekly weekdays must be 0..6.** Pre-fix:
+  `weekdays=[99]` accepted, sentence rendered an empty day list,
+  schedule never fired.
+
+### Compatibility
+
+- All v0.4.12 routes preserved.
+- Existing rules with empty target.id continue to load (we only
+  validate on create — historical rows pass through unchanged).
+
 ## [0.4.12] - 2026-05-09
 
 ### Fixed — input validation hardening (BUG-035, 036, 037)
