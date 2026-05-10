@@ -1,0 +1,27 @@
+--- nginx.conf  (before)
++++ nginx.conf  (after)
+@@
+-        location ^~ /rebooter/firmware/ {
+-            alias /mnt/s/code/rebooter-droids/data/firmware/;
+-            autoindex off;
+-            open_file_cache off;
+-            add_header Cache-Control "public, max-age=300" always;
+-        }
++        # rebooter-droids firmware — single location, conditional Cache-Control.
++        # latest.bin (channel-pointer, atomic-replaced on every upload) MUST be
++        # no-cache or intermediaries serve stale bytes for up to max-age seconds.
++        # Versioned rebooter-X.Y.Z.bin filenames are immutable by convention so
++        # cache them aggressively.
++        # Pre-2026-05-10 fix: max-age=300 across the board produced www-vs-www2
++        # divergence after re-uploads (one path's edge cache stale, one fresh).
++        location ^~ /rebooter/firmware/ {
++            alias /mnt/s/code/rebooter-droids/data/firmware/;
++            autoindex off;
++            open_file_cache off;
++
++            set $rebooter_fw_cc "public, max-age=86400, immutable";
++            if ($uri ~ "/latest\.bin$") {
++                set $rebooter_fw_cc "no-store, no-cache, must-revalidate, max-age=0";
++            }
++            add_header Cache-Control $rebooter_fw_cc always;
++        }
