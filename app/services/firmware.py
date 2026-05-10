@@ -239,6 +239,142 @@ def upload_release(
     return out
 
 
+def discover_on_disk_releases(
+    settings: Settings,
+    *,
+    issued_by_user_id: str | None = None,
+) -> dict:
+    """v0.4.19 (Tier-1 B): backfill `firmware_releases` rows for any
+    `.bin` files that exist under `data/firmware/<channel>/` but
+    are missing from the DB.
+
+    Use case: the firmware team places artifacts directly on disk
+    (e.g. via SCP or a CI/CD pipeline) without going through
+    `POST /api/v1/admin/firmware/releases`. nginx serves them fine
+    but the admin UI's `/app/firmware` page can't see them and the
+    DB-driven channel-pointer redirect at
+    `/api/v1/firmware/<channel>/latest` returns 404.
+
+    This scan walks the channel sub-directories, computes SHA-256
+    + size for each `.bin`, and inserts a row + mirror records for
+    anything not already tracked. Skips:
+      - the `latest.bin` channel-pointer files (they're copies of
+        a real versioned artifact already accounted for)
+      - files whose filename is already in `firmware_releases`
+      - the `bootstrap/` directory (bootstrap firmware uses a
+        different lifecycle and lives under
+        `firmware_public_base/bootstrap/...` directly)
+
+    Returns `{discovered: [...], skipped_existing: int,
+    skipped_pointer: int, errors: [...]}`.
+    """
+    firmware = Path(settings.firmware_dir)
+    base = settings.firmware_public_base.rstrip("/")
+    api_root = base
+    if base.endswith("/firmware"):
+        api_root = base[: -len("/firmware")] + "/api/v1/firmware"
+
+    discovered: list[dict] = []
+    skipped_existing = 0
+    skipped_pointer = 0
+    errors: list[dict] = []
+
+    # Pull existing filenames in one query.
+    with session_scope() as session:
+        existing = {
+            r.filename
+            for r in session.scalars(select(FirmwareRelease))
+        }
+
+    now = datetime.now(timezone.utc)
+    for channel in ALLOWED_CHANNELS:
+        channel_dir = firmware / channel
+        if not channel_dir.is_dir():
+            continue
+        for entry in sorted(channel_dir.iterdir()):
+            if not entry.is_file():
+                continue
+            if entry.name == CHANNEL_POINTER_FILENAME:
+                skipped_pointer += 1
+                continue
+            if not entry.name.endswith(".bin"):
+                continue
+            if entry.name in existing:
+                skipped_existing += 1
+                continue
+            try:
+                sha = _sha256_of_path(str(entry))
+                size = entry.stat().st_size
+                # Try to extract a version from the filename pattern
+                # `rebooter-<version>-<channel>.bin` or
+                # `rebooter-<version>.bin`.
+                stem = entry.stem  # without .bin
+                version = stem
+                if stem.startswith("rebooter-"):
+                    version = stem[len("rebooter-"):]
+                # Strip a trailing `-<channel>` if it matches
+                if version.endswith(f"-{channel}"):
+                    version = version[: -(len(channel) + 1)]
+                download_url = f"{base}/{entry.name}"
+                per_channel_url = f"{base}/{channel}/{entry.name}"
+                pointer_url = f"{api_root}/{channel}/latest"
+
+                with session_scope() as session:
+                    record = FirmwareRelease(
+                        version=version,
+                        channel=channel,
+                        filename=entry.name,
+                        download_url=download_url,
+                        sha256=sha,
+                        size_bytes=size,
+                        release_notes="discovered by on-disk scan",
+                        created_by_user_id=issued_by_user_id,
+                        created_at=now,
+                    )
+                    session.add(record)
+                    session.flush()
+                    rid = record.id
+                    for kind, url in (
+                        (MIRROR_KIND_LOCAL, download_url),
+                        (f"{MIRROR_KIND_LOCAL}_per_channel", per_channel_url),
+                        (f"{MIRROR_KIND_LOCAL}_channel_pointer", pointer_url),
+                    ):
+                        session.add(FirmwareReleaseMirror(
+                            release_id=rid,
+                            kind=kind,
+                            url=url,
+                            status=MIRROR_STATUS_LIVE,
+                            verified_sha256=sha,
+                            last_probed_at=now,
+                            created_at=now,
+                        ))
+                    session.flush()
+
+                discovered.append({
+                    "id": rid,
+                    "version": version,
+                    "channel": channel,
+                    "filename": entry.name,
+                    "size_bytes": size,
+                    "sha256": sha,
+                })
+            except IntegrityError:
+                # Race: another worker discovered it concurrently.
+                skipped_existing += 1
+            except Exception as e:
+                errors.append({
+                    "path": str(entry),
+                    "error": f"{type(e).__name__}: {e}",
+                })
+
+    return {
+        "discovered": discovered,
+        "skipped_existing": skipped_existing,
+        "skipped_pointer": skipped_pointer,
+        "errors": errors,
+    }
+
+
 def delete_release(release_id: str, settings: Settings) -> bool:
     """Hard-delete the FirmwareRelease + its FirmwareReleaseMirror
     rows (cascade) + on-disk artifacts (canonical + per-channel).

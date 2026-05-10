@@ -25,6 +25,24 @@
   </form>
 </section>
 
+{# v0.4.19 (Tier-1 B): scan for on-disk releases the firmware team
+   placed via SCP/CI without going through the upload API. Walks the
+   channel sub-dirs, computes SHA + size, backfills firmware_releases
+   rows + mirror records. Idempotent — already-tracked filenames are
+   skipped. Audit-logged as `firmware.scanned`. #}
+<section class="placeholder" style="margin-top:1rem">
+  <h2>Scan for on-disk releases</h2>
+  <p class="muted" style="margin-top:0; font-size:.9rem">
+    If a <code>.bin</code> file exists under <code>data/firmware/&lt;channel&gt;/</code>
+    but isn't shown below, it was likely placed direct-to-disk (SCP, CI/CD, etc.)
+    without going through the upload API. Run a scan to register those into
+    the admin UI + DB-driven channel pointers. Idempotent.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.firmware_scan_submit') }}">
+    <button type="submit">Scan now</button>
+  </form>
+</section>
+
 <h2>Releases</h2>
 {% if releases %}
 <div class="table-wrap"><table>
