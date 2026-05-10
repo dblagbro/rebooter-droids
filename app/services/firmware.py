@@ -274,6 +274,22 @@ def discover_on_disk_releases(
     if base.endswith("/firmware"):
         api_root = base[: -len("/firmware")] + "/api/v1/firmware"
 
+    # v0.4.34: force a sync before the directory walk so the
+    # container sees writes that the host just committed. Fixes a
+    # bind-mount cache-miss class of bug where a freshly SCP'd .bin
+    # would be present on the host FS but invisible to the
+    # container's iterdir() for a few seconds after the write
+    # completed — the firmware team hit exactly this on 2026-05-10
+    # PM, scan returning 2 discovered when 3 should have been
+    # picked up. Cost is one syscall per scan; scan is operator-
+    # triggered so negligible.
+    try:
+        os.sync()
+    except OSError:
+        # sync() is best-effort; if the platform doesn't support
+        # it for any reason we still want the scan to proceed.
+        pass
+
     discovered: list[dict] = []
     skipped_existing = 0
     skipped_pointer = 0
