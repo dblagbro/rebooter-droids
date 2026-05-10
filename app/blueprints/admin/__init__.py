@@ -41,4 +41,5 @@ from app.blueprints.admin import (  # noqa: E402,F401
     rules,           # v0.3.0 P1
     history,         # v0.3.0 P1
     settings,        # v0.3.0 P1
+    schedules,       # v0.4.8 (B8)
 )

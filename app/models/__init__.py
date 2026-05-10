@@ -32,3 +32,4 @@ from app.models.firmware_mirrors import FirmwareReleaseMirror  # noqa: E402,F401
 from app.models.watchdog import WatchdogRule, WatchdogProbeEvent  # noqa: E402,F401
 from app.models.password_resets import PasswordReset  # noqa: E402,F401
 from app.models.runtime_flags import RuntimeFlag  # noqa: E402,F401
+from app.models.schedules import Schedule  # noqa: E402,F401

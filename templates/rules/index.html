@@ -3,7 +3,7 @@
 {% block content %}
 <div class="v3-page-header">
   <h1>Rules</h1>
-  <p class="v3-page-sub">Watchdog rules. Probe runtime ships in v0.4.1; v0.4.0 is the data-model + builder slice.</p>
+  <p class="v3-page-sub">Watchdog rules — fire on probe failure. For time-driven actions (cycle X every Saturday at 3am, etc.) see <a href="{{ url_for('admin_ui.schedules_page') }}">Schedules →</a>.</p>
 </div>
 
 {% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}

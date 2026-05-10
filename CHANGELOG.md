@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-05-09
+
+### Added — Schedules as a separate primitive (B8)
+
+Time-driven counterpart to watchdog rules. Rules fire on probe
+failure; schedules fire on time.
+
+- **New table `schedules`** with `kind`, `recurrence` (once /
+  daily / weekly), `at_time_utc`, `weekdays`, `duration_seconds`,
+  `target`, plus runtime state (`last_run_at`, `next_run_at`,
+  `last_outcome`).
+- **Two kinds:**
+  - `power_cycle` — enqueues `relay_cycle` against a target
+    (device / group / tag) on the schedule.
+  - `maintenance` — flips portal-wide watchdog maintenance ON
+    for `duration_seconds`, then OFF (so e.g. "every Sat 2-3 am
+    UTC, suppress watchdog rules" is one-line).
+- **APScheduler `schedule_tick`** every 30 s. Fires due
+  schedules, recomputes `next_run_at` for recurrences,
+  reconciles the maintenance flag.
+- **UI at `/app/schedules`** with form for all the shapes +
+  enable/disable/delete + plain-English sentence render.
+- **API:** `GET / POST / DELETE /api/v1/admin/schedules`.
+- **Audit hooks:** `schedule.created`, `schedule.deleted`,
+  `schedule.enabled_changed`.
+- **Cross-link** between `/app/rules` and `/app/schedules` in
+  the page header (no top-nav change).
+
+### Operational controls
+
+- `REBOOTER_SCHEDULER_DISABLED=1` already short-circuits the
+  whole APScheduler — same flag covers the new schedule_tick.
+
+### Compatibility
+
+- All v0.4.7 routes preserved.
+- New `schedules` table created via `Base.metadata.create_all()`
+  at boot.
+
 ## [0.4.7] - 2026-05-09
 
 ### Added — Maintenance windows + portal-pause + watchdog.firing inbox (B7 + B13)
