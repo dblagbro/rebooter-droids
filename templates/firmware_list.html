@@ -1,8 +1,14 @@
 {% extends "layout.html" %}
 {% block title %}Firmware - Rebooter-Droids{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
-<h1>Firmware</h1>
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{# v0.4.33 (D3): firmware is now a Settings tab. Canonical URL is
+   /app/settings/firmware; the legacy /app/firmware path 302s here. #}
+{% include "_components/settings_tabs.html" %}
+
+<h2 style="margin-top:1rem">Firmware</h2>
 
 {% if uploaded %}
 <section class="placeholder" style="border-color:#2563eb">

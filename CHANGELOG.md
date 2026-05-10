@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.33] - 2026-05-10
+
+### Changed — Firmware UI moves under Settings (D3)
+
+The firmware-releases + deployments page that's been at
+`/app/firmware` since v0.1 is now canonically a Settings tab at
+`/app/settings/firmware`. Matches how the Settings tab strip
+already named it. The legacy URL keeps working as a **302 redirect**
+to the new canonical URL so existing bookmarks, external docs, the
+one-click upgrade button copy, and any operator muscle memory all
+keep functioning.
+
+Template gains the Settings tab strip at top + a "Settings" page
+header so the breadcrumb mental model matches the URL.
+
+No data migration. No API change. Pure UX consolidation.
+
+### Tests
+
+- `tests/qa/test_v0433_firmware_settings_tab.py` — new URL renders
+  with tab strip; legacy URL 302s to the new home.
+
 ## [0.4.32] - 2026-05-10
 
 ### Added — History export + free-text search (C2 + C3)

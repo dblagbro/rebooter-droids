@@ -32,7 +32,11 @@ from app.services.groups import list_groups as svc_list_groups
 
 # ── UI ─────────────────────────────────────────────────────────────────────
 
-@admin_ui_bp.get("/firmware")
+# v0.4.33 (D3): firmware UI lives under /app/settings/firmware as a
+# Settings tab. The legacy /app/firmware path is preserved as a 302
+# redirect so existing bookmarks, scripts, and external docs keep
+# working.
+@admin_ui_bp.get("/settings/firmware")
 @admin_required_ui
 def list_firmware_page():
     releases = svc_list_firmware()
@@ -43,6 +47,8 @@ def list_firmware_page():
         "firmware_list.html",
         **_ctx(
             {
+                "active": "settings",
+                "settings_tab": "firmware",
                 "releases": releases,
                 "deployments": deployments,
                 "groups": groups,
@@ -52,6 +58,12 @@ def list_firmware_page():
             }
         ),
     )
+
+
+@admin_ui_bp.get("/firmware")
+@admin_required_ui
+def legacy_firmware_page_redirect():
+    return redirect(url_for("admin_ui.list_firmware_page"), code=302)
 
 
 @admin_ui_bp.post("/firmware/deployments")
