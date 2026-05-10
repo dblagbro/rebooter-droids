@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.27] - 2026-05-10
+
+### Added — History page chip filters + API.md refresh
+
+- **History page chips.** `/app/history` now has a chip nav with
+  one-click filters for the 14 most common audit-action prefixes
+  (`device`, `device_announcement`, `watchdog_rule`, `schedule`,
+  `firmware`, `user`, `attention`, `maintenance_mode`,
+  `password_reset`, `enrollment_token`, `smtp`, `network`, `system`,
+  `group`). Backed by a new `action_prefix` query parameter on
+  `GET /admin/audit` that does a `LIKE '<prefix>.%'` match. Free-text
+  filters still work alongside chips.
+- **`docs/API.md` refreshed.** Documents endpoints added across the
+  v0.4.x series: `/device/announce`, `/device/failsafe`,
+  `/admin/pending-adoption/*`, `/admin/firmware/scan`,
+  `/admin/maintenance`, `/admin/attention/{id}/ack`,
+  `/admin/rules/*` (watchdog rules), `/admin/schedules`,
+  `/admin/users/*`, `/admin/invitations/*`,
+  `/admin/devices/bulk-delete`, `/admin/devices/{id}/commands/{cid}/cancel`,
+  runtime-settings save/clear surface. Adds new error codes
+  (`forbidden`, `rate_limited`, `announcement_*`, `maintenance_active`).
+
+### Tests
+
+- `tests/qa/test_v0427_history_chips.py` — verifies chip nav renders,
+  active state flips on `action_prefix`, and filtered rows only
+  contain matching actions.
+
 ## [0.4.26] - 2026-05-10
 
 ### Added — Runtime-editable Network + System settings
