@@ -450,6 +450,31 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-046 — Bootstrap admin password reverts on container restart (fixed v0.4.16)
+
+- **Severity:** high (operator footgun + auth surprise)
+- **Area:** `app/services/bootstrap.py::ensure_bootstrap_admin`
+- **Status:** **fixed in v0.4.16**
+- **Detail:** `ensure_bootstrap_admin` had a "always reconcile
+  to env var" branch that force-overwrote the bootstrap admin's
+  password on every container startup. So:
+  1. Operator does password reset, sets new password "MyNew123".
+  2. Container restarts (image update, host reboot, etc.).
+  3. Bootstrap reads `REBOOTER_BOOTSTRAP_ADMIN_PASSWORD` env var
+     and overwrites the user's password back to it.
+  4. "MyNew123" stops working — no audit, no signal.
+  5. Operator does another reset → loop.
+  Caught from a real operator support call (2026-05-09 PM):
+  10 reset attempts in succession because the new password kept
+  reverting after each container restart triggered by the
+  rapid-fire QA test cycles.
+- **Fix:** default behavior is now "only set password on initial
+  create". Privileges still reconciled every startup so the
+  operator can never lock themselves out of admin. Legacy
+  force-reset behavior available behind opt-in env var
+  `REBOOTER_BOOTSTRAP_ADMIN_FORCE_PASSWORD_ON_STARTUP=1` for the
+  "I forgot my password" recovery path.
+
 ### BUG-045 — Forgot-password page lied when SMTP failed (fixed v0.4.15)
 
 - **Severity:** medium (UX / operator confusion)
