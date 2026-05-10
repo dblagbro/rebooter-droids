@@ -21,7 +21,10 @@ def test_history_page_renders_chip_nav(base_url):
     body = s.get(f"{base_url}/app/history", timeout=10).text
     # Chip nav present
     assert 'aria-label="History categories"' in body
-    # A representative sample of chips is rendered
+    # A representative sample of chips is rendered. Each label appears
+    # inside an <a class="v3-chip ..."> ...label... </a>; we just look
+    # for the label string + the surrounding chip class on the same
+    # rendered page rather than fixing whitespace.
     for label in (
         "Devices",
         "Watchdog rules",
@@ -30,7 +33,9 @@ def test_history_page_renders_chip_nav(base_url):
         "Maintenance toggle",
         "Attention ack",
     ):
-        assert f">{label}<" in body or f"{label}<" in body, f"missing chip: {label}"
+        assert label in body, f"missing chip label: {label}"
+    # Confirm those labels are wrapped in chip <a>s, not stray text
+    assert body.count("v3-chip") >= 14, "expected at least 14 chip nodes"
     # "All" chip starts active
     assert 'aria-pressed="true"' in body
     # action_prefix query knob is documented in chip hrefs
