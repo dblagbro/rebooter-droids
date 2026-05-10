@@ -391,39 +391,35 @@ the corresponding `<version>.bin` for archival/rollback.
   Slot A's contract — what it expects in NVS, what HTTP it
   speaks to central — must be stable.
 
-## 9. Open questions for firmware team
+## 9. Open questions for firmware team — REDLINED 2026-05-10
 
-1. **Slot sizes.** §4.1 has rough numbers. Confirm or amend
-   based on actual main-firmware footprint + ESP8266 OTA
-   library overhead.
-2. **`force` flag** in the firmware-fetch response. Pre-RFC,
-   what does the device do on `force=true`? With dual-bank,
-   should `force=true` skip the trial period? Probably yes
-   for hotfixes but it's the firmware team's call.
-3. **Boot-streak threshold N.** Plan default N=3. Bigger = more
-   conservative (longer "this is good" period). Smaller =
-   accept new firmware faster.
-4. **Consecutive-failures threshold F.** Plan default F=3.
-   Same trade-off.
-5. **Slot A AP-mode captive portal** for "lost Wi-Fi" recovery.
-   Optional in §4.5 — confirm desired or skip.
-6. **Configuration after flash.** Does `flash-rebooter` push
-   Wi-Fi creds + central URL via serial, or via captive portal
-   on first boot? Either works; pick one.
-7. **NVS layout.** Strongly suggest reserving keys for future
-   use now so we don't paint ourselves into a corner.
-   Suggested keys: `boot_target`, `boot_streak`,
-   `consecutive_boot_failures`, `slot_b_version`,
-   `slot_c_version`, `slot_b_state`, `wifi_ssid`, `wifi_psk`,
-   `central_urls` (comma-separated), `device_token`,
-   `enrollment_token`, `last_failsafe_reason`,
-   `last_failsafe_at`. Confirm.
-8. **Flashing tool packaging.** Single-file Python script with
-   `esptool` as a pip dep? Bundled binary? Operator UX matters.
-9. **Firmware library hosting timeline.** RFC-002 P1+ work is
-   queued on the rebooter-droids side. Coordinate so the
-   firmware team has somewhere stable to publish bootstrap
-   artifacts before the flash-tool ships.
+**Status: CLOSED.** Firmware team replied with detailed answers
+to all 9 questions on 2026-05-10. Full reply preserved at
+`docs/notes/2026-05-10-from-firmware-team-rfc005-redlines.md`.
+Decisions folded in below.
+
+| # | Question | Final answer |
+|---|---|---|
+| 1 | Slot sizes | Slot A ≥ **640 KiB**, Slot B = **1 MiB**, Slot C = **1 MiB**. Conservative; won't shrink. Bootstrap 0.2.2 = 472,768 B; main 0.1.5-dev-central ≈ 592 KB. |
+| 2 | `force` flag semantics | `force=false` → trial-then-promote (Q3). `force=true` → skip multi-boot trial **but** still require **1 sane boot + accepted heartbeat + uptime sanity**. Not "instantly stable". |
+| 3 | Boot-streak threshold N | **N = 3**. Success = normal runtime, Wi-Fi up (or AP intentional), local stack serving, central HB OK (when enabled) **OR** local-OK (when disabled), uptime ≥ 5 min. Command-poll **not** required. |
+| 4 | Failure threshold F | **F = 3**. Failure = any reset before Q3 success criteria, excluding operator-initiated. Canonical reason strings: `watchdog_reset`, `exception_reset`, `boot_loop_timeout`, `manual_reset`, `ota_reboot`, `power_loss_or_external_reset`. **No fake brownout detection.** |
+| 5 | AP-mode captive portal | **YES** — already in `bootstrap-0.2.2`. Treated as core recovery, not optional. |
+| 6 | Flash-time config | **Both**. Serial injection (lab/batch fast path), AP-mode provisioning (universal fallback). With announce flow, central enrollment no longer needed at flash time. |
+| 7 | NVS / config layout | **LittleFS JSON**, not native NVS. Renamed: `boot_slot` (not `boot_target`), `fallback_version` (not `slot_c_version`). Added: `central_enabled`, `setup_ap_name`, `last_boot_reason`, `last_known_good_version`, `pending_enrollment_received_at`. `central_urls` = **JSON array**. |
+| 8 | Flash-tool packaging | **Cross-platform Python CLI first**, esptool as pip dep. PowerShell script retained as Windows-side reference/recovery. Bundled binary later. |
+| 9 | Hosting timeline | **YES, in force.** Devices using `/rebooter/firmware/` URLs live. New constraint: **publish-integrity discipline** — verify post-copy disk SHA + external GET body-length on **both** www and www2 before calling a release "live". |
+
+### Hub-side follow-ups from the redlines (queued, not blocking)
+
+- Recognise the 6 canonical Q4 reason strings in
+  `app/services/failsafe.py` + render with friendly labels in the
+  Status inbox.
+- Add a "Verify external mirror" button on `/app/firmware` that
+  GETs both www and www2, compares Content-Length to expected
+  `size_bytes`, flashes red on mismatch (Q9 publish-integrity).
+- Treat `bootstrap-0.2.2` as the recommended baseline for any new
+  unit bring-up.
 
 ## 10. Phased rollout
 
