@@ -128,7 +128,31 @@
           {% if d.central_management_enabled %}<span class="badge" title="device opts in to central management">central</span>
           {% else %}<span class="badge" title="device opts out — local-only is healthy">local-only</span>{% endif %}
         </td>
-        <td>{{ d.firmware_version or '—' }}</td>
+        <td>
+          {{ d.firmware_version or '—' }}
+          {# v0.4.21: one-click upgrade when this device is behind
+             the current latest-stable release. Hidden when:
+              - we don't track any stable release yet
+              - device is already on it
+              - device opts out of central (local-only)
+              - operator lacks edit permission #}
+          {% if latest_stable
+                and d.central_management_enabled
+                and d.firmware_version
+                and d.firmware_version != latest_stable.version
+                and current_user is defined and current_user
+                and current_user.role in ('super_admin','admin') %}
+            <form method="post"
+                  action="{{ url_for('admin_ui.device_upgrade_to_latest_submit', device_id=d.id) }}"
+                  style="display:inline; margin-left:.4rem"
+                  onsubmit="return confirm('Upgrade {{ d.display_name or d.id }} from {{ d.firmware_version }} to {{ latest_stable.version }}?');">
+              <button type="submit" class="btn-secondary"
+                      title="One-click upgrade to the current latest-stable firmware. Equivalent to /app/firmware → deploy to device.">
+                ⬆ {{ latest_stable.version }}
+              </button>
+            </form>
+          {% endif %}
+        </td>
         <td>{{ d.last_heartbeat_at or '—' }}</td>
         <td>
           {% if d.local_ip %}<a href="http://{{ d.local_ip }}/" target="_blank" rel="noopener">{{ d.local_ip }}</a>{% else %}—{% endif %}

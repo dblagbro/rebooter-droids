@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.21] - 2026-05-10
+
+### Added — One-click "Upgrade to <latest-stable>" on the devices list
+
+- **Per-row upgrade button** on `/app/devices`. Whenever a device's
+  `firmware_version` differs from the current latest-stable
+  release tracked in `firmware_releases`, the row gets a small
+  ⬆ button labelled with the target version. One click queues a
+  single-device deployment of the latest stable release.
+- Equivalent to going to `/app/firmware`, picking the release,
+  selecting `target_type=device`, typing the device id — folded
+  into one click.
+- Confirmation prompt names both the source and target version
+  before queueing.
+- Hidden when:
+  - no stable release is tracked (UI gives operator nothing to
+    point at)
+  - the device is already on the latest version
+  - device opts out of central (`central_management_enabled=false`)
+  - the viewer lacks edit permission (super_admin / admin)
+- New audit hook `device.upgrade_initiated` with details
+  `{via, release_id, release_version, deployment_id}`.
+- New endpoint `POST /app/devices/<device_id>/upgrade-to-latest`.
+- New service helper `latest_stable_release_dict()` for templates.
+
+### Compatibility
+
+- All v0.4.20 routes preserved.
+- The new button is purely additive — the existing
+  `/app/firmware` deploy form continues to work.
+
 ## [0.4.20] - 2026-05-10
 
 ### Added — Pending-adoption flow (operator-driven device onboarding)
