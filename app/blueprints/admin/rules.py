@@ -166,21 +166,42 @@ def rules_create_submit():
 def rules_create_json_submit():
     """v0.4.9 (B9): create a rule from a raw JSON body. Same shape
     as the API. Lets the operator express probe / target / escalation
-    combinations the form-builder doesn't surface."""
+    combinations the form-builder doesn't surface.
+
+    v0.4.10 (BUG-031): on validation failure, re-render the rules
+    page with the operator's JSON pre-filled. Pre-v0.4.10 a redirect
+    nuked the textarea contents.
+    """
     import json
 
     raw = (request.form.get("rule_json") or "").strip()
+
+    def _err(msg: str):
+        rules = svc_list_rules()
+        rules_with_events = []
+        for r in rules:
+            r["recent_events"] = svc_list_events(r["id"], limit=10)
+            rules_with_events.append(r)
+        return render_template(
+            "rules/index.html",
+            **_ctx({
+                "active": "rules",
+                "rules": rules_with_events,
+                "devices": svc_list_devices(include_qa_fixtures=False),
+                "groups": svc_list_groups(),
+                "json_editor_value": raw,
+                "json_editor_error": msg,
+            }),
+        )
+
     if not raw:
-        flash("Paste a JSON body first.", "error")
-        return redirect(url_for("admin_ui.rules_page"))
+        return _err("Paste a JSON body first.")
     try:
         body = json.loads(raw)
     except json.JSONDecodeError as e:
-        flash(f"JSON parse error: {e}", "error")
-        return redirect(url_for("admin_ui.rules_page"))
+        return _err(f"JSON parse error: {e}")
     if not isinstance(body, dict):
-        flash("Top-level JSON must be an object.", "error")
-        return redirect(url_for("admin_ui.rules_page"))
+        return _err("Top-level JSON must be an object.")
 
     try:
         rule = svc_create_rule(
@@ -201,8 +222,7 @@ def rules_create_json_submit():
             created_by_user_id=g.current_user.id,
         )
     except WatchdogValidationError as e:
-        flash(str(e), "error")
-        return redirect(url_for("admin_ui.rules_page"))
+        return _err(f"Validation failed: {e}")
 
     audit_service.record(
         "watchdog_rule.created",
