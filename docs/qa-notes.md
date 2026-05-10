@@ -160,6 +160,24 @@ When adding a new test that mutates user state, either:
 2. Or use a pre-provisioned `qa-test-admin@…` user that's NOT the
    one the rest of the suite logs in as.
 
+### 2026-05-09 PM — verified clean run after v0.4.4/.5/.6
+
+After the test-infra hardening + 2 regression fixes, the full QA
+suite runs **240 passed / 2 skipped / 0 failed** in 125 s on the
+live deployment.
+
+Both skips are expected:
+1. `test_login_rate_limit_kicks_in` — this host's IP is in
+   `REBOOTER_RATE_LIMIT_EXEMPT_IPS`. Rate limiter still works for
+   non-exempt clients; this test detects the absence of
+   `X-RateLimit-Limit` headers and skips cleanly. To validate the
+   limiter from a non-exempt source, run from a host outside
+   192.168.18.0/24.
+2. `test_device_detail_open_local_ui_link_when_ip_known` — needs
+   a device with `local_ip` set in the fleet. Per BUG-029, the
+   only device row right now is the QA fixture, and it doesn't
+   have `local_ip` populated.
+
 ### Operator-facing diagnostic blind spot (BUG-027)
 
 The central server lives on a different subnet than the lab
