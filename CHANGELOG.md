@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-05-09
+
+### Fixed
+
+- **BUG-050 — Device register 500 on overlong caller-supplied
+  fields.** Pre-fix, sending `display_name` >120 chars (or
+  `hardware_model` >80, `mac_address` >40, etc.) hit the
+  Postgres `StringDataRightTruncation` on INSERT → unhandled
+  → 500. Now: validation-failed → 400 with field name + max
+  length.
+- **BUG-051 — Device register accepted any string as
+  `mac_address`.** `<script>alert(1)</script>` was happily
+  persisted. Output rendering is Jinja-escaped so no XSS
+  surface, but admins saw garbage in the MAC column. Now:
+  hex-only validation regex (`[0-9A-Fa-f:.\-\s]+`) rejecting
+  anything outside the common formats.
+
+### Compatibility
+
+- All v0.4.17 routes preserved.
+- Service-layer validation only — existing devices with
+  legacy MAC strings (none in production today; we just
+  cleaned the fleet) pass through unchanged.
+
 ## [0.4.17] - 2026-05-09
 
 ### Added
