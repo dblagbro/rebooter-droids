@@ -422,6 +422,50 @@ focused work.
 **Later** (gated on operator redline):
 - P1 → P7 per §8.
 
+## 10b. DECIDED 2026-05-10 — operator picked Option C (peer-to-peer outbox)
+
+**Operator redline supersedes Section 6.** Sections 7 and 10 (Option-B
+specifics) are retained for historical context but should be read as
+the rejected design, not the target.
+
+Final architecture (locked):
+
+- **Option C — Application-level event-log sync (active-active).**
+  Each hub keeps an append-only `outbox_events` table mirroring the
+  audit-event mental model we already use. A small replicator daemon
+  on each hub:
+  - Polls peer hubs' `/api/v1/sync/since?seq=<n>` over HTTPS with an
+    HMAC-signed bearer.
+  - Receives a batch of events, applies them idempotently into the
+    local DB (UUID-keyed rows; conflict policy = last-writer-wins on
+    `event.at` with the existing audit row preserving both versions).
+  - Stores the peer's last-applied seq in a `sync_cursors` table.
+  - Emits its own outbox entry for every mutation as a side-effect
+    of the existing audit-record path (cheap — one extra row per
+    audit row).
+- **Deletes**: tombstone rows in `outbox_events` with `tombstone_for`
+  pointing at the original UUID. The applier writes a row to a
+  `tombstones` table and refuses to re-create the same UUID. Avoids
+  the classic "delete + later replicate of an old insert" footgun.
+- **Auth**: HMAC-signed bearer reusing the existing coordinator HMAC
+  pattern (operator already has the secrets infrastructure). No new
+  CA.
+- **Steady-state latency**: target ~1–3s end-to-end.
+- **Partition tolerance**: any single hub can run for arbitrary time
+  with the peer offline; on rejoin, both replay each other's outbox
+  in seq order with no operator intervention.
+
+Section 6's Option-B reasoning that called Option C "more code, more
+risk, but most operator-friendly UX" was the right call — operator
+explicitly preferred the symmetric, no-failover-procedure-required
+posture even at higher implementation cost. The mental model also
+matches what we already do with audit events, so the cognitive load
+is smaller than it looks on paper.
+
+**Implementation lands after RFC-003 RBAC ships** (B10 work) because
+the outbox events need to carry the new site/group/device scope
+claims so a peer hub's applier can enforce scope before writing.
+
 ## 11. Constitutional invariants (operator-locked, do not violate)
 
 - **C1 (from webui-redesign-requirements.md §0.2).** Devices
