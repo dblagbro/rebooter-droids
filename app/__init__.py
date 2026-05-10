@@ -112,10 +112,19 @@ def create_app() -> Flask:
         # Lock down embedded resources to same-origin by default. The
         # admin UI doesn't load any third-party JS at runtime; if it
         # ever needs to, tighten here.
+        # v0.4.22 (BUG-049): tightened script-src — `'unsafe-inline'`
+        # dropped. All inline `<script>` blocks were extracted to
+        # static files (`theme_flash.js`) and inline event handlers
+        # (`onsubmit="..."`) were migrated to data-attribute-driven
+        # addEventListener wiring (`confirm_handlers.js` +
+        # `mass_action.js`). style-src keeps `'unsafe-inline'`
+        # because 123 inline `style=` attrs across templates would
+        # be a separate migration; not security-critical at the
+        # same level as script.
         resp.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "frame-ancestors 'none'; "

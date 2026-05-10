@@ -145,7 +145,7 @@
             <form method="post"
                   action="{{ url_for('admin_ui.device_upgrade_to_latest_submit', device_id=d.id) }}"
                   style="display:inline; margin-left:.4rem"
-                  onsubmit="return confirm('Upgrade {{ d.display_name or d.id }} from {{ d.firmware_version }} to {{ latest_stable.version }}?');">
+                  data-confirm-message="Upgrade {{ d.display_name or d.id }} from {{ d.firmware_version }} to {{ latest_stable.version }}?">
               <button type="submit" class="btn-secondary"
                       title="One-click upgrade to the current latest-stable firmware. Equivalent to /app/firmware → deploy to device.">
                 ⬆ {{ latest_stable.version }}

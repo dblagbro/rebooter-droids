@@ -34,3 +34,4 @@ from app.models.password_resets import PasswordReset  # noqa: E402,F401
 from app.models.runtime_flags import RuntimeFlag  # noqa: E402,F401
 from app.models.schedules import Schedule  # noqa: E402,F401
 from app.models.announcements import DeviceAnnouncement  # noqa: E402,F401
+from app.models.attention_acks import AttentionAck  # noqa: E402,F401
