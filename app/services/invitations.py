@@ -24,6 +24,22 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _invitation_ttl(settings: Settings) -> int:
+    """v0.4.26: prefer runtime_settings DB override → env-var →
+    Settings dataclass default. Lets operators rotate the
+    default invite window from the UI."""
+    try:
+        from app.services import runtime_settings as _rs
+        v = _rs.get(
+            "system.invitation_ttl_seconds",
+            env_var="REBOOTER_INVITATION_TTL_SECONDS",
+            default=None,
+        )
+        return int(v) if v is not None else settings.invitation_ttl_seconds
+    except Exception:
+        return settings.invitation_ttl_seconds
+
+
 def mint_invitation(
     settings: Settings,
     email: str,
@@ -44,8 +60,9 @@ def mint_invitation(
         token_hash=_hash(secret),
         issued_by_user_id=issued_by_user_id,
         note=note,
-        expires_at=datetime.now(timezone.utc)
-        + timedelta(seconds=settings.invitation_ttl_seconds),
+        expires_at=datetime.now(timezone.utc) + timedelta(
+            seconds=_invitation_ttl(settings)
+        ),
     )
     with session_scope() as session:
         session.add(record)

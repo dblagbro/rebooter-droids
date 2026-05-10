@@ -8,40 +8,54 @@
 
 <div class="v3-card">
   <h2>Network</h2>
-  <p class="muted">Public URLs the hub serves on, CORS allowlist, and rate-limit exemption list.</p>
+  <p class="muted" style="margin-top:0">Public URLs the hub serves on, CORS allowlist, rate-limit exemption list, cookie domain. Each field reads <strong>DB override → env-var → empty</strong>.</p>
 </div>
 
 <div class="v3-card" style="margin-top:1rem">
-  <h3>Live now</h3>
-  <ul class="muted">
-    <li><strong>Strict CORS allowlist</strong> —
-      <code>REBOOTER_CORS_ALLOWED_ORIGINS</code>, env-var-driven (v0.2.11).</li>
-    <li><strong>Dual canonical hosting</strong> —
-      <code>REBOOTER_PUBLIC_BASE_URL</code> +
-      <code>REBOOTER_FIRMWARE_PUBLIC_BASE</code>, both nodes mirror;
-      device-side fallback queries primary then secondary (RFC-002 P1).</li>
-    <li><strong>Security headers</strong> on every response — HSTS,
-      X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy,
-      and a tightened CSP (<code>script-src 'self'</code>, no
-      <code>'unsafe-inline'</code>; v0.4.11 + v0.4.22).</li>
-    <li><strong>Rate-limit exemption list</strong> —
-      <code>REBOOTER_RATE_LIMIT_EXEMPT_IPS</code> for the QA host
-      (v0.4.4). Empty by default in any internet-facing deployment.</li>
-  </ul>
-</div>
-
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Editable-UI queued</h3>
-  <ul class="muted">
-    <li>Public + secondary URL inputs</li>
-    <li>CORS-allowlist add/remove with one-click validate</li>
-    <li>Rate-limit exemption list add/remove</li>
-    <li>HSTS / CSP profile picker (strict, balanced, dev)</li>
-  </ul>
-  <p class="muted" style="font-size:.85rem">
-    These end up DB-backed with env-var fallback for safety
-    (an empty DB still picks up env defaults). See
-    <code>docs/redesign-continuation-plan.md</code>.
+  <h2>Edit network settings</h2>
+  <form method="post" action="{{ url_for('admin_ui.settings_network_save_submit') }}">
+    <label>Public base URL <span class="badge green" style="font-size:.7rem">live</span>
+      <input type="text" name="public_base_url" value="{{ network.public_base_url }}" placeholder="https://www.voipguru.org/rebooter">
+      {% if network.overrides.public_base_url %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>Firmware public base <span class="badge green" style="font-size:.7rem">live</span>
+      <input type="text" name="firmware_public_base" value="{{ network.firmware_public_base }}" placeholder="https://www.voipguru.org/rebooter/firmware">
+      {% if network.overrides.firmware_public_base %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>CORS allowed origins (comma-separated) <span class="badge amber" style="font-size:.7rem">restart required</span>
+      <input type="text" name="cors_allowed_origins" value="{{ network.cors_allowed_origins }}" placeholder="https://example.com,https://app.example.com">
+      {% if network.overrides.cors_allowed_origins %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>Rate-limit exempt IPs (comma-separated) <span class="badge green" style="font-size:.7rem">live</span>
+      <input type="text" name="rate_limit_exempt_ips" value="{{ network.rate_limit_exempt_ips }}" placeholder="192.168.18.1,127.0.0.1">
+      {% if network.overrides.rate_limit_exempt_ips %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>Cookie domain <span class="badge amber" style="font-size:.7rem">restart required</span>
+      <input type="text" name="cookie_domain" value="{{ network.cookie_domain }}" placeholder=".voipguru.org">
+      {% if network.overrides.cookie_domain %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <button type="submit" style="margin-top:.5rem">Save network settings</button>
+  </form>
+  <p class="muted" style="font-size:.8rem; margin-top:.5rem">
+    <strong>Live</strong> fields take effect immediately on the next request.
+    <strong>Restart required</strong> fields (CORS, cookie domain) are read at Flask app init; you'll need to recreate the container after saving for those to take effect.
   </p>
+  <form method="post" action="{{ url_for('admin_ui.settings_network_clear_submit') }}" style="margin-top:1rem"
+        data-confirm-message="Clear all network DB overrides and revert to env-var defaults?">
+    <button type="submit" class="btn-secondary">Revert to env-var defaults</button>
+  </form>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Security posture (read-only)</h2>
+  <ul class="muted">
+    <li>Security headers on every response: HSTS (6 months, includeSubDomains),
+      X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy,
+      CSP <code>script-src 'self'</code> (no <code>'unsafe-inline'</code>).
+      v0.4.11 + v0.4.22.</li>
+    <li>Dual canonical hosting verified live on www + www2 (RFC-002 P1).</li>
+    <li>Rate-limit posture: <code>30/minute</code>, <code>200/hour</code> per IP
+      on <code>/api/v1/auth/login</code> and <code>/refresh</code> (v0.1.4).</li>
+  </ul>
 </div>
 {% endblock %}

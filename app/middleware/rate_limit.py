@@ -28,7 +28,19 @@ from app.middleware.response import err
 
 
 def _exempt_ips() -> set[str]:
-    raw = os.environ.get("REBOOTER_RATE_LIMIT_EXEMPT_IPS", "").strip()
+    """v0.4.26: read from runtime_settings → env-var fallback so the
+    operator can edit the exempt-IP list from /app/settings/network
+    without recreating the container."""
+    raw = ""
+    try:
+        from app.services import runtime_settings
+        raw = runtime_settings.get(
+            "network.rate_limit_exempt_ips",
+            env_var="REBOOTER_RATE_LIMIT_EXEMPT_IPS",
+            default="",
+        ) or ""
+    except Exception:
+        raw = os.environ.get("REBOOTER_RATE_LIMIT_EXEMPT_IPS", "")
     if not raw:
         return set()
     return {ip.strip() for ip in raw.split(",") if ip.strip()}
