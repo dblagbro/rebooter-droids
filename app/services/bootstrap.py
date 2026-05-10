@@ -89,11 +89,18 @@ def ensure_bootstrap_admin(settings: Settings) -> None:
             select(User).where(User.email == settings.bootstrap_admin_email)
         )
         if existing is not None:
-            # Always reconcile the bootstrap admin's password and elevation
-            # to whatever is currently in the env vars. This is what makes
-            # `Super*120120` for dblagbro@gmail.com authoritative across
-            # rebuilds without requiring a manual UPDATE.
-            existing.password_hash = hash_password(settings.bootstrap_admin_password)
+            # v0.4.16 (BUG-046): only reconcile privileges by default.
+            # Pre-fix this also force-overwrote the password on EVERY
+            # container startup, silently nuking any password the
+            # operator had legitimately reset via /app/reset-password.
+            # The "I forgot my password — recover via env var" flow
+            # is preserved behind a deliberate opt-in env var:
+            # REBOOTER_BOOTSTRAP_ADMIN_FORCE_PASSWORD_ON_STARTUP=1.
+            if settings.bootstrap_admin_force_password_on_startup:
+                existing.password_hash = hash_password(settings.bootstrap_admin_password)
+                log.info(
+                    "Bootstrap admin password force-reconciled (env-gated)"
+                )
             existing.is_admin = True
             existing.is_active = True
             existing.is_super_admin = True
