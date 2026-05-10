@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-05-09
+
+### Fixed — Bootstrap admin password no longer reverts on container restart (BUG-046)
+
+- **BUG-046 — `ensure_bootstrap_admin` overwrote the password on
+  every startup.** Pre-fix: any time the container restarted
+  (image update, host reboot, `--force-recreate`), the bootstrap
+  admin's password got force-set back to
+  `REBOOTER_BOOTSTRAP_ADMIN_PASSWORD`. This silently nuked any
+  password the operator had legitimately reset via the
+  `/app/reset-password` flow. Worst-case-followed: operator
+  resets to a new password, container recreates next morning,
+  new password stops working, operator does another reset, and
+  so on.
+- **Default behavior changes**: startup only sets the password
+  on initial create. Privileges (`is_admin`, `is_super_admin`,
+  `is_active`) are still reconciled every startup so an operator
+  can never lock themselves out of admin.
+- **Recovery path preserved** behind a new opt-in env var:
+  `REBOOTER_BOOTSTRAP_ADMIN_FORCE_PASSWORD_ON_STARTUP=1`. Set
+  this when you've forgotten your password — restart with the
+  env var set, log in with the env-var password, then unset the
+  env var so subsequent restarts don't keep clobbering.
+
+### Compatibility
+
+- All v0.4.15 routes preserved.
+- The default behavior change is intentional and operator-
+  safer. To opt into the legacy "always force-reconcile"
+  behavior, set the new env var.
+
 ## [0.4.15] - 2026-05-09
 
 ### Fixed — Forgot-password page lied when SMTP failed (BUG-045)
