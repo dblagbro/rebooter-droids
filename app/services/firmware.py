@@ -223,7 +223,11 @@ def upload_release(
     except IntegrityError:
         # A concurrent upload claimed the same (version, channel) first.
         # Clean up the firmware blobs we already wrote.
-        for p in (final_path, per_channel_path, pointer_path):
+        # BUG-002a (v0.4.4): v0.3.9 dropped the static channel-pointer
+        # file (it's a Flask redirect now). Removing the now-undefined
+        # `pointer_path` from this cleanup loop — was raising NameError
+        # → 500 on the loser thread of a concurrent upload race.
+        for p in (final_path, per_channel_path):
             if p.exists():
                 try:
                     p.unlink()

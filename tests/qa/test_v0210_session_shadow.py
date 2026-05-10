@@ -115,10 +115,17 @@ def test_login_does_not_break_on_session_write_failure(base_url, admin_creds):
         assert r.status_code == 200, r.text
 
 
-def test_logout_does_not_break_subsequent_login(base_url, admin_creds):
+def test_logout_does_not_break_subsequent_login(base_url, disposable_admin_session):
     """Logout marks the cookie session revoked but does not prevent the
-    next login from succeeding. (Shadow mode: no read-path enforcement.)"""
-    email, pw = admin_creds
+    next login from succeeding. (Shadow mode: no read-path enforcement.)
+
+    v0.4.4 (BUG-021): use disposable_admin_session — calling
+    /api/v1/auth/logout for the bootstrap admin would bump that
+    user's tokens_valid_after and cascade-invalidate the session-
+    scoped admin_token used by the rest of the suite.
+    """
+    email = disposable_admin_session["email"]
+    pw = disposable_admin_session["password"]
     s = requests.Session()
     r1 = s.post(
         f"{base_url}/api/v1/auth/login",
