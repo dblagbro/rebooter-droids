@@ -89,9 +89,12 @@
     <button type="submit">Create rule</button>
   </form>
 
-  <details style="margin-top:1rem">
+  <details style="margin-top:1rem"{% if json_editor_value or json_editor_error %} open{% endif %}>
     <summary class="muted" style="cursor:pointer">⚙ Advanced — paste rule JSON instead</summary>
     <p class="muted" style="font-size:.85rem; margin:.5rem 0">For probe / target / escalation shapes the form above can't express (custom probes, multi-window maintenance, complex escalation chains, etc.). The JSON body matches the v0.4.0 API shape — see <a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/API.md" target="_blank">API.md</a>.</p>
+    {% if json_editor_error %}
+    <p class="error" style="background:rgba(220,40,40,.1); border:1px solid rgba(220,40,40,.4); padding:.5rem; border-radius:4px">{{ json_editor_error }}</p>
+    {% endif %}
     <form method="post" action="{{ url_for('admin_ui.rules_create_json_submit') }}">
       <label>Rule JSON
         <textarea name="rule_json" rows="14" style="width:100%; font-family:monospace; font-size:.85rem"
@@ -107,7 +110,7 @@
   "maintenance_windows": [
     {"start": "2026-05-10T02:00:00+00:00", "end": "2026-05-10T03:00:00+00:00"}
   ]
-}'></textarea>
+}'>{% if json_editor_value %}{{ json_editor_value }}{% endif %}</textarea>
       </label>
       <button type="submit">Create from JSON</button>
     </form>

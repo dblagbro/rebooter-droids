@@ -78,16 +78,19 @@ Statuses: `open · fixed-in-vX.Y.Z · wontfix · monitoring · suspected`.
 ## BUG-005 — Logout does not revoke the session cookie server-side
 
 - **Severity:** medium (security)
-- **Area:** `app/blueprints/admin_ui.py::logout`, `auth.py::logout`
-- **Status:** **open** (documented in `tests/qa/test_hardening_probes.py::test_logout_does_not_revoke_cookie_server_side`)
-- **Detail:** Flask's signed session cookies are valid until their
-  `Expires` regardless of `session.clear()` server-side. Anyone who
-  obtained the cookie value before logout can keep using it for up to
-  31 days (the default `session.permanent` lifetime). Same applies to
-  the JWT refresh token (14 days, no revocation list).
-- **Recommended fix:** keep a server-side `session_jti` table (or a
-  Redis set) of issued session tokens; clear on logout. Add a
-  refresh-token revocation list keyed on user_id+jti.
+- **Area:** `app/blueprints/admin_ui.py::logout`, `auth.py::logout`,
+  `app/middleware/admin_auth.py`
+- **Status:** **fixed in v0.4.10** (verified: new
+  `tests/qa/test_v0410_session_revoke_enforced.py` — revoked
+  cookies and JWTs both denied at next request)
+- **Detail:** v0.2.10 shipped the *write side* (sessions table +
+  revoke_one + revoke_all_for_user) in shadow mode. The middleware
+  ignored those rows until v0.4.10 flipped enforce-on. Auth path
+  now consults `sessions.revoked_at` on every authenticated
+  request; revoked rows fall through as unauthenticated. Legacy
+  cookies / tokens without a `sid`/`jti` claim continue to
+  authenticate (graceful fallback for any session minted before
+  v0.2.10).
 
 ## BUG-006 — No rate limiting on login
 
@@ -105,56 +108,49 @@ Statuses: `open · fixed-in-vX.Y.Z · wontfix · monitoring · suspected`.
 
 - **Severity:** low (operator UX)
 - **Area:** `app/models/groups.py::Group`, `app/models/sites.py::Site`
-- **Status:** **open**
-- **Detail:** A group called "Branch Routers" can be created twice; the
-  UI list will show both, distinguishable only by their ULID.
-- **Recommended fix:** add a unique constraint on `name` (or, for sites,
-  `(name, parent_org_id)` if we add multi-tenancy). Catch the
-  `IntegrityError` in the service layer and return a friendly 409.
+- **Status:** **fixed (already shipped, status corrected v0.4.10)**
+  — DB-level `groups_name_key` + `sites_name_key` UNIQUE
+  constraints; service layer catches IntegrityError and returns
+  HTTP 409 `name_conflict` with a friendly message. Verified
+  live 2026-05-09.
 
 ## BUG-008 — 0-byte firmware upload accepted
 
 - **Severity:** low (operator footgun)
 - **Area:** `app/services/firmware.py::upload_release`
-- **Status:** **open**
-- **Detail:** Uploading a zero-byte file yields a successful release with
-  `size_bytes: 0` and the well-known empty-file SHA-256. A device that
-  downloaded it would brick or reject mid-flash.
-- **Recommended fix:** reject `size_bytes < 1024` (or whatever realistic
-  minimum) with `validation_failed`. Optionally sniff a magic-byte
-  prefix matching the known firmware build.
+- **Status:** **fixed (already shipped, status corrected v0.4.10)**
+  — `if size == 0: raise ValueError("uploaded firmware is empty
+  (0 bytes)")` already gates this path. Returns 400
+  `validation_failed`.
 
 ## BUG-009 — Favicon 404 on every page load
 
 - **Severity:** enhancement
-- **Area:** `app/__init__.py`, `static/`
-- **Status:** **open**
-- **Detail:** Browsers fetch `/rebooter/favicon.ico` and get 404,
-  cluttering the console.
-- **Recommended fix:** add a static favicon and a `<link rel="icon">`
-  in `templates/layout.html`.
+- **Area:** `app/__init__.py`, `static/`, `templates/layout.html`
+- **Status:** **fixed (already shipped, status corrected v0.4.10)**
+  — `static/favicon.ico` shipped + `<link rel="icon"
+  href="{{ url_for('static', filename='favicon.ico') }}">` in
+  layout. Both `/rebooter/favicon.ico` and `/rebooter/static/favicon.ico`
+  return 200.
 
 ## BUG-010 — `PATCH /admin/devices/{id}` silently ignores unknown fields
 
 - **Severity:** low (API contract clarity)
 - **Area:** `app/services/devices.py::update_device`
-- **Status:** **open / by-design?**
-- **Detail:** A PATCH with `{"is_admin": true}` returns 200 and leaves
-  the device unchanged. We log no warning and surface no signal to the
-  caller that the field was ignored. Easy footgun if a client thinks it
-  patched something it did not.
-- **Recommended fix:** either (a) reject unknown fields with
-  `validation_failed`, matching `apply_config` behaviour, or (b) log
-  and echo "ignored_fields" in the response.
+- **Status:** **fixed (already shipped, status corrected v0.4.10)**
+  — PATCH now returns 400 `validation_failed` enumerating both
+  the unsupported field and the allowed set, e.g.: *"unsupported
+  PATCH fields: ['is_admin']. Allowed: ['central_management_enabled',
+  'display_name', 'is_protected', 'notes', 'site_id']"*.
 
 ## BUG-011 — Empty `PATCH /admin/devices/{id}` updates `updated_at`
 
 - **Severity:** enhancement
 - **Area:** `app/services/devices.py::update_device`
-- **Status:** **open**
-- **Detail:** A PATCH with `{}` bumps `updated_at` even though nothing
-  changed. Trivial; recommend skipping the bump when the patch is a
-  no-op.
+- **Status:** **fixed (already shipped, status corrected v0.4.10)**
+  — `update_device` only bumps `updated_at` when the diff
+  actually changes a field. Empty PATCH and "set X to its
+  current value" are both no-ops on `updated_at`.
 
 ## BUG-012 — No mass-action confirmation gate (fixed in v0.2.5)
 
@@ -453,6 +449,36 @@ order found.
   admin's password) for password-reset and invite emails to
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
+
+### BUG-031 — Watchdog rule JSON editor loses input on validation failure (fixed v0.4.10)
+
+- **Severity:** low (operator UX)
+- **Area:** `app/blueprints/admin/rules.py::rules_create_json_submit`
+- **Status:** **fixed in v0.4.10**
+- **Repro:** Paste a 200-line JSON rule body into
+  `/app/rules → Advanced → Rule JSON`, introduce a typo, hit
+  Submit. Pre-v0.4.10 the redirect-after-flash pattern threw
+  away the textarea contents — operator had to re-paste the
+  entire body.
+- **Fix:** validation failures now re-render the rules page with
+  the JSON pre-filled in the textarea and the error message
+  rendered inline (no redirect).
+
+### BUG-032 — Schedule-vs-operator maintenance race (fixed v0.4.10)
+
+- **Severity:** medium (operator-visible state surprise)
+- **Area:** `app/services/schedule_runtime.py::_reconcile_maintenance_flag`
+- **Status:** **fixed in v0.4.10**
+- **Repro:** Configure a daily maintenance schedule (e.g. 02:00
+  UTC, duration 1 h). During the schedule's window, an operator
+  manually toggles maintenance OFF on the Status page. Pre-v0.4.10
+  the schedule_tick reconciler observed `in_window=True,
+  current=False` and re-flipped ON ~30 s later.
+- **Fix:** `set_maintenance_mode` now stamps `operator_override_at`
+  on any non-schedule write. The reconciler skips flipping ON
+  when an operator override timestamp is at or after the active
+  window's start. The override naturally lapses when the next
+  scheduled window begins.
 
 ### BUG-029 — Operator complaint "no devices online" is environmental
 

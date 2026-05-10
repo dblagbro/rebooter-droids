@@ -115,32 +115,53 @@ def _fire_power_cycle(s: Schedule) -> str:
 
 
 def _reconcile_maintenance_flag(session, schedules, now: datetime) -> None:
-    """If any maintenance schedule's window covers `now`, flag ON.
-    If none do AND the flag is on AND set by us, flag OFF."""
+    """v0.4.7 / v0.4.10 — reconcile portal-wide maintenance flag
+    against scheduled-maintenance windows.
+
+    Rules:
+      - In a schedule window AND flag OFF: flip ON (reason=schedule),
+        UNLESS the operator explicitly toggled it OFF *during this
+        same window* (BUG-032 — respect operator override).
+      - Outside all schedule windows AND flag is ON with reason=
+        schedule: flip OFF (reason=schedule_window_ended).
+      - Operator-set ON or OFF carries `operator_override_at`. The
+        reconciler honours that override for as long as we're in
+        the window the override happened during.
+    """
     from app.services import runtime_flags
 
-    in_window = False
+    active_window_start: datetime | None = None
     for s in schedules:
         if s.kind != KIND_MAINTENANCE or not s.enabled:
             continue
         if s.last_run_at is None:
             continue
-        # Window: [last_run_at, last_run_at + duration_seconds]
         window_end = s.last_run_at + timedelta(seconds=s.duration_seconds)
         if s.last_run_at <= now <= window_end:
-            in_window = True
+            active_window_start = s.last_run_at
             break
 
     current = runtime_flags.is_maintenance_mode_active()
-    if in_window and not current:
+    details = runtime_flags.maintenance_mode_details()
+    operator_override_at_iso = details.get("operator_override_at")
+
+    in_window = active_window_start is not None
+    operator_overrode_in_this_window = False
+    if in_window and operator_override_at_iso:
+        try:
+            override_at = datetime.fromisoformat(operator_override_at_iso)
+            if override_at.tzinfo is None:
+                override_at = override_at.replace(tzinfo=timezone.utc)
+            if override_at >= active_window_start:
+                operator_overrode_in_this_window = True
+        except ValueError:
+            pass
+
+    if in_window and not current and not operator_overrode_in_this_window:
         runtime_flags.set_maintenance_mode(
             True, user_id=None, reason="schedule"
         )
     elif (not in_window) and current:
-        # Only flip OFF if the last setter was a schedule (or unknown).
-        # If the operator manually flipped it ON for some other reason,
-        # don't override. Read details:
-        details = runtime_flags.maintenance_mode_details()
         if details.get("reason") == "schedule":
             runtime_flags.set_maintenance_mode(
                 False, user_id=None, reason="schedule_window_ended"
