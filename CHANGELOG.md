@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32] - 2026-05-10
+
+### Added — History export + free-text search (C2 + C3)
+
+Two related history-page features land together because they share
+the form area:
+
+- **CSV / JSON export** (`?export=csv` / `?export=json`). Streams
+  the current filter view as a download with a sane
+  `Content-Disposition` header. Honours every filter currently in
+  the URL — source, action_prefix, free-text — so the file is
+  "what you see on screen". Caps at 50,000 rows per request;
+  narrow filters for more. New `Export CSV` / `Export JSON`
+  buttons below the filter form.
+- **Free-text search** (`?q=<text>`). ILIKE wildcard match across:
+  - actor / actor_user_id
+  - action (with substring match, broader than the exact-match
+    `?action=` field)
+  - target_type / target_id / message
+  - `details` JSON cast to text — searches anything inside the
+    blob in one box
+  Works across all four sources (audit / watchdog_probe /
+  device_event / all). Search field renders full-width above the
+  existing filter inputs.
+
+### Backlog
+
+- **B16 power-monitoring design doc** drafted at
+  `docs/B16-power-analytics-design.md`. 4-tier architecture, 8-ship
+  roadmap, full privacy posture, retention strategy, ingestion API
+  contract, cross-plug correlation as the "MIT-tier" feature.
+  Pending firmware-team confirmation of the metering chip (CSE7766
+  on Sonoff S31 per Tasmota / ESPHome; corrected from the original
+  HLW8032 assumption).
+
+### Tests
+
+- `tests/qa/test_v0432_history_export_search.py` — CSV/JSON export
+  headers + content, action_prefix-honoured export, search-narrowing
+  guarantee, search field renders.
+
 ## [0.4.31] - 2026-05-10
 
 ### Improved — Device enrolment wizard (E5 from continuation plan v2)

@@ -22,7 +22,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Iterator
 
-from sqlalchemy import select
+from sqlalchemy import cast, or_, select
+from sqlalchemy.types import Text
 
 from app.db import session_scope
 from app.models import AuditEvent, DeviceEvent, WatchdogProbeEvent
@@ -89,6 +90,7 @@ def _audit_iter(
     action_prefix: str | None,
     target_type: str | None,
     target_id: str | None,
+    q: str | None,
     limit: int,
 ) -> Iterator[dict]:
     stmt = select(AuditEvent)
@@ -102,6 +104,23 @@ def _audit_iter(
         stmt = stmt.where(AuditEvent.target_type == target_type)
     if target_id:
         stmt = stmt.where(AuditEvent.target_id == target_id)
+    if q:
+        # v0.4.32 (C3): free-text search across the row + its details
+        # JSON. Cast details::text on the SQL side so it's a single
+        # LIKE pass; combine with the indexed scalar columns so an
+        # operator can grep for an email, a device id, or a value
+        # that lives inside the JSON blob in one box.
+        like = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                AuditEvent.action.ilike(like),
+                AuditEvent.actor_email_snapshot.ilike(like),
+                AuditEvent.actor_user_id.ilike(like),
+                AuditEvent.target_type.ilike(like),
+                AuditEvent.target_id.ilike(like),
+                cast(AuditEvent.details, Text).ilike(like),
+            )
+        )
     stmt = stmt.order_by(AuditEvent.at.desc()).limit(limit)
     for e in session.scalars(stmt):
         yield _row_audit(e)
@@ -112,6 +131,7 @@ def _probe_iter(
     *,
     target_id: str | None,
     action_prefix: str | None,
+    q: str | None,
     limit: int,
 ) -> Iterator[dict]:
     stmt = select(WatchdogProbeEvent)
@@ -123,6 +143,15 @@ def _probe_iter(
         # correct behaviour, matching the audit-side prefix semantics.
         if not "watchdog_probe".startswith(action_prefix) and not action_prefix.startswith("watchdog_probe"):
             return
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                WatchdogProbeEvent.rule_id.ilike(like),
+                WatchdogProbeEvent.outcome.ilike(like),
+                cast(WatchdogProbeEvent.details, Text).ilike(like),
+            )
+        )
     stmt = stmt.order_by(WatchdogProbeEvent.at.desc()).limit(limit)
     for e in session.scalars(stmt):
         yield _row_probe(e)
@@ -133,6 +162,7 @@ def _device_evt_iter(
     *,
     target_id: str | None,
     action_prefix: str | None,
+    q: str | None,
     limit: int,
 ) -> Iterator[dict]:
     stmt = select(DeviceEvent)
@@ -141,6 +171,16 @@ def _device_evt_iter(
     if action_prefix:
         if not "device_event".startswith(action_prefix) and not action_prefix.startswith("device_event"):
             return
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                DeviceEvent.device_id.ilike(like),
+                DeviceEvent.type.ilike(like),
+                DeviceEvent.message.ilike(like),
+                cast(DeviceEvent.details, Text).ilike(like),
+            )
+        )
     stmt = stmt.order_by(DeviceEvent.timestamp.desc()).limit(limit)
     for e in session.scalars(stmt):
         yield _row_device_evt(e)
@@ -154,6 +194,7 @@ def query_unified(
     action_prefix: str | None = None,
     target_type: str | None = None,
     target_id: str | None = None,
+    q: str | None = None,
     limit: int = 200,
 ) -> list[dict]:
     """Return up to ``limit`` rows from the requested source(s),
@@ -173,6 +214,7 @@ def query_unified(
     if src not in (*SOURCES, "all"):
         src = "audit"
 
+    q_norm = (q or "").strip() or None
     out: list[dict] = []
     with session_scope() as session:
         if src in ("audit", "all"):
@@ -184,6 +226,7 @@ def query_unified(
                     action_prefix=action_prefix,
                     target_type=target_type,
                     target_id=target_id,
+                    q=q_norm,
                     limit=limit,
                 )
             )
@@ -193,6 +236,7 @@ def query_unified(
                     session,
                     target_id=(target_id if target_type in (None, "watchdog_rule") else None),
                     action_prefix=action_prefix,
+                    q=q_norm,
                     limit=limit,
                 )
             )
@@ -202,6 +246,7 @@ def query_unified(
                     session,
                     target_id=(target_id if target_type in (None, "device") else None),
                     action_prefix=action_prefix,
+                    q=q_norm,
                     limit=limit,
                 )
             )
