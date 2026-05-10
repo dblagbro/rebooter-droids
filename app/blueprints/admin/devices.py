@@ -187,6 +187,21 @@ def devices_bulk_delete_submit():
             "reason": "operator",
         },
     )
+    # v0.4.9 (B14): per-device audit row for every device touched.
+    audit_service.record_per_device(
+        "device.bulk_deleted_per_device",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        device_ids=result["deleted"],
+        base_details={"via": "bulk_delete", "override_lockout": override_lockout, "outcome": "deleted"},
+    )
+    audit_service.record_per_device(
+        "device.bulk_delete_skipped_per_device",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        device_ids=result["skipped_protected"],
+        base_details={"via": "bulk_delete", "outcome": "skipped", "reason": "is_protected"},
+    )
     msg_parts = [f"Deleted {len(result['deleted'])} device(s)."]
     if result["skipped_protected"]:
         msg_parts.append(
@@ -473,6 +488,21 @@ def devices_bulk_delete_api():
             "confirmation_level": mass_action.required_level(len(ids)),
             "reason": "operator",
         },
+    )
+    # v0.4.9 (B14): per-device audit row for every device touched.
+    audit_service.record_per_device(
+        "device.bulk_deleted_per_device",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        device_ids=result["deleted"],
+        base_details={"via": "bulk_delete", "override_lockout": override_lockout, "outcome": "deleted"},
+    )
+    audit_service.record_per_device(
+        "device.bulk_delete_skipped_per_device",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        device_ids=result["skipped_protected"],
+        base_details={"via": "bulk_delete", "outcome": "skipped", "reason": "is_protected"},
     )
     return ok(result, status=200)
 

@@ -222,6 +222,22 @@ def group_send_command_submit(group_id: str):
             "confirmation_level": mass_action.required_level(target_count),
         },
     )
+    # v0.4.9 (B14): per-device audit fanout for the group command.
+    audit_service.record_per_device(
+        "device.mass_command_issued_per_device",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        device_ids=[c.device_id for c in cmds if getattr(c, "device_id", None)],
+        base_details={"via": "group_mass_command", "group_id": group_id, "type": cmd_type},
+    )
+    if skipped:
+        audit_service.record_per_device(
+            "device.mass_command_skipped_per_device",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            device_ids=skipped,
+            base_details={"via": "group_mass_command", "group_id": group_id, "type": cmd_type, "reason": "is_protected"},
+        )
     return redirect(url_for("admin_ui.group_detail_page", group_id=group_id))
 
 
@@ -362,6 +378,22 @@ def send_group_command(group_id: str):
             "confirmation_level": mass_action.required_level(target_count),
         },
     )
+    # v0.4.9 (B14): per-device audit fanout for the group command.
+    audit_service.record_per_device(
+        "device.mass_command_issued_per_device",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        device_ids=[c.device_id for c in cmds if getattr(c, "device_id", None)],
+        base_details={"via": "group_mass_command", "group_id": group_id, "type": cmd_type},
+    )
+    if skipped:
+        audit_service.record_per_device(
+            "device.mass_command_skipped_per_device",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            device_ids=skipped,
+            base_details={"via": "group_mass_command", "group_id": group_id, "type": cmd_type, "reason": "is_protected"},
+        )
     return ok(
         {
             "fan_out_count": len(cmds),
