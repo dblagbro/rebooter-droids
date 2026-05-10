@@ -69,12 +69,12 @@
           </form>
           <br>
           <form method="post" action="{{ url_for('admin_ui.pending_adoption_reject_submit', announcement_id=a.id) }}" style="display:inline; margin-top:.3rem"
-                onsubmit="return confirm('Reject this device? Future /announce calls from this MAC will get a 1-hour back-off.');">
+                data-confirm-message="Reject this device? Future /announce calls from this MAC will get a 1-hour back-off.">
             <button type="submit" class="btn-danger">Reject</button>
           </form>
         {% elif a.state in ('rejected', 'registered') %}
           <form method="post" action="{{ url_for('admin_ui.pending_adoption_delete_submit', announcement_id=a.id) }}" style="display:inline"
-                onsubmit="return confirm('Delete this announcement record?');">
+                data-confirm-message="Delete this announcement record?">
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
         {% else %}

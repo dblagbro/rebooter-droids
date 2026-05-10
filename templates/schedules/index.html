@@ -98,7 +98,7 @@
           <button type="submit" class="btn-secondary">{{ 'Disable' if s.enabled else 'Enable' }}</button>
         </form>
         <form method="post" action="{{ url_for('admin_ui.schedules_delete_submit', schedule_id=s.id) }}" style="display:inline"
-              onsubmit="return confirm('Delete schedule {{ s.name }}?');">
+              data-confirm-message="Delete schedule {{ s.name }}?">
           <button type="submit" class="btn-danger">Delete</button>
         </form>
       </td>

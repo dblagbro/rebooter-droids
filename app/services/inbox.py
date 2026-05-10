@@ -382,6 +382,16 @@ def _compute(limit: int = 50) -> dict:
     except Exception:
         log.exception("inbox.watchdog_firing query failed")
 
+    # v0.4.22 (Tier-2 E): hide items the operator has acked /
+    # snoozed. Acks expire automatically when snooze_until passes.
+    try:
+        from app.services import attention_acks
+        acked = attention_acks.acked_ids()
+        if acked:
+            attention = [a for a in attention if a.get("id") not in acked]
+    except Exception:
+        log.exception("inbox.attention_acks filter failed")
+
     attention.sort(key=lambda x: (-x["rank"], x.get("since") or ""), reverse=False)
     attention = attention[:limit]
 
