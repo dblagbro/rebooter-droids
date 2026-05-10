@@ -58,7 +58,7 @@
   is rolling-capped — oldest rows are pruned when total exceeds 5000.
   If you see persistent rows here for what should be a healthy device, the
   firmware needs to call <code>POST /api/v1/device/register</code> with a
-  fresh enrollment token; <a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">mint one here</a>.
+  fresh enrollment token; <a href="{{ url_for('admin_ui.enroll_device_wizard') }}">mint one here</a>.
 </p>
 {% else %}
 <section class="placeholder">

@@ -16,6 +16,7 @@ from app.services.enrollment import (
     revoke_enrollment_token,
     revoke_enrollment_tokens_bulk,
 )
+from app.services.sites import list_sites as svc_list_sites
 
 
 # ── UI ─────────────────────────────────────────────────────────────────────
@@ -122,13 +123,22 @@ def enrollment_tokens_bulk_revoke_submit():
 
 
 # v0.3.1 (P2): friendlier "+ Enrol a device" wizard at /app/devices/new.
+# v0.4.31 (E5): adds site selector + TTL picker + surfaces as the
+# primary entry point (status.html and unregistered_devices.html
+# updated to link here rather than at /app/enrollment-tokens).
+_VALID_TTLS = {3600, 86400, 604800, 2592000}  # 1h, 24h, 7d, 30d
+
+
 @admin_ui_bp.get("/devices/new")
 @admin_required_ui
 def enroll_device_wizard():
     new_token = session.pop("_new_enrollment_token", None)
     return render_template(
         "devices/new.html",
-        **_ctx({"new_token": new_token}),
+        **_ctx({
+            "new_token": new_token,
+            "sites": svc_list_sites(),
+        }),
     )
 
 
@@ -136,17 +146,30 @@ def enroll_device_wizard():
 @admin_required_ui
 def enroll_device_wizard_submit():
     settings = current_app.config["SETTINGS"]
+    site_id = (request.form.get("site_id") or "").strip() or None
+    raw_ttl = request.form.get("ttl_seconds") or ""
+    try:
+        ttl_seconds = int(raw_ttl) if raw_ttl else None
+    except ValueError:
+        ttl_seconds = None
+    if ttl_seconds is not None and ttl_seconds not in _VALID_TTLS:
+        # silently clamp to default rather than 400 — operators
+        # don't need to debug what a "valid" TTL is
+        ttl_seconds = None
     record, raw_secret = mint_enrollment_token(
         settings,
         issued_by_user_id=g.current_user.id,
+        site_id=site_id,
         display_name_hint=(request.form.get("display_name_hint") or "").strip() or None,
         note=(request.form.get("note") or "qa-friendly enrolment").strip() or None,
+        ttl_seconds=ttl_seconds,
     )
     session["_new_enrollment_token"] = {
         "id": record.id,
         "enrollment_token": raw_secret,
         "expires_at": record.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "display_name_hint": record.display_name_hint,
+        "site_id": record.site_id,
     }
     return redirect(url_for("admin_ui.enroll_device_wizard"))
 
