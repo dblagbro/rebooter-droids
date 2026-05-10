@@ -47,6 +47,33 @@ def _iso(dt) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
 
 
+def latest_stable_release_dict() -> dict | None:
+    """v0.4.21: helper for the devices page to know what version
+    a device "should" be on. Returns the most-recently-created
+    release in the `stable` channel, or None if there isn't one.
+    Returned shape is the simple `{id, version, sha256, size_bytes}`
+    pieces the templates need — no full mirror cascade.
+    """
+    from app.models import FirmwareRelease
+    with session_scope() as session:
+        rel = session.scalar(
+            select(FirmwareRelease)
+            .where(FirmwareRelease.channel == "stable")
+            .order_by(FirmwareRelease.created_at.desc())
+            .limit(1)
+        )
+        if rel is None:
+            return None
+        return {
+            "id": rel.id,
+            "version": rel.version,
+            "channel": rel.channel,
+            "sha256": rel.sha256,
+            "size_bytes": rel.size_bytes,
+            "filename": rel.filename,
+        }
+
+
 def firmware_version_breakdown(*, include_qa_fixtures: bool = False) -> list[dict]:
     """v0.4.19 (B14 follow-up / Tier-1 A): group the fleet by
     `firmware_version`. Surfaces "which devices on which version"
