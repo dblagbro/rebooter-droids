@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-05-09
+
+### Added
+- **`DELETE /api/v1/admin/enrollment-tokens/<id>`** (BUG-044).
+  API consistency with the UI POST `/app/.../revoke` endpoint.
+  Returns 200 + `{deleted: true}` on success, 404 on
+  not-found-or-already-consumed.
+- **End-to-end schedule runtime test** at
+  `tests/qa/test_v0417_schedule_runtime_e2e.py`. ~120s wall-
+  clock test that exercises a one-shot maintenance schedule
+  through the full lifecycle: schedule fires → maintenance
+  flag flips ON → window ends → flips OFF.
+
+### Fixed
+- **BUG-048 — HTTP watchdog probe followed redirects.** Pre-fix
+  treated 302 as a failure. Real-world health checks often
+  redirect (HTTPS upgrades, CDN routing, app entrypoints). Now
+  follows up to 3 redirects and treats a final 2xx as success.
+  Operators using `/health` URLs that 302 to `/login` no longer
+  see false-positive "down" alerts.
+
+### Compatibility
+
+- All v0.4.16 routes preserved.
+- Probe behavior change is operator-friendlier: rules that were
+  silently failing (false negatives) on redirecting URLs will
+  now correctly probe success.
+
 ## [0.4.16] - 2026-05-09
 
 ### Fixed — Bootstrap admin password no longer reverts on container restart (BUG-046)

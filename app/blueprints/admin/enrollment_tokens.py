@@ -7,7 +7,7 @@ from flask import current_app, g, redirect, render_template, request, session, u
 from app.blueprints.admin import admin_api_bp, admin_ui_bp
 from app.blueprints.admin._common import _ctx
 from app.middleware.admin_auth import admin_required_api, admin_required_ui
-from app.middleware.response import ok
+from app.middleware.response import err, ok
 from app.services import audit as audit_service
 from app.services import mass_action
 from app.services.enrollment import (
@@ -204,3 +204,27 @@ def list_enrollment_tokens_api():
             ]
         }
     )
+
+
+# v0.4.17 (BUG-044): API consistency — DELETE matches the UI POST
+# /app/enrollment-tokens/<id>/revoke. Hard-deletes only when not yet
+# consumed, matching `revoke_enrollment_token` semantics.
+@admin_api_bp.delete("/enrollment-tokens/<token_id>")
+@admin_required_api
+def delete_enrollment_token(token_id: str):
+    from app.services.enrollment import revoke_enrollment_token
+    if not revoke_enrollment_token(token_id):
+        return err(
+            "not_found_or_consumed",
+            "Token not found, or already consumed (consumed tokens are kept for audit).",
+            status=404,
+        )
+    audit_service.record(
+        "enrollment_token.revoked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="enrollment_token",
+        target_id=token_id,
+        details={"via": "api"},
+    )
+    return ok({"deleted": True})
