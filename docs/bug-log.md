@@ -450,6 +450,35 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-033 — No standard security headers on responses (fixed v0.4.11)
+
+- **Severity:** medium (security hardening)
+- **Area:** `app/__init__.py`
+- **Status:** **fixed in v0.4.11**
+- **Detail:** Pre-v0.4.11 every response shipped without
+  `X-Frame-Options`, `X-Content-Type-Options`,
+  `Strict-Transport-Security`, `Referrer-Policy`, or CSP.
+  Allowed clickjacking via `<iframe>` embed, MIME-sniff attacks,
+  weakened transport security on subdomains.
+- **Fix:** `@app.after_request` hook attaches all five with
+  conservative defaults. CSP is `default-src 'self'` plus inline
+  scripts/styles (the v0.3+ Jinja templates embed inline
+  `<script>` blocks; will tighten when those are extracted).
+
+### BUG-034 — Schedule with malformed `at_time_utc` returns 500 (fixed v0.4.11)
+
+- **Severity:** medium (operator-facing 500)
+- **Area:** `app/services/schedules.py::create`
+- **Status:** **fixed in v0.4.11**
+- **Detail:** Posting `{at_time_utc: "not-a-time"}` (10 chars)
+  to `POST /api/v1/admin/schedules` failed the Postgres insert
+  with `DataError: value too long for type character varying(5)`
+  → unhandled → 500. Discovered during the v0.4.10 bug-iteration
+  sweep.
+- **Fix:** validate the `HH:MM` shape regex + range in the
+  service before insert. Returns 400 `validation_failed` with
+  message `"at_time_utc must be HH:MM (00:00 to 23:59)"`.
+
 ### BUG-031 — Watchdog rule JSON editor loses input on validation failure (fixed v0.4.10)
 
 - **Severity:** low (operator UX)
