@@ -93,13 +93,13 @@ Statuses: `open · fixed-in-vX.Y.Z · wontfix · monitoring · suspected`.
 
 - **Severity:** medium (security)
 - **Area:** `app/blueprints/auth.py`, `admin_ui.py::login_submit`
-- **Status:** **open**
-- **Detail:** `tests/qa/test_hardening_probes.py::test_no_rate_limit_on_login`
-  fires 10 instant bad-password attempts and they all return 401 with no
-  delay. With argon2 hashing this isn't trivial CPU but it leaves the
-  door open for a slow brute-force against any user account.
-- **Recommended fix:** add `Flask-Limiter` (in-memory backend is fine
-  for single-worker; Postgres if we go multi-worker).
+- **Status:** **fixed in v0.1.4** (verified: in-window 30×401 + 5×429 from a
+  non-exempt source; `tests/qa/test_hardening_probes.py::test_login_rate_limit_kicks_in`)
+- **Detail:** Flask-Limiter shipped at v0.1.4 with `30 per minute; 200
+  per hour` on `/api/v1/auth/login` and `/api/v1/auth/refresh`. v0.4.4
+  added `REBOOTER_RATE_LIMIT_EXEMPT_IPS` for the QA host so a full
+  suite run (~50 logins) doesn't burn the per-IP budget; the exempt
+  list is empty by default in any internet-facing deployment.
 
 ## BUG-007 — Group / site names have no uniqueness constraint
 
@@ -212,8 +212,19 @@ order found.
 - **Severity:** high (test infrastructure / CI flakiness)
 - **Area:** `tests/qa/conftest.py::admin_token` (scope="session"),
   `tests/qa/test_v037_stale_cookie_no_loop.py`,
-  `tests/qa/test_hardening_probes.py`
-- **Status:** **open**
+  `tests/qa/test_hardening_probes.py`,
+  `tests/qa/test_v0210_session_shadow.py`
+- **Status:** **fixed in v0.4.4 + v0.4.6**
+  (verified clean: 240 passed, 2 skipped, 0 failed full-suite run
+  on 2026-05-09 PM)
+- **Fix:** new `disposable_admin_session` conftest fixture mints a
+  fresh admin user via the invitation flow; the three tests that
+  call `/api/v1/auth/logout` against an admin (`test_v037_stale_cookie_no_loop`'s
+  two cases + `test_v0210_session_shadow::test_logout_does_not_break_subsequent_login`)
+  now use this fixture so the bootstrap admin's `tokens_valid_after`
+  is never bumped mid-suite. v0.4.6 fixed the fixture's
+  user-creation path (was using a non-existent `POST /api/v1/admin/users`
+  endpoint; now mints + redeems an invitation).
 - **Repro:** `python3 -m pytest tests/qa/` — 34 tests fail. Re-run
   the same files in isolation: only 7 fail.
 - **Cause:** `admin_token` fixture is `scope="session"` and shared
@@ -241,7 +252,9 @@ order found.
 
 - **Severity:** high (operator UX / security hygiene)
 - **Area:** `templates/layout.html` (header `topbar-actions`)
-- **Status:** **open**
+- **Status:** **fixed in v0.4.3**
+  (verified: post-deploy Playwright walkthrough finds Sign out
+  link in the header on every authenticated page)
 - **Repro:**
   1. Log in as super-admin.
   2. Look at the top header on any page (`/app/`, `/app/devices`,
@@ -275,7 +288,10 @@ order found.
 
 - **Severity:** medium (operator awareness / blast-radius hint)
 - **Area:** `templates/layout.html`
-- **Status:** **open**
+- **Status:** **fixed in v0.4.3**
+  (verified: red `super admin` badge renders in `topbar-actions`
+  on every authenticated page for super-admin users; neutral
+  `admin` badge for plain admins)
 - **Repro:** log in as super-admin. The header gives no visual
   indication of the elevated role. A super-admin can mass-action
   the entire fleet; they should see the role indicator constantly.
@@ -290,8 +306,11 @@ order found.
 
 - **Severity:** medium (false alarms during release validation)
 - **Area:** `tests/qa/test_ui_flows.py`,
-  `tests/qa/test_v02_rbac_invites.py`
-- **Status:** **open**
+  `tests/qa/test_v02_rbac_invites.py`,
+  `tests/qa/test_hardening_probes.py`
+- **Status:** **fixed in v0.4.4 + v0.4.5**
+  (verified: stale assertions updated for v0.3+ shapes —
+  Status page title, `rebooter_session` cookie name)
 - **Detail:** Several tests assume v0.2.x UI shapes that v0.3.x
   intentionally replaced:
   - `test_login_logout_round_trip` asserts page title contains
@@ -318,7 +337,10 @@ order found.
 - **Severity:** low (test config)
 - **Area:** `tests/qa/test_hardening_probes.py::test_login_rate_limit_kicks_in`,
   pyproject.toml pytest timeout config
-- **Status:** **open**
+- **Status:** **fixed in v0.4.4**
+  (`@pytest.mark.timeout(120)` + post-burst 65s sleep added.
+  Test additionally skips cleanly when the source IP is
+  exempt — see BUG-006 fix.)
 - **Detail:** The test fires 35 login attempts, sleeps 60 s for the
   rate-limit window to clear, then probes once more. Total wall
   time is ~62 s, exceeding the default `--timeout=60`. Rate limit
@@ -331,8 +353,11 @@ order found.
 ### BUG-026 — Invitation-redeem test asserts wrong cookie name
 
 - **Severity:** low (stale test)
-- **Area:** `tests/qa/test_v02_rbac_invites.py:65`
-- **Status:** **open**
+- **Area:** `tests/qa/test_v02_rbac_invites.py:65`,
+  `tests/qa/test_ui_flows.py`,
+  `tests/qa/test_hardening_probes.py`
+- **Status:** **fixed in v0.4.4 + v0.4.5**
+  (assertion updated to `rebooter_session` cookie name throughout)
 - **Detail:** Asserts `'session' in cookies`; actual cookie is
   `'rebooter_session'` (v0.3.3 cookie-domain rework).
 - **Recommended fix:** change the assertion to
@@ -372,7 +397,8 @@ order found.
 
 - **Severity:** low (UX polish)
 - **Area:** `templates/settings/auth.html`
-- **Status:** **open**
+- **Status:** **fixed in v0.4.3**
+  (page title is now "Authentication settings - Rebooter-Droids")
 - **Detail:** Other settings tabs (System, Network, Sync,
   Notifications, Theme) render their tab name in the page `<title>`
   ("System settings - Rebooter-Droids", etc.). The Authentication
