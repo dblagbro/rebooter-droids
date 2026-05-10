@@ -125,18 +125,40 @@ v0.4.0 API. Round-trip lossless. Audit-logged with
 
 ## P3 — RFCs awaiting redline (gated on operator response)
 
-### B10. RFC-003 redlines #1–#4 (P5/P6 unblockers)
+### B10. RFC-003 redlines #1–#4 — ✅ CLOSED 2026-05-10
 
-- RBAC migration plan, site-as-scope contract, audit-log retention
-  policy, invite shape.
-- Blocks: B1, B2.
+All four redlines answered by operator:
+- **Q1 scope cardinality** → `Site + Group + Device` (full expressiveness).
+- **Q2 migration default** → super_admin global, admin all-current-sites
+  (one-shot copy), operator no-scope (forced re-grant).
+- **Q3 audit retention** → 365 days default, tunable via new
+  `system.audit_retention_days` runtime setting. Nightly soft-prune
+  into `audit_events_archive`.
+- **Q4 invite shape** → invite carries role + scope (locked at
+  send-time); site-multi-select + group/device selector on the
+  invite form.
 
-### B11. RFC-004 architecture pick
+Decisions folded into RFC-003 §9.0. Unblocks B1 (TOTP) and B2 (OIDC).
 
-- Multi-hub sync. Five options scored; recommendation is **Option B
-  (Postgres logical replication, active-passive)**.
-- Operator hasn't picked yet. Until they do, the Settings → Sync tab
-  remains a stub.
+### B11. RFC-004 architecture pick — ✅ CLOSED 2026-05-10
+
+Operator picked **Option C (application-level event-log sync,
+active-active)** over the RFC's original Option-B (Postgres logical
+replication, active-passive) recommendation.
+
+Design (locked):
+- Per-hub `outbox_events` append-only table mirroring our audit pattern.
+- Replicator daemon polls peers' `/api/v1/sync/since?seq=<n>` over
+  HTTPS with HMAC bearer auth (reuses coordinator HMAC pattern).
+- Idempotent apply on UUID-keyed rows; LWW on `event.at`; per-record
+  audit retains both versions.
+- Tombstone rows in `outbox_events` for deletes; receiver writes a
+  `tombstones` row and refuses to recreate the UUID.
+- Steady-state latency ~1–3s; symmetric peers, no failover procedure.
+
+Decisions folded into RFC-004 §10b. **Implementation lands after the
+B10 RBAC work** because outbox events must carry the new
+site/group/device scope claims for receiver-side enforcement.
 
 ### B12. RFC-005 redlines (firmware-team Q1..Q9) — ✅ CLOSED 2026-05-10
 

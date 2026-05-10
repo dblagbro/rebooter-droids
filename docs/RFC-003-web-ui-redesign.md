@@ -276,6 +276,35 @@ an explicit workflow in the redesign.
 
 ## 9. RBAC + scoping redesign
 
+### 9.0 DECIDED 2026-05-10 (B10 redlines)
+
+Operator answered B10 Q1-Q4. The shape in 9.1 stands as a baseline
+but is overridden where it conflicts with these locks:
+
+- **Scope cardinality (Q1)**: `Site + Group + Device` — the role
+  binding can target a `site_id`, a `group_id`, OR a `device_id`. A
+  super_admin still bypasses scope. Policy table is wide; UI lets an
+  admin pick scope from a typeahead. Worth the cost: it unlocks
+  per-tenant admins, per-deployment operators, and per-rack
+  helpers without a separate "department" abstraction.
+- **Migration default (Q2)**: super_admins → global (unchanged);
+  existing admins → an explicit row per current `site_id` (one-shot
+  copy, not a wildcard); operators → no scope (must be re-granted
+  by an admin before they can act). No admin gets locked out;
+  operators get a useful nudge to the principle-of-least-privilege.
+- **Audit retention (Q3)**: 365-day default, tunable via a new
+  `system.audit_retention_days` runtime setting (DB → env-var →
+  365). Nightly job soft-deletes older rows into
+  `audit_events_archive`; archive purge is a manual operator step.
+  The runtime-settings/UI work pairs with the System tab shipped
+  in v0.4.26.
+- **Invite shape (Q4)**: invite carries role + scope (locked at
+  send-time). Invite redemption activates the user straight into a
+  usable scoped role. Site-multi-select + group/device selector on
+  the invite form.
+
+These supersede the post-MVP-tier-1 framing in 9.1/9.2/9.3 below.
+
 ### 9.1 The shape
 
 A user has a global *platform role* (super_admin / none) and zero or
