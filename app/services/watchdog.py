@@ -162,6 +162,9 @@ def create_rule(
     name = (name or "").strip()
     if not name:
         raise WatchdogValidationError("name is required")
+    # v0.4.11 (BUG-036): cap to column width before insert.
+    if len(name) > 120:
+        raise WatchdogValidationError("name must be 120 characters or fewer")
     if not isinstance(probe, dict) or probe.get("kind") not in KNOWN_PROBE_KINDS:
         raise WatchdogValidationError(
             f"probe.kind must be one of {KNOWN_PROBE_KINDS}"
@@ -178,6 +181,23 @@ def create_rule(
         raise WatchdogValidationError(
             "action.kind must be 'cycle' | 'hold_off' | 'notify_only'"
         )
+
+    # v0.4.11 (BUG-035): bound the numeric thresholds so the runtime
+    # state machine has well-defined behavior. Without this:
+    # - failure_threshold <= 0 makes every failure fire immediately
+    #   (the `failure_streak < failure_threshold` gate is False on
+    #   the first probe).
+    # - window_seconds < 1 makes the rule eligible every tick.
+    # - cooldown_seconds < 0 turns cooldown off.
+    # All of those are footguns; reject in the service.
+    if int(failure_threshold) < 1 or int(failure_threshold) > 100:
+        raise WatchdogValidationError("failure_threshold must be between 1 and 100")
+    if int(recovery_threshold) < 1 or int(recovery_threshold) > 100:
+        raise WatchdogValidationError("recovery_threshold must be between 1 and 100")
+    if int(window_seconds) < 5 or int(window_seconds) > 86400:
+        raise WatchdogValidationError("window_seconds must be between 5 and 86400 (1 day)")
+    if int(cooldown_seconds) < 0 or int(cooldown_seconds) > 86400:
+        raise WatchdogValidationError("cooldown_seconds must be between 0 and 86400 (1 day)")
 
     rule = WatchdogRule(
         site_id=site_id,

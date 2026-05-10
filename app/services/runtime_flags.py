@@ -58,7 +58,13 @@ def set_maintenance_mode(on: bool, *, user_id: str | None, reason: str | None = 
     `operator_override_at` so the schedule_tick reconciler doesn't
     fight them. The override lapses when the next scheduled window
     starts (the reconciler recomputes against window boundaries).
+
+    v0.4.11 (BUG-037): cap the reason field at 200 chars so the
+    operator can't paste a 5KB blob that then renders as a wall
+    of text in the Status banner.
     """
+    if reason is not None and len(reason) > 200:
+        reason = reason[:197] + "..."
     payload = {
         "on": bool(on),
         "reason": reason,

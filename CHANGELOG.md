@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-05-09
+
+### Fixed — input validation hardening (BUG-035, 036, 037)
+
+Found during the v0.4.11 iteration probe.
+
+- **BUG-035 — Watchdog rule numeric thresholds now bounded.**
+  `failure_threshold` and `recovery_threshold` 1..100;
+  `window_seconds` 5..86400; `cooldown_seconds` 0..86400.
+  Pre-fix: `failure_threshold=-1` made every probe fire the
+  rule's action immediately on the first failure (the
+  `failure_streak < failure_threshold` gate was always False).
+- **BUG-036 — Watchdog rule + schedule names now capped at 120
+  chars in the service.** Pre-fix: 121-char names hit Postgres
+  `value too long for type character varying(120)` → 500.
+- **BUG-037 — Portal-wide maintenance `reason` capped at 200
+  chars** (truncated with "..." suffix). Pre-fix: a 5KB reason
+  rendered as a wall of text in the Status banner.
+
+### Compatibility
+
+- All v0.4.11 routes preserved.
+- Pure validation-layer changes; no schema or runtime-state
+  changes.
+
 ## [0.4.11] - 2026-05-09
 
 ### Security
