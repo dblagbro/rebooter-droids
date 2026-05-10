@@ -17,22 +17,10 @@
   <title>{% block title %}Rebooter-Droids{% endblock %}</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-  <script>
-    // Apply theme synchronously to avoid a flash of mis-themed UI.
-    // v0.3.3 reads rebooter_theme; falls back to legacy `theme` for
-    // operators upgrading from v0.3.0–0.3.2.
-    (function () {
-      try {
-        var cookies = document.cookie.split('; ');
-        var lookup = function (name) {
-          var hit = cookies.find(function (r) { return r.startsWith(name + '='); });
-          return hit ? hit.split('=')[1] : null;
-        };
-        var t = lookup('rebooter_theme') || lookup('theme');
-        if (t) document.documentElement.setAttribute('data-theme', t);
-      } catch (e) {}
-    })();
-  </script>
+  {# v0.4.22: theme-flash mitigation extracted to a static file so we
+     can drop 'unsafe-inline' from CSP script-src. Synchronous so it
+     runs before <body> renders. #}
+  <script src="{{ url_for('static', filename='js/theme_flash.js') }}"></script>
 </head>
 <body>
 {% if current_user is defined and current_user %}
@@ -106,5 +94,8 @@
   </nav>
 {% endif %}
 <script src="{{ url_for('static', filename='js/bulk_select.js') }}" defer></script>
+{# v0.4.22 (BUG-049): replaces inline onsubmit="return confirm(...)"
+   attributes so CSP script-src can drop 'unsafe-inline'. #}
+<script src="{{ url_for('static', filename='js/confirm_handlers.js') }}" defer></script>
 </body>
 </html>
