@@ -8,9 +8,53 @@
 
 <div class="v3-card">
   <h2>Authentication</h2>
-  <p class="muted">Session idle timeout, TOTP MFA enrolment, and Google + GitHub OIDC sign-in. Server-side <code>user_sessions</code> table is in shadow mode (v0.2.10) and the enforce flip is gated on the P5 RBAC migration.</p>
-  {% set empty_title = "Coming in P5 of the redesign" %}
-  {% set empty_body = "TOTP enrolment, OIDC sign-in, password-reset magic-link, and the session-enforce flip ship together in P5 alongside site-as-scope migration." %}
-  {% include "_components/empty_state.html" %}
+  <p class="muted">Sign-in posture, session enforcement, MFA, and SSO.</p>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Live now</h3>
+  <ul class="muted">
+    <li><strong>Server-side session revoke ENFORCED</strong> — JWTs and
+      cookies stop working immediately on logout / revoke-all-tokens.
+      Pre-v0.4.10 this was shadow-mode (write-only); now the middleware
+      consults <code>sessions.revoked_at</code> on every authenticated
+      request. Legacy sessions without a <code>sid</code> / <code>jti</code>
+      claim still authenticate (graceful fallback).</li>
+    <li><strong>Password reset</strong> — forgot-password + reset-password
+      live at <a href="{{ url_for('admin_ui.forgot_password_page') }}">/app/forgot-password</a>.
+      1-hour token TTL, single-use, bumps <code>tokens_valid_after</code>
+      on consume so every other session for that user is invalidated.
+      Honest about SMTP failures (BUG-045 v0.4.15). Shipped v0.4.1.</li>
+    <li><strong>Bootstrap admin password persistence</strong> — v0.4.16:
+      a password reset is no longer overwritten by the env var on the
+      next container restart. Recovery flag
+      <code>REBOOTER_BOOTSTRAP_ADMIN_FORCE_PASSWORD_ON_STARTUP=1</code>
+      restores the legacy "always reconcile" behaviour for "I forgot
+      my password" recovery.</li>
+    <li><strong>Login rate limit</strong> — 30/min, 200/hr per IP, with
+      a documented exemption mechanism for the QA host (v0.1.4 + v0.4.4).</li>
+    <li><strong>Invitations</strong> — invite-via-email with 30-day TTL
+      (v0.4.1). Token-based; signed with the hub's HMAC key.</li>
+  </ul>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Queued</h3>
+  <ul class="muted">
+    <li><strong>Site-as-scope RBAC</strong> — per-site role assignments.
+      <strong>Awaiting your redline</strong> on RFC-003 §RBAC questions
+      (#1–#4: site-as-scope contract, migration plan, audit retention,
+      invite shape). Until those land, every admin remains org-wide.</li>
+    <li><strong>TOTP MFA enrolment</strong> — gated on RBAC migration above.</li>
+    <li><strong>Google + GitHub OIDC sign-in</strong> — gated on RBAC
+      migration above.</li>
+    <li><strong>Session idle timeout (editable here)</strong> — currently
+      env-var (<code>REBOOTER_SESSION_IDLE_TIMEOUT_SECONDS</code>);
+      editable UI lands with the broader runtime-settings work.</li>
+  </ul>
+  <p class="muted" style="font-size:.85rem">
+    See <code>docs/redesign-continuation-plan.md</code> for the full
+    map of what shipped vs what's queued.
+  </p>
 </div>
 {% endblock %}
