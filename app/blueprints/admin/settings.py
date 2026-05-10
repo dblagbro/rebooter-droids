@@ -35,19 +35,204 @@ def settings_page():
 @admin_ui_bp.get("/settings/system")
 @admin_required_ui
 def settings_system_page():
+    """v0.4.26: editable system settings (DB → env-var fallback)."""
+    from app.services import runtime_settings
+
+    cfg = runtime_settings.system_config()
     return render_template(
         "settings/system.html",
-        **_ctx({"active": "settings", "settings_tab": "system"}),
+        **_ctx(
+            {
+                "active": "settings",
+                "settings_tab": "system",
+                "system": {
+                    "portal_name":                cfg.get("system.portal_name") or "",
+                    "invitation_ttl_seconds":     cfg.get("system.invitation_ttl_seconds"),
+                    "password_reset_ttl_seconds": cfg.get("system.password_reset_ttl_seconds"),
+                    "session_idle_timeout_seconds": cfg.get("system.session_idle_timeout_seconds"),
+                    "enrollment_token_ttl_seconds": cfg.get("system.enrollment_token_ttl_seconds"),
+                    "overrides": {
+                        k.split(".", 1)[1]: runtime_settings.has_db_value(k)
+                        for k, _ in runtime_settings.SYSTEM_KEYS
+                    },
+                },
+            }
+        ),
     )
+
+
+@admin_ui_bp.post("/settings/system/save")
+@admin_required_ui
+def settings_system_save_submit():
+    from flask import flash, g
+
+    from app.services import audit as audit_service
+    from app.services import runtime_settings
+
+    fields = (
+        ("system.portal_name",                "portal_name", str),
+        ("system.invitation_ttl_seconds",     "invitation_ttl_seconds", int),
+        ("system.password_reset_ttl_seconds", "password_reset_ttl_seconds", int),
+        ("system.session_idle_timeout_seconds", "session_idle_timeout_seconds", int),
+        ("system.enrollment_token_ttl_seconds", "enrollment_token_ttl_seconds", int),
+    )
+    changed: list[str] = []
+    for key, form, coerce in fields:
+        raw = (request.form.get(form) or "").strip()
+        if not raw:
+            if runtime_settings.has_db_value(key):
+                runtime_settings.delete(key)
+                changed.append(f"{key}=cleared")
+            continue
+        try:
+            value = coerce(raw)
+        except (TypeError, ValueError):
+            flash(f"Invalid value for {form}: {raw!r}", "error")
+            return redirect(url_for("admin_ui.settings_system_page"))
+        runtime_settings.set_(key, value, user_id=g.current_user.id)
+        changed.append(f"{key}=set")
+
+    audit_service.record(
+        "system.config_updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="runtime_settings",
+        target_id="system",
+        details={"changed": changed},
+    )
+    flash("System settings saved. TTLs take effect immediately.", "info")
+    return redirect(url_for("admin_ui.settings_system_page"))
+
+
+@admin_ui_bp.post("/settings/system/clear")
+@admin_required_ui
+def settings_system_clear_submit():
+    from flask import flash, g
+
+    from app.services import audit as audit_service
+    from app.services import runtime_settings
+
+    cleared = 0
+    for key, _ in runtime_settings.SYSTEM_KEYS:
+        if runtime_settings.delete(key):
+            cleared += 1
+    audit_service.record(
+        "system.config_cleared",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="runtime_settings",
+        target_id="system",
+        details={"cleared_count": cleared},
+    )
+    flash(
+        f"Cleared {cleared} DB override{'s' if cleared != 1 else ''}; reverted to env-var defaults.",
+        "info",
+    )
+    return redirect(url_for("admin_ui.settings_system_page"))
 
 
 @admin_ui_bp.get("/settings/network")
 @admin_required_ui
 def settings_network_page():
+    """v0.4.26: editable network settings (DB → env-var fallback).
+    CORS + cookie_domain take effect on next container restart;
+    public URLs + rate-limit exempt IPs are live."""
+    from app.services import runtime_settings
+
+    cfg = runtime_settings.network_config()
     return render_template(
         "settings/network.html",
-        **_ctx({"active": "settings", "settings_tab": "network"}),
+        **_ctx(
+            {
+                "active": "settings",
+                "settings_tab": "network",
+                "network": {
+                    "public_base_url":      cfg.get("network.public_base_url") or "",
+                    "firmware_public_base": cfg.get("network.firmware_public_base") or "",
+                    "cors_allowed_origins": cfg.get("network.cors_allowed_origins") or "",
+                    "rate_limit_exempt_ips": cfg.get("network.rate_limit_exempt_ips") or "",
+                    "cookie_domain":        cfg.get("network.cookie_domain") or "",
+                    "overrides": {
+                        k.split(".", 1)[1]: runtime_settings.has_db_value(k)
+                        for k, _ in runtime_settings.NETWORK_KEYS
+                    },
+                    "live_editable": {
+                        k.split(".", 1)[1]: runtime_settings.is_live_editable(k)
+                        for k, _ in runtime_settings.NETWORK_KEYS
+                    },
+                },
+            }
+        ),
     )
+
+
+@admin_ui_bp.post("/settings/network/save")
+@admin_required_ui
+def settings_network_save_submit():
+    from flask import flash, g
+
+    from app.services import audit as audit_service
+    from app.services import runtime_settings
+
+    fields = (
+        ("network.public_base_url", "public_base_url"),
+        ("network.firmware_public_base", "firmware_public_base"),
+        ("network.cors_allowed_origins", "cors_allowed_origins"),
+        ("network.rate_limit_exempt_ips", "rate_limit_exempt_ips"),
+        ("network.cookie_domain", "cookie_domain"),
+    )
+    changed: list[str] = []
+    for key, form in fields:
+        raw = (request.form.get(form) or "").strip()
+        if not raw:
+            if runtime_settings.has_db_value(key):
+                runtime_settings.delete(key)
+                changed.append(f"{key}=cleared")
+            continue
+        runtime_settings.set_(key, raw, user_id=g.current_user.id)
+        changed.append(f"{key}=set")
+
+    audit_service.record(
+        "network.config_updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="runtime_settings",
+        target_id="network",
+        details={"changed": changed},
+    )
+    flash(
+        "Network settings saved. Public URLs + rate-limit exempt IPs take effect immediately. "
+        "CORS allowlist + cookie domain require a container restart.",
+        "info",
+    )
+    return redirect(url_for("admin_ui.settings_network_page"))
+
+
+@admin_ui_bp.post("/settings/network/clear")
+@admin_required_ui
+def settings_network_clear_submit():
+    from flask import flash, g
+
+    from app.services import audit as audit_service
+    from app.services import runtime_settings
+
+    cleared = 0
+    for key, _ in runtime_settings.NETWORK_KEYS:
+        if runtime_settings.delete(key):
+            cleared += 1
+    audit_service.record(
+        "network.config_cleared",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="runtime_settings",
+        target_id="network",
+        details={"cleared_count": cleared},
+    )
+    flash(
+        f"Cleared {cleared} DB override{'s' if cleared != 1 else ''}; reverted to env-var defaults.",
+        "info",
+    )
+    return redirect(url_for("admin_ui.settings_network_page"))
 
 
 @admin_ui_bp.get("/settings/auth")
