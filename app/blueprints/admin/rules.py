@@ -161,6 +161,61 @@ def rules_create_submit():
     return redirect(url_for("admin_ui.rules_page"))
 
 
+@admin_ui_bp.post("/rules/json")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_create_json_submit():
+    """v0.4.9 (B9): create a rule from a raw JSON body. Same shape
+    as the API. Lets the operator express probe / target / escalation
+    combinations the form-builder doesn't surface."""
+    import json
+
+    raw = (request.form.get("rule_json") or "").strip()
+    if not raw:
+        flash("Paste a JSON body first.", "error")
+        return redirect(url_for("admin_ui.rules_page"))
+    try:
+        body = json.loads(raw)
+    except json.JSONDecodeError as e:
+        flash(f"JSON parse error: {e}", "error")
+        return redirect(url_for("admin_ui.rules_page"))
+    if not isinstance(body, dict):
+        flash("Top-level JSON must be an object.", "error")
+        return redirect(url_for("admin_ui.rules_page"))
+
+    try:
+        rule = svc_create_rule(
+            name=body.get("name", ""),
+            probe=body.get("probe") or {},
+            target=body.get("target") or {},
+            action=body.get("action") or {},
+            failure_threshold=int(body.get("failure_threshold", 3)),
+            recovery_threshold=int(body.get("recovery_threshold", 2)),
+            window_seconds=int(body.get("window_seconds", 60)),
+            cooldown_seconds=int(body.get("cooldown_seconds", 300)),
+            max_retries=int(body.get("max_retries", 3)),
+            retry_delay_seconds=int(body.get("retry_delay_seconds", 60)),
+            escalation=body.get("escalation"),
+            maintenance_windows=body.get("maintenance_windows"),
+            description=body.get("description"),
+            site_id=body.get("site_id"),
+            created_by_user_id=g.current_user.id,
+        )
+    except WatchdogValidationError as e:
+        flash(str(e), "error")
+        return redirect(url_for("admin_ui.rules_page"))
+
+    audit_service.record(
+        "watchdog_rule.created",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule["id"],
+        details={"name": rule["name"], "via": "json_editor"},
+    )
+    flash(f"Rule created from JSON: {rule['sentence']}", "info")
+    return redirect(url_for("admin_ui.rules_page"))
+
+
 @admin_ui_bp.post("/rules/<rule_id>/toggle")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def rules_set_enabled_submit(rule_id: str):
