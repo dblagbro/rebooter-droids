@@ -23,6 +23,7 @@ from app.services.deployments import (
 from app.services.devices import list_devices as svc_list_devices
 from app.services.firmware import (
     delete_release,
+    discover_on_disk_releases,
     list_releases as svc_list_firmware,
     upload_release,
 )
@@ -140,6 +141,75 @@ def firmware_upload_submit():
         return redirect(url_for("admin_ui.list_firmware_page"))
     session["_new_firmware"] = out
     return redirect(url_for("admin_ui.list_firmware_page"))
+
+
+@admin_ui_bp.post("/firmware/scan")
+@admin_required_ui
+def firmware_scan_submit():
+    """v0.4.19 (Tier-1 B): scan `data/firmware/<channel>/` for `.bin`
+    files that aren't yet tracked in `firmware_releases` and
+    backfill DB rows + mirror records. Lets the operator surface
+    artifacts the firmware team placed direct-to-disk via SCP /
+    CI/CD without going through the admin upload API."""
+    from flask import flash
+    settings = current_app.config["SETTINGS"]
+    result = discover_on_disk_releases(
+        settings, issued_by_user_id=g.current_user.id
+    )
+    audit_service.record(
+        "firmware.scanned",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="firmware_release",
+        target_id=None,
+        details={
+            "discovered_count": len(result["discovered"]),
+            "discovered_versions": [r["version"] for r in result["discovered"]],
+            "skipped_existing": result["skipped_existing"],
+            "errors": len(result["errors"]),
+        },
+    )
+    if result["discovered"]:
+        flash(
+            f"Discovered {len(result['discovered'])} new release"
+            f"{'' if len(result['discovered']) == 1 else 's'}: "
+            + ", ".join(r['version'] for r in result['discovered']),
+            "info",
+        )
+    elif result["errors"]:
+        flash(
+            f"Scan completed with {len(result['errors'])} error(s); see audit log.",
+            "warning",
+        )
+    else:
+        flash(
+            f"Scan complete — no new releases. "
+            f"{result['skipped_existing']} already tracked, "
+            f"{result['skipped_pointer']} channel-pointer files skipped.",
+            "info",
+        )
+    return redirect(url_for("admin_ui.list_firmware_page"))
+
+
+@admin_api_bp.post("/firmware/scan")
+@admin_required_api
+def firmware_scan_api():
+    settings = current_app.config["SETTINGS"]
+    result = discover_on_disk_releases(
+        settings, issued_by_user_id=g.current_user.id
+    )
+    audit_service.record(
+        "firmware.scanned",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="firmware_release",
+        target_id=None,
+        details={
+            "discovered_count": len(result["discovered"]),
+            "via": "api",
+        },
+    )
+    return ok(result)
 
 
 @admin_ui_bp.post("/firmware/<release_id>/delete")
