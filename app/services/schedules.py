@@ -90,8 +90,21 @@ def create(
         raise ScheduleValidationError(f"kind must be one of {KNOWN_KINDS}")
     if recurrence not in KNOWN_RECURRENCES:
         raise ScheduleValidationError(f"recurrence must be one of {KNOWN_RECURRENCES}")
-    if recurrence in (REC_DAILY, REC_WEEKLY) and not at_time_utc:
-        raise ScheduleValidationError("at_time_utc is required for daily/weekly")
+    if recurrence in (REC_DAILY, REC_WEEKLY):
+        if not at_time_utc:
+            raise ScheduleValidationError("at_time_utc is required for daily/weekly")
+        # v0.4.10 (BUG-034): validate HH:MM shape before insert.
+        # Column is VARCHAR(5); pre-fix, "not-a-time" raised
+        # DataError → 500 instead of 400. Also reject non-numeric
+        # parts.
+        import re
+        m = re.fullmatch(r"(\d{1,2}):(\d{2})", at_time_utc.strip())
+        if not m or not (0 <= int(m.group(1)) <= 23) or not (0 <= int(m.group(2)) <= 59):
+            raise ScheduleValidationError(
+                "at_time_utc must be HH:MM (00:00 to 23:59)"
+            )
+        # Normalize to zero-padded 5-char form.
+        at_time_utc = f"{int(m.group(1)):02d}:{m.group(2)}"
     if recurrence == REC_WEEKLY and not weekdays:
         raise ScheduleValidationError("weekdays is required for weekly")
     if recurrence == REC_ONCE and not start_at:
