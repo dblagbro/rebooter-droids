@@ -381,6 +381,53 @@ order found.
 - **Recommended fix:** update the `{% block title %}` line in
   `templates/settings/auth.html` to "Authentication settings - Rebooter-Droids".
 
+### BUG-002a — Concurrent firmware upload returns 500 (regressed v0.3.9, fixed v0.4.5)
+
+- **Severity:** high (operator-facing 500)
+- **Area:** `app/services/firmware.py::upload_release`
+- **Status:** **fixed in v0.4.5** (regression — was originally
+  fixed in v0.1.3 as BUG-002)
+- **Detail:** v0.3.9 (RFC-002 P1 firmware mirror chain) replaced
+  the static channel-pointer file with a Flask 302-redirect
+  endpoint. The IntegrityError-recovery cleanup branch in
+  `upload_release` still referenced the now-removed
+  `pointer_path` variable. Loser thread of a concurrent upload
+  race hit `NameError: pointer_path is not defined` → unhandled
+  → 500 instead of the expected 400 "already exists".
+- **Caught by:** existing
+  `tests/qa/test_hardening_probes.py::test_concurrent_firmware_upload_same_version`
+  passing in 4 of 5 runs (race-dependent).
+- **Fix:** removed `pointer_path` from the cleanup tuple. Now
+  iterates only `(final_path, per_channel_path)` — the only
+  on-disk artifacts in v0.3.9+.
+
+### BUG-030 — Forgot-password 500 on SMTP failure (fixed v0.4.6)
+
+- **Severity:** high (operator-facing 500)
+- **Area:** `app/blueprints/admin/auth_ui.py::forgot_password_submit`
+- **Status:** **fixed in v0.4.6**
+- **Detail:** v0.4.1 introduced the password-reset flow. The
+  POST handler called `send_password_reset_email` synchronously
+  WITHOUT a try/except. When SMTP fails (currently the live
+  deployment hits `SMTPServerDisconnected` from
+  smtpauth.earthlink.net because the configured
+  `REBOOTER_SMTP_PASSWORD` is the bootstrap admin's password
+  rather than a valid EarthLink SMTP credential), the exception
+  bubbles up to Flask → 500. Defeats the entire non-disclosing
+  design of the flow — a 500 leaks "this email exists, but
+  email delivery failed" to anyone probing.
+- **Fix:** wrap `send_password_reset_email` in try/except. The
+  password-reset token is still minted in the DB; the audit-log
+  entry now records `smtp_ok=false` + `smtp_error=<exception
+  name>`; the user sees the same non-disclosing confirmation
+  page either way. Operator can recover the URL from audit
+  history if needed.
+- **Operational follow-up:** `REBOOTER_SMTP_PASSWORD` needs to
+  be set to a real EarthLink SMTP credential (not the bootstrap
+  admin's password) for password-reset and invite emails to
+  actually deliver. Audit log will say `smtp_ok=true` once that
+  happens.
+
 ### BUG-029 — Operator complaint "no devices online" is environmental
 
 - **Severity:** environmental (no code change)
