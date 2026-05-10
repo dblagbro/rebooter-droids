@@ -450,6 +450,37 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-050 — Device register 500 on overlong fields (fixed v0.4.18)
+
+- **Severity:** medium (operator-facing 500)
+- **Area:** `app/services/enrollment.py::consume_enrollment_token`
+- **Status:** **fixed in v0.4.18**
+- **Detail:** Caller-supplied registration fields had no length
+  validation. `display_name` >120 chars,
+  `mac_address` >40, `hardware_model` >80, `firmware_version`
+  >40, `local_ip` >64, `serial_number` >80, `hardware_revision`
+  >40 — all hit Postgres `StringDataRightTruncation` on INSERT
+  and 500'd. A misbehaving firmware sending a long version
+  string would brick its own enrolment.
+- **Fix:** column-width-aware validation in
+  `consume_enrollment_token`. Returns 400 `validation_failed`
+  with the field name + max length.
+
+### BUG-051 — Device register accepts garbage MAC address (fixed v0.4.18)
+
+- **Severity:** low (data integrity)
+- **Area:** `app/services/enrollment.py::consume_enrollment_token`
+- **Status:** **fixed in v0.4.18**
+- **Detail:** `mac_address` had no format validation.
+  `<script>alert(1)</script>` was persisted verbatim. Jinja
+  autoescape covers the rendering surface so XSS was not
+  possible, but operators saw nonsense values in the MAC
+  column and there was no signal to the firmware that it was
+  sending bad data.
+- **Fix:** hex-only regex `[0-9A-Fa-f:.\-\s]+` covers all
+  common MAC formats (colon, hyphen, dot-separated, vendor
+  variants). Anything else → 400.
+
 ### BUG-044 — No API DELETE endpoint for enrollment tokens (fixed v0.4.17)
 
 - **Severity:** low (API consistency)
