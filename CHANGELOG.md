@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.20] - 2026-05-10
+
+### Added — Pending-adoption flow (operator-driven device onboarding)
+
+Replaces the old "mint a token in the UI, paste into firmware
+build at flash time" workflow. Devices flash generic, announce
+themselves, get adopted by name.
+
+- **`POST /api/v1/device/announce`** — new unauthenticated endpoint.
+  Devices without an enrolment token POST their MAC + claims here
+  every ~30s. Hub upserts a `device_announcements` row keyed on
+  MAC. Response tells the device to keep polling (`pending`),
+  pick up its delivered token (`adopted`, one-shot), wait for
+  /register (`awaiting_register`), or back off (`rejected`).
+- **New `device_announcements` table** with full lifecycle:
+  pending → awaiting_pickup → awaiting_register → registered.
+  MAC is the unique key. `adoption_token_secret` is plaintext-
+  but-cleared-after-delivery; never exposed to admin queries.
+- **`/app/pending-adoption`** admin UI page lists pending devices
+  with all claimed metadata + source IP + announce count.
+  **Adopt** button mints a 7-day enrolment token and stashes it
+  on the row; **Reject** button sets a 1-hour back-off; **Delete**
+  cleans up consumed/rejected rows.
+- **API:** `GET /api/v1/admin/pending-adoption`,
+  `POST /api/v1/admin/pending-adoption/<id>/adopt`,
+  `POST /api/v1/admin/pending-adoption/<id>/reject`.
+- **Cross-linked** from `consume_enrollment_token` — when a
+  device successfully registers via an adopt-delivered token, the
+  announcement's `consumed_at` is stamped (best-effort, never
+  raises out of /register).
+- **Audit hooks:** `device_announcement.adopted`,
+  `device_announcement.rejected`, `device_announcement.deleted`.
+- **Devices page link** to /app/pending-adoption in the page header.
+
+### Firmware-team contract
+
+Documented at
+`docs/notes/2026-05-10-firmware-team-announce-adopt-contract.md`
+— full request/response shapes, lifecycle state machine,
+recommended timing, idempotency notes. Existing
+register-with-baked-in-token flow continues to work; this is
+additive.
+
+### Tests
+
+- `tests/qa/test_v0420_announce_adopt.py` (7 tests):
+  full lifecycle, validation rejection, idempotency on repeat
+  announces, reject + back-off, UI render.
+
+### Compatibility
+
+- All v0.4.19 routes preserved.
+- New `device_announcements` table created via
+  `Base.metadata.create_all()` at boot.
+- `/api/v1/device/announce` is unauthenticated by design — same
+  trust posture as `/api/v1/device/register` (both rely on the
+  enrolment-token contract).
+
 ## [0.4.19] - 2026-05-10
 
 ### Added — Operator visibility upgrades while firmware-side debug continues

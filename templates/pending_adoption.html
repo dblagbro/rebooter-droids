@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+{% block title %}Pending Adoption - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Pending Adoption</h1>
+  <p class="v3-page-sub">Devices that have announced themselves to the hub but haven't been adopted yet. Click <strong>Adopt</strong> to mint and deliver an enrolment token; the device will register itself within ~30s of pickup.</p>
+</div>
+
+{% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+
+<div style="margin-bottom:1rem">
+  <a href="{{ url_for('admin_ui.pending_adoption_page') }}{% if not show_all %}?show_all=1{% endif %}" class="muted" style="font-size:.85rem">
+    {% if show_all %}Show only pending →{% else %}Show all (including consumed/rejected) →{% endif %}
+  </a>
+</div>
+
+{% if announcements %}
+<div class="table-wrap"><table>
+  <thead><tr>
+    <th>Device</th>
+    <th>Hardware / Firmware</th>
+    <th>State</th>
+    <th>Seen</th>
+    <th>Source IP</th>
+    {% if can_edit %}<th></th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for a in announcements %}
+    <tr>
+      <td>
+        <strong>{{ a.claimed_display_name_hint or ('device-' + a.mac_address[-5:]|replace(':','')) }}</strong>
+        {% if a.claimed_local_ip %}<br><a href="http://{{ a.claimed_local_ip }}/" target="_blank" rel="noopener" class="muted" style="font-size:.85rem">{{ a.claimed_local_ip }}</a>{% endif %}
+        <br><code style="font-size:.75rem">{{ a.mac_address }}</code>
+      </td>
+      <td class="muted" style="font-size:.85rem">
+        {{ a.claimed_hardware_model or '?' }}{% if a.claimed_hardware_revision %} {{ a.claimed_hardware_revision }}{% endif %}
+        {% if a.claimed_firmware_version %}<br>fw: <code>{{ a.claimed_firmware_version }}</code>{% endif %}
+        {% if a.claimed_serial_number %}<br>sn: <code>{{ a.claimed_serial_number }}</code>{% endif %}
+      </td>
+      <td>
+        {% if a.state == 'pending' %}
+          <span class="badge amber">pending</span>
+        {% elif a.state == 'awaiting_pickup' %}
+          <span class="badge">awaiting pickup</span>
+          <br><span class="muted" style="font-size:.75rem">token will deliver on next /announce poll</span>
+        {% elif a.state == 'awaiting_register' %}
+          <span class="badge">awaiting register</span>
+          <br><span class="muted" style="font-size:.75rem">token delivered; device should register any moment</span>
+        {% elif a.state == 'registered' %}
+          <span class="badge green">registered</span>
+        {% elif a.state == 'rejected' %}
+          <span class="badge red">rejected</span>
+        {% else %}
+          <span class="badge">{{ a.state }}</span>
+        {% endif %}
+      </td>
+      <td class="muted" style="font-size:.85rem">
+        last: {{ a.last_seen_at }}<br>
+        first: {{ a.first_seen_at }}<br>
+        {{ a.announce_count }} poll{{ '' if a.announce_count == 1 else 's' }}
+      </td>
+      <td class="muted" style="font-size:.85rem">{{ a.source_ip or '-' }}</td>
+      {% if can_edit %}
+      <td style="white-space:nowrap; min-width:240px">
+        {% if a.state == 'pending' %}
+          <form method="post" action="{{ url_for('admin_ui.pending_adoption_adopt_submit', announcement_id=a.id) }}" style="display:inline-flex; gap:.3rem; align-items:center">
+            <input type="text" name="display_name" placeholder="display name (optional)" value="{{ a.claimed_display_name_hint or '' }}" style="font-size:.85rem; max-width:140px">
+            <button type="submit" class="btn-secondary">Adopt</button>
+          </form>
+          <br>
+          <form method="post" action="{{ url_for('admin_ui.pending_adoption_reject_submit', announcement_id=a.id) }}" style="display:inline; margin-top:.3rem"
+                onsubmit="return confirm('Reject this device? Future /announce calls from this MAC will get a 1-hour back-off.');">
+            <button type="submit" class="btn-danger">Reject</button>
+          </form>
+        {% elif a.state in ('rejected', 'registered') %}
+          <form method="post" action="{{ url_for('admin_ui.pending_adoption_delete_submit', announcement_id=a.id) }}" style="display:inline"
+                onsubmit="return confirm('Delete this announcement record?');">
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+        {% else %}
+          <span class="muted" style="font-size:.85rem">in-flight</span>
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+{% set empty_title = "No pending devices" %}
+{% set empty_body = "Devices that boot without an enrolment token will appear here when they POST to /api/v1/device/announce. Click Adopt to mint and deliver a token; the device registers itself on the next poll. See the firmware-team contract note for the announce-poll lifecycle." %}
+{% include "_components/empty_state.html" %}
+{% endif %}
+
+<div class="v3-card" style="margin-top:1.5rem">
+  <h2 style="font-size:1rem">How adoption works</h2>
+  <ol class="muted" style="font-size:.85rem; line-height:1.6">
+    <li>Device boots without a token → POSTs <code>/api/v1/device/announce</code> with MAC + claims every ~30s</li>
+    <li>Hub records it; row appears here as <strong>pending</strong></li>
+    <li>You click <strong>Adopt</strong> (optionally setting a display name) → hub mints a fresh enrolment token, stashes it on the announcement</li>
+    <li>Device's next announce poll (within ~30s) returns the token; row flips to <strong>awaiting register</strong></li>
+    <li>Device uses the token against <code>/api/v1/device/register</code> → row flips to <strong>registered</strong> + a normal device row appears on <a href="{{ url_for('admin_ui.list_devices_page') }}">/app/devices</a></li>
+  </ol>
+</div>
+{% endblock %}
