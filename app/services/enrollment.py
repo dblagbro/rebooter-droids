@@ -21,7 +21,23 @@ def mint_enrollment_token(
     site_id: str | None = None,
     display_name_hint: str | None = None,
     note: str | None = None,
+    ttl_seconds: int | None = None,
 ) -> tuple[EnrollmentToken, str]:
+    """v0.4.14 (BUG-043): caller-supplied `ttl_seconds` now honored.
+
+    Pre-fix the env-var default
+    (`REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS`, 24 h) was the only
+    knob — operators wanting a 30-day token for a firmware-team
+    handoff had to recreate the container with a bumped env var.
+    Now: optional override, capped at 30 days so we don't end up
+    with effectively-immortal tokens lying around.
+    """
+    if ttl_seconds is None or ttl_seconds <= 0:
+        ttl = settings.enrollment_token_ttl_seconds
+    else:
+        # Cap at 30 days so the operator can't accidentally mint a
+        # year-long token by typo.
+        ttl = min(int(ttl_seconds), 60 * 60 * 24 * 30)
     secret = "et_" + secrets.token_urlsafe(24)
     record = EnrollmentToken(
         token_hash=_hash(secret),
@@ -29,8 +45,7 @@ def mint_enrollment_token(
         site_id=site_id,
         display_name_hint=display_name_hint,
         note=note,
-        expires_at=datetime.now(timezone.utc)
-        + timedelta(seconds=settings.enrollment_token_ttl_seconds),
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
     )
     with session_scope() as session:
         session.add(record)

@@ -158,12 +158,15 @@ def enroll_device_wizard_submit():
 def create_enrollment_token():
     body = request.get_json(silent=True) or {}
     settings = current_app.config["SETTINGS"]
+    # v0.4.14 (BUG-043): caller can override TTL up to 30 days.
+    ttl_seconds = body.get("ttl_seconds")
     record, raw_secret = mint_enrollment_token(
         settings,
         issued_by_user_id=g.current_user.id,
         site_id=body.get("site_id"),
         display_name_hint=body.get("display_name_hint"),
         note=body.get("note"),
+        ttl_seconds=int(ttl_seconds) if ttl_seconds is not None else None,
     )
     return ok(
         {
