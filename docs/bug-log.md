@@ -450,6 +450,38 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-042 — Watchdog rule serializer missing v0.4.2 runtime state (fixed v0.4.14)
+
+- **Severity:** medium (UI silent-render + API consumer breakage)
+- **Area:** `app/services/watchdog.py::serialize_rule`
+- **Status:** **fixed in v0.4.14**
+- **Detail:** v0.4.0 shipped `serialize_rule`; v0.4.2 added
+  five new columns (`failure_streak`, `recovery_streak`,
+  `last_probed_at`, `last_action_at`, `last_outcome`) but the
+  serializer was never updated. UI templates referenced these
+  fields and rendered as empty strings (silent UX regression);
+  API consumers reading `rule["last_outcome"]` got `KeyError`.
+- **Fix:** `serialize_rule` now exposes all five runtime-state
+  fields with safe defaults via `getattr(..., None)`.
+- **Caught by:** v0.4.14 wall-clock e2e test
+  (`test_v0414_watchdog_runtime_e2e.py`) which asserts the
+  fields are present in the response after a real tick.
+
+### BUG-043 — Enrollment-token mint ignores caller-supplied TTL (fixed v0.4.14)
+
+- **Severity:** low (operator UX)
+- **Area:** `app/services/enrollment.py::mint_enrollment_token`,
+  `app/blueprints/admin/enrollment_tokens.py::create_enrollment_token`
+- **Status:** **fixed in v0.4.14**
+- **Detail:** The API accepted a `ttl_seconds` field in the body
+  but the service silently ignored it, always using
+  `settings.enrollment_token_ttl_seconds` (env-var default 24 h).
+  Operators wanting a 30-day token for a firmware-team handoff
+  had to redeploy the whole container with a bumped env var.
+- **Fix:** `mint_enrollment_token` accepts optional
+  `ttl_seconds`, capped at 30 days. API/UI handlers thread the
+  body field through.
+
 ### BUG-038 — Watchdog rule target accepts kind without identifier (fixed v0.4.13)
 
 - **Severity:** medium (silent runtime no-op)
