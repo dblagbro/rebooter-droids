@@ -450,6 +450,42 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-038 — Watchdog rule target accepts kind without identifier (fixed v0.4.13)
+
+- **Severity:** medium (silent runtime no-op)
+- **Area:** `app/services/watchdog.py::create_rule`
+- **Status:** **fixed in v0.4.13**
+- **Detail:** `target={"kind":"device"}` (no `id` key) was
+  accepted on rule create. The runtime's
+  `_resolve_target_devices` returned `[]` for that shape, so
+  the rule appeared to fire but did nothing. Operators could
+  spend minutes debugging "why isn't this rule cycling my
+  device?".
+- **Fix:** service requires `target.id` for device/group, and
+  `target.tag` for tag. Empty strings rejected too.
+
+### BUG-040 — Weekly schedule duplicate weekdays render as "Sat, Sat, Sat" (fixed v0.4.13)
+
+- **Severity:** low (UX polish)
+- **Area:** `app/services/schedules.py::create`
+- **Status:** **fixed in v0.4.13**
+- **Detail:** `weekdays=[5,5,5,5]` was stored verbatim and the
+  sentence renderer emitted "every week on Sat, Sat, Sat, Sat".
+- **Fix:** dedupe + sort weekdays before persist.
+
+### BUG-041 — Weekly schedule accepts out-of-range weekdays (fixed v0.4.13)
+
+- **Severity:** medium (rule never fires, no operator signal)
+- **Area:** `app/services/schedules.py::create`,
+  `compute_next_run_at`
+- **Status:** **fixed in v0.4.13**
+- **Detail:** `weekdays=[99]` was accepted. `compute_next_run_at`
+  walked forward 7 days looking for a match and returned None.
+  Schedule sat in the table forever, never firing, with no
+  operator-visible signal.
+- **Fix:** range-check `0 <= d <= 6` in the service layer →
+  400 `validation_failed`.
+
 ### BUG-035 — Watchdog rule numeric thresholds unbounded (fixed v0.4.12)
 
 - **Severity:** medium (operator footgun + state-machine break)
