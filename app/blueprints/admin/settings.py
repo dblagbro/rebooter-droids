@@ -87,14 +87,17 @@ def settings_sync_page():
 @admin_ui_bp.get("/settings/notifications")
 @admin_required_ui
 def settings_notifications_page():
-    """v0.4.1: Notifications / SMTP. Read-only display of env-var
-    SMTP config + 'send test email' action."""
+    """v0.4.1: Notifications / SMTP read-only.
+    v0.4.25: SMTP fields are now editable via DB-backed runtime
+    settings. DB rows win; env-var fallback for fields with no DB
+    override. Operator can rotate creds without recreating the
+    container."""
     from flask import g
 
-    from app.config import load_settings
+    from app.services import runtime_settings
     from app.services.email import is_configured
 
-    s = load_settings()
+    cfg = runtime_settings.smtp_config()
     return render_template(
         "settings/notifications.html",
         **_ctx(
@@ -102,21 +105,105 @@ def settings_notifications_page():
                 "active": "settings",
                 "settings_tab": "notifications",
                 "smtp": {
-                    "host": s.smtp_host or "",
-                    "port": s.smtp_port,
-                    "user": s.smtp_user or "",
-                    "from_addr": s.smtp_from or "",
-                    "helo": s.smtp_helo or "",
-                    "configured": is_configured(s),
+                    "host": cfg.get("smtp.host") or "",
+                    "port": cfg.get("smtp.port"),
+                    "user": cfg.get("smtp.user") or "",
+                    "from_addr": cfg.get("smtp.from") or "",
+                    "helo": cfg.get("smtp.helo") or "",
+                    "configured": is_configured(),
                     # Never echo the password back. Render fingerprint
                     # only so the operator can verify it's set without
                     # the page leaking it.
-                    "password_set": bool(s.smtp_password),
+                    "password_set": bool(cfg.get("smtp.password")),
+                    # Tell the operator which knobs are DB overrides
+                    # vs env-var fallbacks. Helps them understand
+                    # state at a glance.
+                    "overrides": {
+                        k.split(".")[1]: runtime_settings.has_db_value(k)
+                        for k, _ in runtime_settings.SMTP_KEYS
+                    },
                 },
                 "current_user_email": getattr(g.current_user, "email", None),
             }
         ),
     )
+
+
+@admin_ui_bp.post("/settings/notifications/save")
+@admin_required_ui
+def settings_notifications_save_submit():
+    """v0.4.25: persist SMTP creds to runtime_settings."""
+    from flask import flash, g
+
+    from app.services import audit as audit_service
+    from app.services import runtime_settings
+
+    fields = (
+        ("smtp.host", "host"),
+        ("smtp.port", "port"),
+        ("smtp.user", "user"),
+        ("smtp.password", "password"),
+        ("smtp.from", "from"),
+        ("smtp.helo", "helo"),
+    )
+    changed: list[str] = []
+    for key, form_field in fields:
+        raw = (request.form.get(form_field) or "").strip()
+        # If operator submits empty AND there's no env-var fallback
+        # for this field, we treat empty as "delete the override".
+        # If operator wants the field empty when env-var has a value,
+        # they should clear via the explicit "Clear override" button.
+        if not raw:
+            # Empty form input → delete the DB override (revert to env)
+            if runtime_settings.has_db_value(key):
+                runtime_settings.delete(key)
+                changed.append(f"{key}=cleared")
+            continue
+        if key == "smtp.password" and raw == "********":
+            # Form pre-filled with masked placeholder; ignore.
+            continue
+        runtime_settings.set_(key, raw, user_id=g.current_user.id)
+        changed.append(f"{key}=set")
+
+    audit_service.record(
+        "smtp.config_updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="runtime_settings",
+        target_id="smtp",
+        details={"changed": changed},
+    )
+    flash("SMTP settings saved. Use 'Send test email' below to verify.", "info")
+    return redirect(url_for("admin_ui.settings_notifications_page"))
+
+
+@admin_ui_bp.post("/settings/notifications/clear")
+@admin_required_ui
+def settings_notifications_clear_submit():
+    """Operator-initiated 'revert to env-var defaults'."""
+    from flask import flash, g
+
+    from app.services import audit as audit_service
+    from app.services import runtime_settings
+
+    cleared = 0
+    for key, _ in runtime_settings.SMTP_KEYS:
+        if runtime_settings.delete(key):
+            cleared += 1
+    audit_service.record(
+        "smtp.config_cleared",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="runtime_settings",
+        target_id="smtp",
+        details={"cleared_count": cleared},
+    )
+    flash(
+        f"Cleared {cleared} DB override{'s' if cleared != 1 else ''}; "
+        f"reverted to env-var defaults.",
+        "info",
+    )
+    return redirect(url_for("admin_ui.settings_notifications_page"))
 
 
 @admin_ui_bp.post("/settings/notifications/test")
