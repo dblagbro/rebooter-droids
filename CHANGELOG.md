@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-05-09
+
+### Security
+
+- **BUG-033 — Standard security headers on every response.**
+  After-request hook attaches `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  strict-origin-when-cross-origin`,
+  `Strict-Transport-Security: max-age=15552000;
+  includeSubDomains`, plus a conservative CSP allowing same-
+  origin scripts/styles + inline (Jinja templates have inline
+  `<script>` blocks) and `frame-ancestors 'none'`. None of the
+  headers were present pre-v0.4.11.
+
+### Fixed
+
+- **BUG-034 — `POST /api/v1/admin/schedules` with malformed
+  `at_time_utc` returned 500.** The column is `VARCHAR(5)`;
+  values like `"not-a-time"` (10 chars) failed the Postgres
+  insert with `DataError` → unhandled → 500. Now: validates
+  the `HH:MM` shape (`00:00`–`23:59`) in the service layer and
+  returns 400 `validation_failed` with a friendly message.
+
+### Compatibility
+
+- All v0.4.10 routes preserved.
+- Security headers use `setdefault` — any blueprint that has
+  set its own header keeps it.
+
 ## [0.4.10] - 2026-05-09
 
 ### Security

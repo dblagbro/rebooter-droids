@@ -97,6 +97,32 @@ def create_app() -> Flask:
     init_engine(settings)
     init_rate_limit(app)
 
+    # v0.4.10 (BUG-033): standard security headers on every response.
+    # Conservative defaults — tightened later if a feature needs it.
+    @app.after_request
+    def _security_headers(resp):
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # HSTS: 6 months, include subdomains. Safe because the live
+        # site is HTTPS-only and there are no plain-HTTP listeners.
+        resp.headers.setdefault(
+            "Strict-Transport-Security", "max-age=15552000; includeSubDomains"
+        )
+        # Lock down embedded resources to same-origin by default. The
+        # admin UI doesn't load any third-party JS at runtime; if it
+        # ever needs to, tighten here.
+        resp.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'",
+        )
+        return resp
+
     from app.middleware.cors import init_cors
 
     init_cors(app, settings.cors_allowed_origins)
