@@ -34,6 +34,7 @@ from app.services.devices import (
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
     delete_devices_bulk as svc_delete_devices_bulk,
+    firmware_version_breakdown,
     get_device_detail,
     list_devices as svc_list_devices,
     update_device,
@@ -62,11 +63,18 @@ def list_devices_page():
         include_qa_fixtures=show_qa,
         chips=chips,
     )
+    # v0.4.19 (Tier-1 A): per-firmware-version breakdown so the
+    # operator can spot upgrade outliers at a glance. Excludes QA
+    # fixtures regardless of the show_qa toggle — outliers among
+    # synthetic test rows aren't meaningful.
+    fw_breakdown = firmware_version_breakdown(include_qa_fixtures=False)
+
     return render_template(
         "devices_list.html",
         **_ctx(
             {
                 "devices": devices,
+                "fw_breakdown": fw_breakdown,
                 "filters": {
                     "search": request.args.get("search", ""),
                     "status": request.args.get("status", ""),

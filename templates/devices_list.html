@@ -6,6 +6,26 @@
   <p class="v3-page-sub">{{ devices|length }} device{{ '' if devices|length == 1 else 's' }}{% if filters.chips %} · {{ filters.chips|length }} filter{{ '' if filters.chips|length == 1 else 's' }} active{% endif %}</p>
 </div>
 
+{# ── v0.4.19 (Tier-1 A): firmware-version breakdown ────────────────── #}
+{% if fw_breakdown %}
+<details class="v3-card" {% if fw_breakdown|length > 1 %}open{% endif %} style="margin-bottom:1rem">
+  <summary class="muted" style="cursor:pointer; font-size:.9rem">
+    Firmware versions in fleet ({{ fw_breakdown|length }} version{{ '' if fw_breakdown|length == 1 else 's' }})
+    {% if fw_breakdown|length > 1 %}<span class="badge red" style="margin-left:.5rem">outliers</span>{% endif %}
+  </summary>
+  <ul style="margin:.5rem 0 0; padding-left:1.2rem; font-size:.85rem; list-style:none">
+    {% for b in fw_breakdown %}
+      <li style="margin:.3rem 0">
+        <code>{{ b.version }}</code>
+        <span class="badge {% if b.is_majority %}green{% elif fw_breakdown|length == 1 %}{% else %}amber{% endif %}">{{ b.count }} device{{ '' if b.count == 1 else 's' }}</span>
+        {% if not b.is_majority and fw_breakdown|length > 1 %}<span class="muted">← outlier</span>{% endif %}
+        <span class="muted">— {% for d in b.devices %}<a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+
 {# ── saved-filter chips (P2) ─────────────────────────────────────────── #}
 {% set chip_defs = [
     ('offline_24h', 'Offline > 24 h'),

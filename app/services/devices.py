@@ -47,6 +47,51 @@ def _iso(dt) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
 
 
+def firmware_version_breakdown(*, include_qa_fixtures: bool = False) -> list[dict]:
+    """v0.4.19 (B14 follow-up / Tier-1 A): group the fleet by
+    `firmware_version`. Surfaces "which devices on which version"
+    so the operator can spot upgrade outliers at a glance.
+
+    Returns a list of {version, count, devices: [{id,display_name}],
+    is_majority} sorted by count descending; the largest cohort is
+    flagged `is_majority=true` so the UI can mark outliers.
+
+    Devices with no firmware_version (just enrolled, never reported)
+    are bucketed under the literal string "(unknown)" so they don't
+    silently vanish.
+    """
+    with session_scope() as session:
+        stmt = select(Device)
+        if not include_qa_fixtures:
+            stmt = stmt.where(Device.is_qa_fixture.is_(False))
+        rows = list(session.scalars(stmt))
+
+    buckets: dict[str, list[dict]] = {}
+    for d in rows:
+        ver = (d.firmware_version or "(unknown)").strip() or "(unknown)"
+        buckets.setdefault(ver, []).append({
+            "id": d.id,
+            "display_name": d.display_name or d.id,
+        })
+
+    if not buckets:
+        return []
+
+    breakdown = [
+        {
+            "version": ver,
+            "count": len(devs),
+            "devices": sorted(devs, key=lambda x: x["display_name"]),
+        }
+        for ver, devs in buckets.items()
+    ]
+    breakdown.sort(key=lambda b: (-b["count"], b["version"]))
+    majority_count = breakdown[0]["count"]
+    for b in breakdown:
+        b["is_majority"] = (b["count"] == majority_count and len(breakdown) > 1)
+    return breakdown
+
+
 def list_devices(
     site_id: str | None = None,
     group_id: str | None = None,
