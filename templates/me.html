@@ -42,7 +42,7 @@
 <section class="placeholder">
   <h2>Sessions</h2>
   <p class="muted">"Sign out everywhere" invalidates every active session and JWT for your account, including this one. Useful if you suspect a credential leak.</p>
-  <form method="post" action="{{ url_for('admin_ui.me_revoke_everywhere_submit') }}" onsubmit="return confirm('Sign out everywhere? You will need to log in again.');">
+  <form method="post" action="{{ url_for('admin_ui.me_revoke_everywhere_submit') }}" data-confirm-message="Sign out everywhere? You will need to log in again.">
     <button type="submit">Sign out everywhere</button>
   </form>
 </section>

@@ -61,7 +61,7 @@
         <button type="submit" formmethod="post"
                 formaction="{{ url_for('admin_ui.enrollment_token_revoke_submit', token_id=t.id) }}"
                 formnovalidate
-                onclick="return confirm('Revoke this enrollment token?');">
+                data-confirm-message="Revoke this enrollment token?">
           Revoke
         </button>
         {% endif %}

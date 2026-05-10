@@ -62,3 +62,38 @@ function confirmFirmwareDeploy(form) {
     }
     return confirmMassAction(form, count, "deploy_firmware");
 }
+
+// v0.4.22 (BUG-049): CSP-safe attach via data attributes. Templates
+// can now write:
+//   <form data-mass-action-verb="relay_cycle" data-mass-action-count="42">
+//   <form data-firmware-deploy-confirm>
+// instead of inline onsubmit="return confirmMassAction(...)" handlers.
+(function () {
+    function attach() {
+        document.querySelectorAll('form[data-mass-action-verb]').forEach(function (form) {
+            if (form.__rdMassActionAttached) return;
+            form.__rdMassActionAttached = true;
+            form.addEventListener('submit', function (evt) {
+                const verb = form.getAttribute('data-mass-action-verb');
+                const count = parseInt(form.getAttribute('data-mass-action-count') || '1', 10);
+                if (!confirmMassAction(form, count, verb)) {
+                    evt.preventDefault();
+                }
+            });
+        });
+        document.querySelectorAll('form[data-firmware-deploy-confirm]').forEach(function (form) {
+            if (form.__rdFirmwareDeployAttached) return;
+            form.__rdFirmwareDeployAttached = true;
+            form.addEventListener('submit', function (evt) {
+                if (!confirmFirmwareDeploy(form)) {
+                    evt.preventDefault();
+                }
+            });
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attach);
+    } else {
+        attach();
+    }
+})();
