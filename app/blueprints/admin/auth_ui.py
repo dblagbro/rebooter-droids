@@ -94,14 +94,28 @@ def forgot_password_submit():
     if token:
         settings = load_settings()
         url = f"{settings.public_base_url.rstrip('/')}/app/reset-password?token={token}"
-        send_password_reset_email(email, url)
+        # BUG-030 (v0.4.6): never let an SMTP-side failure 500 the
+        # forgot-password handler. The token IS minted in the DB
+        # already; if email delivery fails (bad creds, network,
+        # server-side disconnect), the request still succeeds-shaped
+        # — the operator can dig the URL out of the audit log.
+        smtp_ok = False
+        smtp_error: str | None = None
+        try:
+            smtp_ok = send_password_reset_email(email, url)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception(
+                "password-reset email failed for %s: %s", email, e
+            )
+            smtp_error = type(e).__name__
         audit_service.record(
             "password_reset.requested",
             actor_user_id=None,
             actor_email_snapshot=email,
             target_type="user",
             target_id=None,
-            details={"ip": ip},
+            details={"ip": ip, "smtp_ok": smtp_ok, "smtp_error": smtp_error},
         )
     # Always render the same "we sent it if it exists" page — don't
     # leak whether the email was registered.
