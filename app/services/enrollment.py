@@ -219,6 +219,14 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
         session.flush()
         session.expunge(device)
 
+    # v0.4.20: cross-link any pending-adoption announcement for
+    # this MAC. Best-effort — never raises out of /register.
+    try:
+        from app.services.announcements import mark_consumed
+        mark_consumed(device.mac_address or "")
+    except Exception:
+        pass
+
     return device, raw_secret
 
 

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="v3-page-header">
   <h1>Devices</h1>
-  <p class="v3-page-sub">{{ devices|length }} device{{ '' if devices|length == 1 else 's' }}{% if filters.chips %} · {{ filters.chips|length }} filter{{ '' if filters.chips|length == 1 else 's' }} active{% endif %}</p>
+  <p class="v3-page-sub">{{ devices|length }} device{{ '' if devices|length == 1 else 's' }}{% if filters.chips %} · {{ filters.chips|length }} filter{{ '' if filters.chips|length == 1 else 's' }} active{% endif %} · <a href="{{ url_for('admin_ui.pending_adoption_page') }}">Pending adoption →</a></p>
 </div>
 
 {# ── v0.4.19 (Tier-1 A): firmware-version breakdown ────────────────── #}
