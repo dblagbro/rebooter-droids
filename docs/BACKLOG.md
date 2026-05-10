@@ -138,7 +138,20 @@ v0.4.0 API. Round-trip lossless. Audit-logged with
 - Operator hasn't picked yet. Until they do, the Settings → Sync tab
   remains a stub.
 
-### B12. RFC-005 redlines (firmware-team Q1..Q9)
+### B12. RFC-005 redlines (firmware-team Q1..Q9) — ✅ CLOSED 2026-05-10
+
+Firmware team responded with detailed answers to all 9 questions.
+Slot sizes locked (A=640KiB / B=1MiB / C=1MiB), Q3 success criteria
+broader than just "heartbeat once" (local-OK qualifies),
+Q4 canonical reason strings agreed, AP-mode captive portal shipped
+in bootstrap-0.2.2, flash-time config = both serial + AP-mode,
+LittleFS JSON not NVS, Python CLI flash tool first, hosting in
+force with publish-integrity discipline.
+
+Full reply: `docs/notes/2026-05-10-from-firmware-team-rfc005-redlines.md`.
+RFC-005 §9 now records the final answers.
+
+
 
 - Trial-window seconds, "main firmware healthy enough to promote"
   definition, fallback-fetch source under safe-bootstrap, etc.
