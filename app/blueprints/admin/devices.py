@@ -36,6 +36,7 @@ from app.services.devices import (
     delete_devices_bulk as svc_delete_devices_bulk,
     firmware_version_breakdown,
     get_device_detail,
+    latest_stable_release_dict,
     list_devices as svc_list_devices,
     update_device,
 )
@@ -69,12 +70,18 @@ def list_devices_page():
     # synthetic test rows aren't meaningful.
     fw_breakdown = firmware_version_breakdown(include_qa_fixtures=False)
 
+    # v0.4.21: latest stable release the templates use to render
+    # the per-row "Upgrade to X.Y.Z" button when a device is
+    # behind. None when no stable release tracked → no buttons.
+    latest_stable = latest_stable_release_dict()
+
     return render_template(
         "devices_list.html",
         **_ctx(
             {
                 "devices": devices,
                 "fw_breakdown": fw_breakdown,
+                "latest_stable": latest_stable,
                 "filters": {
                     "search": request.args.get("search", ""),
                     "status": request.args.get("status", ""),
@@ -142,6 +149,64 @@ def device_delete_submit(device_id: str):
             target_type="device",
             target_id=device_id,
         )
+    return redirect(url_for("admin_ui.list_devices_page"))
+
+
+@admin_ui_bp.post("/devices/<device_id>/upgrade-to-latest")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def device_upgrade_to_latest_submit(device_id: str):
+    """v0.4.21: one-click upgrade. Deploys the current latest
+    `stable` channel release to a single device. Operator sees
+    this button on the devices list when the device's
+    firmware_version doesn't match the latest stable's version.
+
+    Equivalent to going to /app/firmware → picking the release →
+    selecting target=device → typing the device id, just folded
+    into one click on the devices list."""
+    from flask import flash
+    from app.services.deployments import create_deployment
+
+    settings = current_app.config["SETTINGS"]
+    latest = latest_stable_release_dict()
+    if latest is None:
+        flash(
+            "No stable firmware release tracked yet. "
+            "Upload one via /app/firmware or run the on-disk scan.",
+            "error",
+        )
+        return redirect(url_for("admin_ui.list_devices_page"))
+
+    try:
+        out = create_deployment(
+            release_id=latest["id"],
+            target_type="device",
+            target_id=device_id,
+            channel=latest.get("channel", "stable"),
+            force=False,
+            issued_by_user_id=g.current_user.id,
+        )
+    except (LookupError, ValueError) as e:
+        flash(f"Upgrade failed: {e}", "error")
+        return redirect(url_for("admin_ui.list_devices_page"))
+
+    audit_service.record(
+        "device.upgrade_initiated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={
+            "via": "devices_list_upgrade_button",
+            "release_id": latest["id"],
+            "release_version": latest["version"],
+            "deployment_id": out.get("id"),
+        },
+    )
+    flash(
+        f"Upgrade to {latest['version']} queued for the device. "
+        f"Device will pick up the deployment on its next command-poll.",
+        "info",
+    )
     return redirect(url_for("admin_ui.list_devices_page"))
 
 
