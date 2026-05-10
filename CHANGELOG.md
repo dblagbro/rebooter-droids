@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-05-09
+
+### Fixed — forgot-password handler crashes on SMTP failure (BUG-030)
+
+- `forgot_password_submit` was calling `send_password_reset_email`
+  WITHOUT a try/except. When the configured SMTP server hangs
+  up mid-handshake (currently the case on prod —
+  smtpauth.earthlink.net auth fails because the SMTP password is
+  set to the bootstrap admin's app password rather than the
+  EarthLink SMTP password), the SMTPServerDisconnected bubbled
+  out to Flask → 500.
+- Now: SMTP failures are caught and logged; the password-reset
+  token is still minted in the DB, the audit-log entry records
+  `smtp_ok=false` + `smtp_error=<exception name>`, and the user
+  sees the same non-disclosing "if an account exists, we've
+  emailed you" page as before. Operator can recover the URL from
+  audit history.
+
+### Operational note
+
+Until the operator updates `REBOOTER_SMTP_PASSWORD` to a real
+EarthLink SMTP credential, password-reset emails will not be
+delivered. The forgot-password flow no longer 500s, but no email
+arrives. Settings → Notifications → "Send test email" surfaces
+the same SMTP error to the operator immediately.
+
 ## [0.4.5] - 2026-05-09
 
 ### Fixed — concurrent firmware upload regression (BUG-002a)

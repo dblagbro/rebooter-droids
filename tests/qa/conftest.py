@@ -73,22 +73,37 @@ def disposable_admin_session(base_url, admin_token):
     email = f"qa-isolated-{secrets.token_hex(6)}@voipguru.org"
     password = "qa-test-Pa55*" + secrets.token_hex(4)
 
-    # Create the user via the bootstrap admin's bearer token.
-    create = requests.post(
-        f"{base_url}/api/v1/admin/users",
-        headers={"Authorization": f"Bearer {admin_token}"},
-        json={
-            "email": email,
-            "password": password,
-            "display_name": "QA Isolated",
-            "role": "admin",
-        },
+    # Provision via the invitation flow (no direct POST /api/v1/admin/users
+    # endpoint — the only admin-side path to a new user is invite + redeem).
+    auth = {"Authorization": f"Bearer {admin_token}"}
+    invite = requests.post(
+        f"{base_url}/api/v1/admin/invitations",
+        headers=auth,
+        json={"email": email, "role": "admin", "note": "QA disposable"},
         timeout=10,
     )
-    if create.status_code not in (200, 201):
-        pytest.skip(f"could not provision disposable admin: {create.status_code} {create.text}")
+    if invite.status_code not in (200, 201):
+        pytest.skip(f"could not mint invitation: {invite.status_code} {invite.text}")
+    invite_data = invite.json()["data"]
+    redeem_url = invite_data.get("redeem_url") or invite_data.get("invitation", {}).get("redeem_url")
+    if not redeem_url:
+        pytest.skip(f"invitation response shape unrecognised: {invite_data}")
+    # redeem_url is /app/invite/<raw>; extract <raw>.
+    raw = redeem_url.rsplit("/", 1)[-1]
 
-    user_id = create.json()["data"]["id"]
+    # Redeem via the form-style POST /app/invite/<token>.
+    redeem = requests.post(
+        f"{base_url}/app/invite/{raw}",
+        data={
+            "password": password,
+            "password_confirm": password,
+            "display_name": "QA Isolated",
+        },
+        timeout=10,
+        allow_redirects=False,
+    )
+    if redeem.status_code not in (302, 303, 200):
+        pytest.skip(f"could not redeem invitation: {redeem.status_code} {redeem.text[:200]}")
 
     # Log them in via the same JSON path the suite uses.
     sess = requests.Session()
@@ -107,17 +122,22 @@ def disposable_admin_session(base_url, admin_token):
         "email": email,
         "password": password,
         "token": token,
-        "user_id": user_id,
+        "user_id": login.json()["data"].get("user", {}).get("id"),
     }
 
-    # Best-effort cleanup. The user might already be gone if the
-    # test deleted them; ignore failures.
+    # Best-effort cleanup. Deactivate the user (admin API supports
+    # /users/<id>/deactivate); we don't have a hard-delete endpoint.
     try:
-        requests.delete(
-            f"{base_url}/api/v1/admin/users/{user_id}",
-            headers={"Authorization": f"Bearer {admin_token}"},
-            timeout=10,
-        )
+        users = requests.get(
+            f"{base_url}/api/v1/admin/users", headers=auth, timeout=10
+        ).json()["data"]["users"]
+        match = next((u for u in users if u["email"] == email), None)
+        if match:
+            requests.post(
+                f"{base_url}/api/v1/admin/users/{match['id']}/deactivate",
+                headers=auth,
+                timeout=10,
+            )
     except Exception:
         pass
 
