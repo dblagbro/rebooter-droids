@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.34] - 2026-05-10
+
+### Fixed — Firmware on-disk scan misses recently-written .bin files
+
+Firmware team reported (2026-05-10 PM) that
+`POST /api/v1/admin/firmware/scan` failed to register a
+freshly-SCP'd `rebooter-0.1.6-dev-central.bin` even though the file
+was on the host filesystem before the scan ran. The next invocation
+~2 minutes later picked it up cleanly — classic bind-mount
+cache-miss pattern between the host's
+`/mnt/s/code/rebooter-droids/data/firmware/stable/` and the
+container's `/data/firmware/stable/`.
+
+Fix: call `os.sync()` at the start of `discover_on_disk_releases`
+so any pending writes are flushed before the directory walk. Cost
+is one syscall per scan, executed only when the operator triggers
+the scan — negligible. Best-effort; falls through cleanly on
+platforms that don't support it.
+
+Operationally there is no behavioural change for the working
+case; the buggy case (recently-written file invisible to
+container's `iterdir`) now returns the correct discovered set on
+the first try.
+
 ## [0.4.33] - 2026-05-10
 
 ### Changed — Firmware UI moves under Settings (D3)
