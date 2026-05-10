@@ -450,6 +450,27 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-045 — Forgot-password page lied when SMTP failed (fixed v0.4.15)
+
+- **Severity:** medium (UX / operator confusion)
+- **Area:** `app/blueprints/admin/auth_ui.py::forgot_password_submit`,
+  `templates/forgot_password.html`
+- **Status:** **fixed in v0.4.15**
+- **Detail:** v0.4.6 caught the SMTP exception (BUG-030) so the
+  request didn't 500, but the response page kept the cheerful
+  "we've emailed you a link" message regardless of whether
+  delivery actually happened. Users (specifically the operator
+  trying to reset their own password ~10 times in a row on
+  2026-05-09 PM) sat clicking expired links because each new
+  reset generated an email-or-not but the UI gave no signal.
+  Audit log showed `smtp_ok: false` retroactively for the
+  failed sends.
+- **Fix:** when SMTP returns an error AND the email IS
+  registered (token was minted), the response page renders a
+  red warning panel naming the SMTP error class
+  (`SMTPConnectError`, `SMTPRecipientsRefused`, etc.) and
+  pointing the user at their admin.
+
 ### BUG-042 — Watchdog rule serializer missing v0.4.2 runtime state (fixed v0.4.14)
 
 - **Severity:** medium (UI silent-render + API consumer breakage)
