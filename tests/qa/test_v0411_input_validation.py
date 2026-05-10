@@ -88,6 +88,61 @@ def test_schedule_name_too_long_returns_400(base_url, admin_headers):
 # ── BUG-037 — maintenance reason cap ────────────────────────────────
 
 
+# ── BUG-050 / BUG-051 — device register payload validation ─────────
+
+
+def _mint_token(base_url, admin_headers):
+    r = requests.post(
+        f"{base_url}/api/v1/admin/enrollment-tokens",
+        headers=admin_headers,
+        json={"display_name_hint": f"qa-reg-test-{unique_suffix()}", "ttl_seconds": 600},
+        timeout=10,
+    )
+    return r.json()["data"]["enrollment_token"]
+
+
+@pytest.mark.parametrize("field,value,expect_msg", [
+    ("display_name", "x" * 121, "120"),
+    ("hardware_model", "y" * 81, "80"),
+    ("firmware_version", "z" * 41, "40"),
+    ("mac_address", "a" * 41, "40"),
+    ("local_ip", "1" * 65, "64"),
+])
+def test_device_register_rejects_overlong_field(base_url, admin_headers, field, value, expect_msg):
+    """v0.4.18 (BUG-050) — caller-supplied fields longer than the
+    column width return 400, not the pre-fix 500."""
+    tok = _mint_token(base_url, admin_headers)
+    payload = {"enrollment_token": tok, "mac_address": "AA:BB:CC:DD:EE:FF"}
+    payload[field] = value
+    r = requests.post(
+        f"{base_url}/api/v1/device/register",
+        json=payload, timeout=10,
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "validation_failed"
+    assert expect_msg in r.json()["error"]["message"]
+
+
+@pytest.mark.parametrize("mac", [
+    "<script>alert(1)</script>",
+    "totally not a mac",
+    "AA:BB::ZZ::QQ::WW",  # contains Z which isn't hex
+])
+def test_device_register_rejects_garbage_mac(base_url, admin_headers, mac):
+    """v0.4.18 (BUG-051) — MAC must be hex-shaped. Pre-fix the
+    register accepted any string, persisted it verbatim, and
+    operators saw nonsense in the MAC column."""
+    tok = _mint_token(base_url, admin_headers)
+    r = requests.post(
+        f"{base_url}/api/v1/device/register",
+        json={"enrollment_token": tok, "mac_address": mac},
+        timeout=10,
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "validation_failed"
+    assert "mac_address" in r.json()["error"]["message"]
+
+
 # ── BUG-038 — rule target requires concrete id ───────────────────────
 
 
