@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.24] - 2026-05-10
+
+### Docs / state checkpoint
+
+State-checkpoint ship after the announce-poll flow validated
+end-to-end on lab-69 + firmware team's RFC-005 §9 redlines came
+in. Pure docs ship — no code or schema change.
+
+- **B12 closed.** `docs/notes/2026-05-10-from-firmware-team-rfc005-redlines.md`
+  preserves the firmware team's full Q1..Q9 reply. RFC-005 §9
+  rewritten with the final answers folded in (slot sizes locked
+  A=640KiB / B=1MiB / C=1MiB; Q3 success criteria broader than
+  just heartbeat; Q4 6 canonical reason strings agreed; AP-mode
+  shipped in `bootstrap-0.2.2`; flash-time config = both serial
+  + AP-mode; LittleFS JSON not NVS; Python CLI flash tool
+  first; hosting in force with publish-integrity discipline).
+- **`docs/BACKLOG.md`** — B12 marked CLOSED.
+- **`docs/redesign-continuation-plan.md`** — B12 strikethrough
+  in the gated-list.
+- Hub-side follow-ups recorded for queue: recognise the 6
+  canonical Q4 reason strings in failsafe service, add a "verify
+  external mirror" button on /app/firmware (publish-integrity
+  per Q9), treat `bootstrap-0.2.2` as the recommended baseline
+  for new device bring-up.
+
+### Fleet state at this checkpoint
+
+- **5/5 lab devices online** (lab-30 / lab-67 / lab-69 / lab-207
+  / lab-225) — including lab-69 brought up via the new
+  `/api/v1/device/announce` flow shipped in v0.4.20
+- 4 watchdog rules armed (internet-connectivity, hub-self-check,
+  hub-www2-self-check, dns-resolver-health)
+- 0 open code-fix bugs
+- 316 tests passing, 5 expected skips
+- Firmware build with announce-loop: `0.1.5-dev-central` (lab-69's
+  current); other 4 devices on 0.1.2 / 0.1.3
+- `bootstrap-0.2.2` is the firmware-team-recommended baseline
+  going forward (includes Wi-Fi AP fallback per Q5)
+
 ## [0.4.23] - 2026-05-10
 
 ### Docs / UI copy refresh — UI redesign continuation plan
