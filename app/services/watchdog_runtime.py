@@ -61,8 +61,15 @@ def tick() -> dict:
     if os.environ.get("REBOOTER_WATCHDOG_DISABLED") == "1":
         return {"disabled": True}
 
+    # v0.4.7 (B7): portal-wide maintenance mode short-circuits all
+    # probes. Operator toggles via `/app/maintenance` (super-admin
+    # only). The pause is global and immediate.
+    from app.services import runtime_flags
+    if runtime_flags.is_maintenance_mode_active():
+        return {"disabled": False, "maintenance_mode": True, "considered": 0}
+
     now = datetime.now(timezone.utc)
-    stats = {"considered": 0, "probed": 0, "fired": 0, "errors": 0}
+    stats = {"considered": 0, "probed": 0, "fired": 0, "errors": 0, "in_window": 0}
 
     with session_scope() as session:
         rules = list(
@@ -77,6 +84,23 @@ def tick() -> dict:
             stats["considered"] += 1
             if not _rule_is_due(rule, now):
                 continue
+
+            # v0.4.7 (B7): per-rule maintenance windows. Skip the
+            # probe entirely if `now` falls inside any window — and
+            # log the skip as a `maintenance_skip` event so the
+            # operator sees the rule was suppressed (not silently
+            # dropped).
+            if _in_maintenance_window(rule, now):
+                _record_event(
+                    session, rule, "maintenance_skip",
+                    {"reason": "rule maintenance window"},
+                    now,
+                )
+                rule.last_probed_at = now
+                rule.last_outcome = "maintenance_skip"
+                stats["in_window"] += 1
+                continue
+
             try:
                 outcome, details = _run_probe(rule)
                 stats["probed"] += 1
@@ -92,6 +116,30 @@ def tick() -> dict:
         session.flush()
 
     return stats
+
+
+def _in_maintenance_window(rule: WatchdogRule, now: datetime) -> bool:
+    """v0.4.7: each window is `{"start": ISO8601, "end": ISO8601}`.
+    Returns True if `now` is between any window's start and end.
+
+    Errors in window-shape (bad ISO, missing keys) are treated as
+    "no window" — never block a probe due to malformed config."""
+    windows = rule.maintenance_windows or []
+    if not windows:
+        return False
+    for w in windows:
+        try:
+            start = datetime.fromisoformat(w["start"])
+            end = datetime.fromisoformat(w["end"])
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+            if start <= now <= end:
+                return True
+        except (KeyError, TypeError, ValueError):
+            continue
+    return False
 
 
 # ── due-time check ───────────────────────────────────────────────────────

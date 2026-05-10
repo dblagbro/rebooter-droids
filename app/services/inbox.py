@@ -318,6 +318,70 @@ def _compute(limit: int = 50) -> dict:
     except Exception:
         log.exception("inbox.device_failsafe query failed")
 
+    # v0.4.7 (B13): watchdog.firing — surface rules that have either
+    # status='firing' OR an action_fired event in the last hour. The
+    # operator gets a one-click view of every rule currently demanding
+    # attention.
+    watchdog_firing_count = 0
+    try:
+        from app.models import WatchdogProbeEvent, WatchdogRule
+        firing_cutoff = now - timedelta(hours=1)
+        with session_scope() as session:
+            rule_rows = list(session.scalars(
+                select(WatchdogRule).where(
+                    WatchdogRule.enabled.is_(True),
+                )
+            ))
+            for r in rule_rows:
+                # Two reasons we'd surface this rule:
+                #   1. its status is firing (post-action), OR
+                #   2. it logged an action_fired event in the last hour
+                #      (caught even after the operator manually toggled
+                #      it back to armed)
+                fired_recently = session.scalar(
+                    select(WatchdogProbeEvent.id)
+                    .where(
+                        WatchdogProbeEvent.rule_id == r.id,
+                        WatchdogProbeEvent.outcome == "action_fired",
+                        WatchdogProbeEvent.at >= firing_cutoff,
+                    )
+                    .limit(1)
+                )
+                if r.status != "firing" and fired_recently is None:
+                    continue
+                watchdog_firing_count += 1
+                target = (r.target or {})
+                target_label = (
+                    f"device {target.get('id', '?')}"
+                    if target.get("kind") == "device"
+                    else f"group {target.get('id', '?')}"
+                    if target.get("kind") == "group"
+                    else f"tag `{target.get('tag', '?')}`"
+                    if target.get("kind") == "tag"
+                    else "?"
+                )
+                attention.append({
+                    "kind": "watchdog_firing",
+                    "id": f"watchdog_firing:{r.id}",
+                    "severity": "warn",
+                    "title": f"Watchdog rule firing: {r.name}",
+                    # device_id/device_name are required by the
+                    # template's existing item-row macro; reuse the
+                    # rule_id as device_id since the click target
+                    # routes to the rules page.
+                    "device_id": r.id,
+                    "device_name": r.name,
+                    "since": _iso(r.last_action_at) if r.last_action_at else None,
+                    "hint": (
+                        f"Probe failing on {target_label}. "
+                        f"Last outcome: {r.last_outcome or '?'}. "
+                        f"See /app/rules for the event log."
+                    ),
+                    "rank": 70,  # between offline_long=60 and failsafe=80
+                })
+    except Exception:
+        log.exception("inbox.watchdog_firing query failed")
+
     attention.sort(key=lambda x: (-x["rank"], x.get("since") or ""), reverse=False)
     attention = attention[:limit]
 
@@ -329,6 +393,7 @@ def _compute(limit: int = 50) -> dict:
         + enrollments_pending
         + auth_rejected_count
         + failsafe_count
+        + watchdog_firing_count
     )
 
     if devices_total == 0:
@@ -375,5 +440,6 @@ def _compute(limit: int = 50) -> dict:
             "enrollments_pending": enrollments_pending,
             "auth_rejected": auth_rejected_count,
             "failsafe": failsafe_count,
+            "watchdog_firing": watchdog_firing_count,
         },
     }
