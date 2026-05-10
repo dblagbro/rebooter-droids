@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.28] - 2026-05-10
+
+### Fixed
+
+- **One-click Upgrade button regression.** Clicking the per-device
+  "Upgrade to latest" button on `/app/devices` returned
+  `{"error":{"code":"internal_error"...}}` since v0.4.21. Root cause
+  was a stray `current_app.config["SETTINGS"]` reference in
+  `device_upgrade_to_latest_submit` that was assigning to an unused
+  local; `current_app` was never imported, so the very first click
+  hit a `NameError` and bubbled up to the generic 500 handler. Fix
+  is to delete the dead line (the `settings` local was never read).
+  Regression test added at `tests/qa/test_v0428_upgrade_button.py`.
+
 ## [0.4.27] - 2026-05-10
 
 ### Added — History page chip filters + API.md refresh
