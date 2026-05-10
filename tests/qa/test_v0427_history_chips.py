@@ -20,7 +20,7 @@ def test_history_page_renders_chip_nav(base_url):
     s = _login(base_url)
     body = s.get(f"{base_url}/app/history", timeout=10).text
     # Chip nav present
-    assert 'aria-label="History categories"' in body
+    assert 'aria-label="History action categories"' in body
     # A representative sample of chips is rendered. Each label appears
     # inside an <a class="v3-chip ..."> ...label... </a>; we just look
     # for the label string + the surrounding chip class on the same
@@ -55,7 +55,7 @@ def test_history_action_prefix_filter_narrows_results(base_url):
     # Sanity: every action shown on the filtered page starts with the
     # prefix. Cheap check — pluck out <code>...</code> action cells.
     import re
-    actions = re.findall(r"<code>([^<]+)</code>", wd_body)
+    actions = re.findall(r"<td><code>([^<]+)</code></td>", wd_body)
     assert actions, "expected at least one event row on history page"
     bad = [a for a in actions if not a.startswith("watchdog_rule.")]
     assert not bad, f"non-watchdog_rule actions leaked through filter: {bad[:5]}"
