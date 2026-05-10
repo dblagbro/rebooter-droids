@@ -450,6 +450,46 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-035 — Watchdog rule numeric thresholds unbounded (fixed v0.4.12)
+
+- **Severity:** medium (operator footgun + state-machine break)
+- **Area:** `app/services/watchdog.py::create_rule`
+- **Status:** **fixed in v0.4.12**
+- **Detail:** Pre-fix, an operator could create a rule with
+  `failure_threshold=-1` and the runtime would fire its action
+  on the very first probe (the `failure_streak < failure_threshold`
+  gate is always False). Equally, `window_seconds=99_999_999`
+  passed silently — sentence renderer rendered "27777 h 46 min"
+  with a straight face.
+- **Fix:** `1..100` for thresholds, `5..86400` for windows,
+  `0..86400` for cooldown. Out-of-range values → 400
+  `validation_failed`.
+
+### BUG-036 — Watchdog/schedule name >120 chars returns 500 (fixed v0.4.12)
+
+- **Severity:** medium (operator-facing 500)
+- **Area:** `app/services/watchdog.py::create_rule`,
+  `app/services/schedules.py::create`
+- **Status:** **fixed in v0.4.12**
+- **Detail:** Both `watchdog_rules.name` and `schedules.name`
+  are `VARCHAR(120)`. A 121-char name hit
+  `psycopg.errors.StringDataRightTruncation` on INSERT →
+  unhandled → 500.
+- **Fix:** service-layer length check returns 400
+  `validation_failed` with message `"name must be 120 characters
+  or fewer"`.
+
+### BUG-037 — Maintenance `reason` field unbounded (fixed v0.4.12)
+
+- **Severity:** low (UX / DoS-by-large-value)
+- **Area:** `app/services/runtime_flags.py::set_maintenance_mode`
+- **Status:** **fixed in v0.4.12**
+- **Detail:** `reason` is stored inside a JSON value, so Postgres
+  doesn't column-truncate. An operator could paste a 5KB blob
+  and watch the Status banner render the whole thing. Equally a
+  silent footgun if a schedule writes a multi-line reason.
+- **Fix:** truncate to 200 chars (197 + `"..."`) before persist.
+
 ### BUG-033 — No standard security headers on responses (fixed v0.4.11)
 
 - **Severity:** medium (security hardening)
