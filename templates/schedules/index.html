@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+{% block title %}Schedules - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Schedules</h1>
+  <p class="v3-page-sub">Time-driven actions. For probe-driven rules (fire when an internet check fails, etc.) see <a href="{{ url_for('admin_ui.rules_page') }}">← Rules</a>. Two kinds: power-cycle (cycle a device/group on a cron) and maintenance (pause watchdog rules during a recurring window).</p>
+</div>
+
+{% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+
+{% if can_edit %}
+<section class="v3-card" id="create">
+  <h2>Create a schedule</h2>
+  <form method="post" action="{{ url_for('admin_ui.schedules_create_submit') }}">
+    <label>Name <input type="text" name="name" placeholder="e.g. Nightly modem reboot" required></label>
+
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>Kind</legend>
+      <label><input type="radio" name="kind" value="power_cycle" checked> power_cycle — cycle a device/group on a schedule</label>
+      <label><input type="radio" name="kind" value="maintenance"> maintenance — pause watchdog rules during a window</label>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>When</legend>
+      <label>Recurrence
+        <select name="recurrence">
+          <option value="daily">daily</option>
+          <option value="weekly">weekly</option>
+          <option value="once">once</option>
+        </select>
+      </label>
+      <label>At time UTC (HH:MM, daily/weekly) <input type="time" name="at_time_utc"></label>
+      <label>Weekdays (weekly only):
+        <span style="display:inline-flex; gap:.4rem; flex-wrap:wrap; margin-left:.4rem">
+        {% for i, name in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
+          <label style="font-size:.85rem"><input type="checkbox" name="weekdays" value="{{ i }}"> {{ name }}</label>
+        {% endfor %}
+        </span>
+      </label>
+      <label>Start at (one-shot only) <input type="datetime-local" name="start_at"></label>
+      <label>Duration seconds (maintenance only) <input type="number" name="duration_seconds" value="3600" min="0" max="86400"></label>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>Target (power_cycle only)</legend>
+      <label>Kind
+        <select name="target_kind">
+          <option value="">—</option>
+          <option value="device">device</option>
+          <option value="group">group</option>
+          <option value="tag">tag</option>
+        </select>
+      </label>
+      <label>Target id / tag
+        <select name="target_id">
+          <option value="">— pick a device or group —</option>
+          {% if devices %}
+          <optgroup label="devices">
+            {% for d in devices %}<option value="{{ d.id }}">device: {{ d.display_name or d.id }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if groups %}
+          <optgroup label="groups">
+            {% for g in groups %}<option value="{{ g.id }}">group: {{ g.name }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+        </select>
+      </label>
+      <label>power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
+      <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
+    </fieldset>
+
+    <button type="submit">Create schedule</button>
+  </form>
+</section>
+{% endif %}
+
+<h2>Schedules</h2>
+{% if schedules %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Schedule</th><th>Next run</th><th>Last run</th><th>Status</th>{% if can_edit %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for s in schedules %}
+    <tr id="{{ s.id }}">
+      <td>
+        <strong>{{ s.name }}</strong><br>
+        <span class="muted" style="font-size:.85rem">{{ s.sentence }}</span>
+      </td>
+      <td class="muted" style="font-size:.85rem">{{ s.next_run_at or '—' }}</td>
+      <td class="muted" style="font-size:.85rem">{{ s.last_run_at or '—' }}{% if s.last_outcome %}<br><code>{{ s.last_outcome }}</code>{% endif %}</td>
+      <td>
+        {% if s.enabled %}<span class="badge green">enabled</span>{% else %}<span class="badge">disabled</span>{% endif %}
+      </td>
+      {% if can_edit %}
+      <td style="white-space:nowrap">
+        <form method="post" action="{{ url_for('admin_ui.schedules_toggle_submit', schedule_id=s.id) }}" style="display:inline">
+          <input type="hidden" name="enabled" value="{{ '0' if s.enabled else '1' }}">
+          <button type="submit" class="btn-secondary">{{ 'Disable' if s.enabled else 'Enable' }}</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_ui.schedules_delete_submit', schedule_id=s.id) }}" style="display:inline"
+              onsubmit="return confirm('Delete schedule {{ s.name }}?');">
+          <button type="submit" class="btn-danger">Delete</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+{% set empty_title = "No schedules yet" %}
+{% set empty_body = "Create one above. Schedules fire on time (e.g. 'cycle the modem every Saturday at 3am UTC' or 'pause all watchdog rules nightly 2-3am'). The runtime tick fires every 30 seconds, so granularity on the OFF transition is ~30s." %}
+{% include "_components/empty_state.html" %}
+{% endif %}
+{% endblock %}
