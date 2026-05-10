@@ -9,48 +9,66 @@
 <div class="v3-card">
   <h2>Outgoing email (SMTP)</h2>
   <p class="muted" style="margin-top:0">
-    Used for: invitations to new admins, password-reset links,
-    test messages, and (post v0.4.1) watchdog-rule notifications.
+    Used for: invitations, password-reset links, test messages, and
+    (queued) watchdog-rule notifications.
   </p>
 
   {% if smtp.configured %}
     <p><span class="badge green">configured</span></p>
   {% else %}
-    <p><span class="badge red">not configured</span> — invitations are still issued (the link shows in the admin console) but no email is sent. Set the env vars below and recreate the container.</p>
+    <p><span class="badge red">not configured</span> — invitations are still issued (the link shows in the admin console) but no email is sent.</p>
   {% endif %}
 
-  <table style="margin-top:1rem">
-    <tr><th>Host</th><td><code>{{ smtp.host or '—' }}</code></td></tr>
-    <tr><th>Port</th><td><code>{{ smtp.port }}</code></td></tr>
-    <tr><th>Username</th><td><code>{{ smtp.user or '—' }}</code></td></tr>
-    <tr><th>Password</th><td>{% if smtp.password_set %}<span class="badge green">set</span>{% else %}<span class="badge red">unset</span>{% endif %}</td></tr>
-    <tr><th>From</th><td><code>{{ smtp.from_addr or '—' }}</code></td></tr>
-    <tr><th>HELO</th><td><code>{{ smtp.helo or '—' }}</code></td></tr>
-  </table>
-
-  <p class="muted" style="font-size:.85rem; margin-top:1rem">
-    These are read from environment variables — they're set on the
-    docker-compose service, not in the database. To change them, edit
-    <code>/home/dblagbro/docker/docker-compose.yml</code> or the
-    coordinator-hub-managed env file, then recreate the
-    <code>rebooter-droids</code> container.
+  <p class="muted" style="font-size:.85rem">
+    Each field reads <strong>DB override → env-var → empty</strong>.
+    The form below edits the DB override; clearing a field removes
+    its override and reverts to the env-var.
   </p>
-  <details style="margin-top:.5rem">
-    <summary class="muted" style="cursor:pointer">Env-var names</summary>
-    <pre style="font-size:.8rem; margin:.5rem 0">REBOOTER_SMTP_HOST
-REBOOTER_SMTP_PORT      (default 587)
-REBOOTER_SMTP_USER
-REBOOTER_SMTP_PASSWORD
-REBOOTER_SMTP_FROM
-REBOOTER_SMTP_HELO      (optional)</pre>
-  </details>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Edit SMTP settings</h2>
+  <form method="post" action="{{ url_for('admin_ui.settings_notifications_save_submit') }}">
+    <label>Host
+      <input type="text" name="host" value="{{ smtp.host or '' }}" placeholder="smtpauth.earthlink.net">
+      {% if smtp.overrides.host %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>Port
+      <input type="number" name="port" value="{{ smtp.port }}" min="1" max="65535">
+      {% if smtp.overrides.port %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>Username
+      <input type="text" name="user" value="{{ smtp.user or '' }}" placeholder="dblagbro@earthlink.net" autocomplete="off">
+      {% if smtp.overrides.user %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>Password
+      <input type="password" name="password" value="{% if smtp.password_set %}********{% endif %}" placeholder="leave blank to clear; ******** = unchanged" autocomplete="new-password">
+      {% if smtp.overrides.password %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>From
+      <input type="text" name="from" value="{{ smtp.from_addr or '' }}" placeholder="dblagbro@earthlink.net">
+      {% if smtp.overrides['from'] %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <label>HELO (optional)
+      <input type="text" name="helo" value="{{ smtp.helo or '' }}" placeholder="earthlink.net">
+      {% if smtp.overrides.helo %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+    <button type="submit" style="margin-top:.5rem">Save SMTP settings</button>
+  </form>
+  <p class="muted" style="font-size:.8rem; margin-top:.5rem">
+    Saving takes effect immediately — no container recreate needed. Audit-logged as <code>smtp.config_updated</code>.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.settings_notifications_clear_submit') }}" style="margin-top:1rem"
+        data-confirm-message="Clear all SMTP DB overrides and revert to env-var defaults?">
+    <button type="submit" class="btn-secondary">Revert to env-var defaults</button>
+  </form>
 </div>
 
 <div class="v3-card" style="margin-top:1rem">
   <h2>Send a test email</h2>
   <p class="muted" style="margin-top:0">
-    Sends a one-line "SMTP test OK" message. Audit-logged as
-    <code>smtp.test_sent</code>.
+    Sends a one-line "SMTP test OK" message using the current live config (DB override or env-var fallback).
+    Audit-logged as <code>smtp.test_sent</code>.
   </p>
   <form method="post" action="{{ url_for('admin_ui.settings_notifications_test_submit') }}">
     <label>To <input type="email" name="to" value="{{ current_user_email or '' }}" required></label>
@@ -59,15 +77,12 @@ REBOOTER_SMTP_HELO      (optional)</pre>
 </div>
 
 <div class="v3-card" style="margin-top:1rem">
-  <h2>What's coming</h2>
-  <ul class="muted">
-    <li><strong>Watchdog-rule notifications</strong> — when a
-      watchdog rule fires (v0.4.1+ probe runtime), email the operator
-      via this same SMTP channel.</li>
-    <li><strong>Per-recipient rule subscriptions</strong> — multiple
-      admins can subscribe to specific rules.</li>
-    <li><strong>Webhooks</strong> — POST rule events to an arbitrary
-      URL for chatops integrations.</li>
-  </ul>
+  <h2>Env-var names (for reference)</h2>
+  <pre style="font-size:.8rem; margin:.5rem 0">REBOOTER_SMTP_HOST
+REBOOTER_SMTP_PORT      (default 587)
+REBOOTER_SMTP_USER
+REBOOTER_SMTP_PASSWORD
+REBOOTER_SMTP_FROM
+REBOOTER_SMTP_HELO      (optional)</pre>
 </div>
 {% endblock %}

@@ -18,38 +18,55 @@ from app.config import Settings, load_settings
 log = logging.getLogger(__name__)
 
 
+def _live_smtp_config() -> dict:
+    """v0.4.25: SMTP config now reads from runtime_settings (DB) →
+    env-var → empty. Lets operators rotate creds without recreating
+    the container."""
+    from app.services import runtime_settings
+    return runtime_settings.smtp_config()
+
+
 def is_configured(settings: Settings | None = None) -> bool:
-    s = settings or load_settings()
-    return bool(s.smtp_host and s.smtp_from)
+    """Compat wrapper — kept for callers that still pass Settings.
+    The live source of truth is now runtime_settings."""
+    cfg = _live_smtp_config()
+    return bool(cfg.get("smtp.host") and cfg.get("smtp.from"))
 
 
 def send_email(to: str, subject: str, html_body: str) -> bool:
-    """Return True if sent (or attempted), False if SMTP not configured."""
-    s = load_settings()
-    if not is_configured(s):
+    """Return True if sent (or attempted), False if SMTP not
+    configured. v0.4.25: pulls live config from runtime_settings
+    so a UI-side rotation takes effect immediately."""
+    cfg = _live_smtp_config()
+    host = cfg.get("smtp.host")
+    port = cfg.get("smtp.port") or 587
+    user = cfg.get("smtp.user")
+    password = cfg.get("smtp.password")
+    from_addr = cfg.get("smtp.from")
+    helo = cfg.get("smtp.helo")
+
+    if not (host and from_addr):
         log.warning(
-            "SMTP not configured — would-have-sent to=%s subject=%s",
-            to,
-            subject,
+            "SMTP not configured — would-have-sent to=%s subject=%s", to, subject
         )
         return False
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = s.smtp_from
+    msg["From"] = from_addr
     msg["To"] = to
     msg.attach(MIMEText(html_body, "html"))
 
     ctx = ssl.create_default_context()
-    with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=15) as server:
-        if s.smtp_helo:
-            server.ehlo(s.smtp_helo)
+    with smtplib.SMTP(host, port, timeout=15) as server:
+        if helo:
+            server.ehlo(helo)
         server.starttls(context=ctx)
-        if s.smtp_helo:
-            server.ehlo(s.smtp_helo)
-        if s.smtp_user:
-            server.login(s.smtp_user, s.smtp_password)
-        server.sendmail(s.smtp_from, [to], msg.as_string())
+        if helo:
+            server.ehlo(helo)
+        if user:
+            server.login(user, password)
+        server.sendmail(from_addr, [to], msg.as_string())
     log.info("smtp ok to=%s subject=%s", to, subject)
     return True
 
