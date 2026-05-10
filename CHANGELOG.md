@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-05-09
+
+### Fixed — concurrent firmware upload regression (BUG-002a)
+
+- **Concurrent firmware upload race returned 500 (regressed v0.3.9).**
+  The IntegrityError cleanup branch in `upload_release` referenced
+  `pointer_path`, which v0.3.9 deleted when the channel pointer
+  switched from a static file to a Flask redirect. The loser thread
+  of a concurrent upload race hit `NameError: pointer_path` →
+  unhandled → 500. Originally fixed in v0.1.3 (BUG-002), regressed
+  in v0.3.9; now fixed properly.
+- **Stale-cookie name in `test_logout_does_not_revoke_cookie_server_side`.**
+  Was reading `s.cookies.get("session")` — now reads
+  `rebooter_session` (with fallback to legacy name during deploy
+  transitions).
+- **Rate-limit test gracefully skips on exempt source.** When the
+  test's source IP is in `REBOOTER_RATE_LIMIT_EXEMPT_IPS` (the
+  default exemption that lets the QA host run a full suite without
+  hitting the per-IP cap), the test detects this via the absence
+  of `X-RateLimit-Limit` headers and emits `pytest.skip` instead
+  of failing.
+- **`test_logout_does_not_break_subsequent_login` switched to
+  `disposable_admin_session`.** Was bumping the bootstrap admin's
+  `tokens_valid_after` mid-suite, cascading into the v0.2.x test
+  failures. Now uses a fresh admin user.
+
+### Compatibility
+
+- All v0.4.4 routes preserved.
+- Pure code-path fix in firmware service; no schema changes.
+- The 500-on-race fix is purely defensive — removing a NameError
+  in an error-recovery branch.
+
 ## [0.4.4] - 2026-05-09
 
 ### Test-infrastructure hardening (BUG-021 / 024 / 025 / 026)
