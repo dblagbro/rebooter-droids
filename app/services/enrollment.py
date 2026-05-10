@@ -119,6 +119,45 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
     Returns (device, raw_device_token). The raw_device_token is shown
     once and never persisted in cleartext.
     """
+    # v0.4.18 (BUG-050 + BUG-051): bound + sanity-check the
+    # caller-supplied registration fields before they hit the
+    # column-width-bound INSERT. Pre-fix:
+    #  - display_name >120 chars → DataError → 500
+    #  - mac_address `<script>alert(1)</script>` accepted as-is.
+    import re as _re
+    p = registration_payload or {}
+    for field, max_len in (
+        ("display_name", 120),
+        ("hardware_model", 80),
+        ("hardware_revision", 40),
+        ("firmware_version", 40),
+        ("mac_address", 40),
+        ("serial_number", 80),
+        ("local_ip", 64),
+    ):
+        v = p.get(field)
+        if v is not None and not isinstance(v, str):
+            raise EnrollmentError(
+                "validation_failed",
+                f"{field} must be a string",
+            )
+        if v and len(v) > max_len:
+            raise EnrollmentError(
+                "validation_failed",
+                f"{field} must be {max_len} characters or fewer",
+            )
+    mac = p.get("mac_address")
+    if mac:
+        # Common MAC formats: AA:BB:CC:DD:EE:FF, AA-BB-..., AABB.CCDD.EEFF.
+        # Reject anything that isn't hex + colon/dash/dot/space — keeps
+        # garbage like '<script>...' out of the column without being
+        # so strict that legitimate vendor formats break.
+        if not _re.fullmatch(r"[0-9A-Fa-f:.\-\s]+", mac):
+            raise EnrollmentError(
+                "validation_failed",
+                "mac_address must contain only hex digits, ':', '-', '.', or spaces",
+            )
+
     token_hash = _hash(token)
     now = datetime.now(timezone.utc)
 
