@@ -68,6 +68,14 @@
 
 <form method="get" class="actions">
   <input type="hidden" name="source" value="{{ source }}">
+  {# v0.4.32 (C3): free-text search across actor / action / target_*
+     and the details JSON blob. ILIKE wildcard match server-side. #}
+  <label class="muted" style="flex-basis:100%">
+    search
+    <input type="search" name="q" value="{{ request.args.get('q', '') }}"
+           placeholder="searches actor, action, target_*, and the details JSON of every row"
+           autofocus>
+  </label>
   <label class="muted">
     actor / device id
     <input type="text" name="actor_user_id" value="{{ request.args.get('actor_user_id', '') }}">
@@ -90,10 +98,23 @@
   <button type="submit">Filter</button>
 </form>
 
+{# v0.4.32 (C2): export current view as CSV / JSON. Honours every
+   filter currently in the URL — including the search box above —
+   so the download is "what you see on screen, up to 50_000 rows". #}
+<div class="actions" style="margin-top:.5rem">
+  <a class="btn btn-secondary"
+     href="{{ url_for('admin_ui.history_page', **dict(request.args, export='csv')) }}"
+     download>↓ Export CSV</a>
+  <a class="btn btn-secondary"
+     href="{{ url_for('admin_ui.history_page', **dict(request.args, export='json')) }}"
+     download>↓ Export JSON</a>
+  <span class="muted" style="font-size:.8rem; align-self:center">(up to 50,000 rows; narrow filters for more)</span>
+</div>
+
 {% if events %}
 <p class="muted" style="font-size:.85rem">
   {{ events|length }} event{{ '' if events|length == 1 else 's' }}
-  · source <code>{{ source }}</code>{% if action_prefix %} · prefix <code>{{ action_prefix }}.*</code>{% endif %}
+  · source <code>{{ source }}</code>{% if action_prefix %} · prefix <code>{{ action_prefix }}.*</code>{% endif %}{% if request.args.get('q') %} · search <code>{{ request.args.get('q') }}</code>{% endif %}
 </p>
 <div class="table-wrap"><table>
   <thead>
