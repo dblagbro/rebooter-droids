@@ -166,7 +166,6 @@ def device_upgrade_to_latest_submit(device_id: str):
     from flask import flash
     from app.services.deployments import create_deployment
 
-    settings = current_app.config["SETTINGS"]
     latest = latest_stable_release_dict()
     if latest is None:
         flash(
