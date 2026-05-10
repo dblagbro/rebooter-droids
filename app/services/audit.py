@@ -95,6 +95,7 @@ def record_per_device(
 def query(
     actor_user_id: str | None = None,
     action: str | None = None,
+    action_prefix: str | None = None,
     target_type: str | None = None,
     target_id: str | None = None,
     limit: int = 200,
@@ -106,6 +107,11 @@ def query(
             stmt = stmt.where(AuditEvent.actor_user_id == actor_user_id)
         if action:
             stmt = stmt.where(AuditEvent.action == action)
+        if action_prefix:
+            # v0.4.27: chip-style filter for the history page. Matches
+            # exact `<prefix>` plus `<prefix>.*` so chips like
+            # "watchdog_rule" cover watchdog_rule.created/deleted/etc.
+            stmt = stmt.where(AuditEvent.action.like(f"{action_prefix}.%"))
         if target_type:
             stmt = stmt.where(AuditEvent.target_type == target_type)
         if target_id:

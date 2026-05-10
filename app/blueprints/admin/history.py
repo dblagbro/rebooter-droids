@@ -23,9 +23,11 @@ from app.services import audit as audit_service
 @admin_ui_bp.get("/history")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def history_page():
+    action_prefix = request.args.get("action_prefix") or None
     rows = audit_service.query(
         actor_user_id=request.args.get("actor_user_id") or None,
         action=request.args.get("action") or None,
+        action_prefix=action_prefix,
         target_type=request.args.get("target_type") or None,
         target_id=request.args.get("target_id") or None,
         limit=int(request.args.get("limit") or 200),
@@ -37,6 +39,7 @@ def history_page():
                 "active": "history",
                 "events": rows,
                 "source": request.args.get("source", "audit"),
+                "action_prefix": action_prefix,
             }
         ),
     )
