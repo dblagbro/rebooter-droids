@@ -47,23 +47,73 @@ def _iso(dt) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
 
 
+_VERSION_PREFIX_RE = None
+
+
+def _version_sort_key(v: str | None) -> tuple:
+    """Build a sort key from a firmware version string.
+
+    Versions look like `0.1.5-dev-central`, `0.1.1-dev-central-ui`,
+    `0.1.2`. We want numeric ordering by the leading dotted-int
+    prefix, with the suffix as a stable tiebreaker so two releases
+    with the same numeric prefix sort predictably.
+
+    Returns a tuple `((int, ...), suffix_str)`. `None` / empty
+    versions sort to the very bottom.
+    """
+    if not v:
+        return ((-1,), "")
+    head, _, tail = v.partition("-")
+    parts = []
+    for p in head.split("."):
+        try:
+            parts.append(int(p))
+        except ValueError:
+            # Unparsable numeric component → treat as 0; the
+            # suffix tiebreaker will still keep ordering stable.
+            parts.append(0)
+    return (tuple(parts), tail)
+
+
+def is_upgrade(target_version: str | None, current_version: str | None) -> bool:
+    """v0.4.29: returns True only when `target_version` is
+    *strictly newer* than `current_version` by numeric prefix.
+
+    Used by the devices-list template to gate the one-click upgrade
+    button so a device on `0.1.5-dev-central` never shows an
+    "upgrade" button pointing at `0.1.2-dev-central` (a downgrade,
+    which was the v0.4.21..v0.4.28 behaviour).
+
+    Same numeric prefix → False (no button), regardless of suffix
+    label. Cross-label "upgrades" are intentionally hidden to
+    avoid `0.1.1-dev-central` → `0.1.1-dev-central-ui` confusion.
+    """
+    if not target_version or not current_version:
+        return False
+    return _version_sort_key(target_version)[0] > _version_sort_key(current_version)[0]
+
+
 def latest_stable_release_dict() -> dict | None:
-    """v0.4.21: helper for the devices page to know what version
-    a device "should" be on. Returns the most-recently-created
+    """v0.4.29: helper for the devices page to know what version
+    a device "should" be on. Returns the **highest-version**
     release in the `stable` channel, or None if there isn't one.
-    Returned shape is the simple `{id, version, sha256, size_bytes}`
-    pieces the templates need — no full mirror cascade.
+
+    Before v0.4.29 this returned the most-recently-*uploaded*
+    release, which created the operator-visible "upgrade" button
+    that actually pointed at a downgrade when an older release was
+    re-uploaded after a newer one (e.g. 0.1.2 re-pushed while the
+    fleet was already on 0.1.5).
     """
     from app.models import FirmwareRelease
     with session_scope() as session:
-        rel = session.scalar(
-            select(FirmwareRelease)
-            .where(FirmwareRelease.channel == "stable")
-            .order_by(FirmwareRelease.created_at.desc())
-            .limit(1)
+        rows = list(
+            session.scalars(
+                select(FirmwareRelease).where(FirmwareRelease.channel == "stable")
+            )
         )
-        if rel is None:
+        if not rows:
             return None
+        rel = max(rows, key=lambda r: _version_sort_key(r.version))
         return {
             "id": rel.id,
             "version": rel.version,
