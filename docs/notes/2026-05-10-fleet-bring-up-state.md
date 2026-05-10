@@ -1,34 +1,57 @@
-# Fleet bring-up — RESOLVED (2026-05-10 04:35 UTC)
+# Fleet bring-up — RESOLVED (2026-05-10 04:44 UTC, final)
 
 Captures the result of the firmware-team bring-up run.
-**4/4 lab devices online and registered.** Original blocker
-on `lab-67` resolved by reducing on-device BearSSL buffer
-sizes; root cause was TLS-side, not network or hub.
+**4/4 lab devices online and idle on central.** All
+heartbeating cleanly within the last 60 seconds.
 
-Original status during the 04:17 UTC checkpoint snapshot was
-3/4 with `lab-67` failing on `HTTPC_ERROR_CONNECTION_FAILED -1`.
-Final-state record below.
+Timeline:
+- 04:06 UTC — initial bring-up: 3/4 registered (`lab-225`,
+  `lab-207`, `lab-30`) on `0.1.0-dev-central`. `lab-67` failed
+  with `HTTPC_ERROR_CONNECTION_FAILED -1` despite Wi-Fi up
+  and local HTTP working.
+- 04:33 UTC — `lab-67` resolved by OTA to `0.1.1-dev-central`
+  *plus* a reduction in on-device BearSSL secure-client buffer
+  sizes. Registered immediately on retry via the secondary URL.
+- 04:43 UTC — remaining upstream unit (`lab-30`) also OTA'd to
+  `0.1.1-dev-central` with the same fix + a local central
+  diagnostic endpoint. Healthy + heartbeating.
+
+Final state: all 4 devices in `central_state=idle`, last
+heartbeats fresh (within ~1 minute of this snapshot).
 
 ---
 
-## Online and registered (final state, 04:35 UTC)
+## Online and idle on central (final state, 04:44 UTC)
 
-All 4 devices centrally registered; all `registration_state=active`.
+All 4 devices `registration_state=active`, `central_state=idle`,
+heartbeating within the last ~60 seconds. Hub heartbeat-state
+reads `online` for all 4. Verified via direct DB query +
+`/api/v1/admin/devices` JSON.
 
-| Local IP | MAC | device_id | Display name | Firmware | Last heartbeat (UTC) |
+| Local IP | MAC | device_id | Alias | Firmware | Last heartbeat (UTC) |
 |---|---|---|---|---|---|
-| 192.168.1.225 | `C4:D8:D5:0C:F6:B3` | `dev_01KR812687CEGS7CHXJQ7QAW4H` | `lab-225` | `0.1.0-dev-central` | 04:34:42 |
-| 192.168.1.207 | `C4:D8:D5:0C:F7:59` | `dev_01KR8126MTTZW22E8F2QVFWT68` | `lab-207` | `0.1.0-dev-central` | 04:34:37 |
-| 192.168.1.30  | `C4:D8:D5:0C:F7:A5` | `dev_01KR8127W5XMP6MDF34J0TXQP9` | `lab-30`  | `0.1.0-dev-central` | 04:27:37 (transient stale ~7 min at snapshot) |
-| 192.168.1.67  | `C4:D8:D5:0C:F7:CA` | `dev_01KR82K0W2WTA2968QEDG0Y42K` | `lab-67`  | `0.1.1-dev-central` | 04:34:38 |
+| 192.168.1.225 | `C4:D8:D5:0C:F6:B3` | `dev_01KR812687CEGS7CHXJQ7QAW4H` | `lab-225` | `0.1.0-dev-central` | 04:43:58 |
+| 192.168.1.207 | `C4:D8:D5:0C:F7:59` | `dev_01KR8126MTTZW22E8F2QVFWT68` | `lab-207` | `0.1.0-dev-central` | 04:43:57 |
+| 192.168.1.30  | `C4:D8:D5:0C:F7:A5` | `dev_01KR8127W5XMP6MDF34J0TXQP9` | `lab-30`  | `0.1.1-dev-central` (upgraded) | 04:43:56 |
+| 192.168.1.67  | `C4:D8:D5:0C:F7:CA` | `dev_01KR82K0W2WTA2968QEDG0Y42K` | `lab-67`  | `0.1.1-dev-central` | 04:42:58 |
 
-Lab egress NAT IPs seen by the hub: `47.230.251.21` (the original
-3 units), and `192.168.1.11` for `lab-67`'s register call (the
-fix-attempt traffic apparently routed through a different lab
-vantage / debug shell during the secondary-URL retry).
+Per-unit firmware variation:
 
-`lab-67`'s register hit at 04:33:36 UTC, immediately followed by
-heartbeats — no errors recorded.
+- `lab-225` and `lab-207` remain on `0.1.0-dev-central` —
+  these never hit the BearSSL issue and didn't need the upgrade.
+- `lab-30` and `lab-67` both run `0.1.1-dev-central` with the
+  reduced BearSSL secure-client buffers + the local central
+  diagnostic endpoint. Healthy on both.
+
+Lab egress NAT IPs seen by the hub: `47.230.251.21` (the
+original 3 register calls + ongoing heartbeats), and
+`192.168.1.11` for `lab-67`'s register call during the
+secondary-URL retry.
+
+Heartbeat traffic in the 60 seconds preceding the final-state
+snapshot: 5 `POST /api/v1/device/heartbeat` requests, all 200.
+No 4xx, no 5xx, no `unregistered_auth_attempts` activity. Hub
+log clean.
 
 ## Resolved blocker — `lab-67`
 
@@ -171,11 +194,12 @@ fault.**
 - Version: **v0.4.18**
 - Test suite: 302 passing, 6 expected skips
 - Open code-fix bugs: 0
-- Database: 3 real devices, 0 QA fixtures, 0 unregistered_auth_attempts
+- Database: **4 real devices, 0 QA fixtures, 0 unregistered_auth_attempts**
 - Enrolment tokens still valid: 1 (the fleet token, expires 2026-06-09;
   per-device tokens minted by firmware team for the bring-up are
   individual)
-- Watchdog runtime: live (10s tick)
+- Watchdog runtime: live (10s tick) — ready to fire rules now that
+  there are real device targets
 - Schedule runtime: live (30s tick)
 
 ## Communication trail
