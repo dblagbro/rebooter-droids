@@ -1,39 +1,73 @@
-# Fleet bring-up — RESOLVED (2026-05-10 04:44 UTC, final)
+# Fleet bring-up — drifted later same day (2026-05-10 18:10 UTC)
 
-Captures the result of the firmware-team bring-up run.
-**4/4 lab devices online and idle on central.** All
-heartbeating cleanly within the last 60 seconds.
+Original bring-up resolved 4/4 by 04:44 UTC. Day-of drift
+since:
 
 Timeline:
 - 04:06 UTC — initial bring-up: 3/4 registered (`lab-225`,
   `lab-207`, `lab-30`) on `0.1.0-dev-central`. `lab-67` failed
-  with `HTTPC_ERROR_CONNECTION_FAILED -1` despite Wi-Fi up
-  and local HTTP working.
+  with `HTTPC_ERROR_CONNECTION_FAILED -1`.
 - 04:33 UTC — `lab-67` resolved by OTA to `0.1.1-dev-central`
   *plus* a reduction in on-device BearSSL secure-client buffer
-  sizes. Registered immediately on retry via the secondary URL.
-- 04:43 UTC — remaining upstream unit (`lab-30`) also OTA'd to
-  `0.1.1-dev-central` with the same fix + a local central
-  diagnostic endpoint. Healthy + heartbeating.
+  sizes.
+- 04:43 UTC — `lab-30` also OTA'd to `0.1.1-dev-central`.
+  Healthy + heartbeating.
+- 04:44 UTC — first "all 4 online and idle" snapshot.
+- ~04:56 UTC — `lab-225` last heartbeat. Took an OTA attempt
+  and dropped off the LAN entirely. Stayed offline through
+  the day.
+- ~04:59 UTC — `lab-207` went stale (was on `0.1.0-dev-central`,
+  not yet upgraded).
+- ~17:50 UTC — `lab-207` recovered after OTA to `0.1.1-dev-central`.
+  Now online and idle.
+- ~17:56 UTC — `lab-67` went silent after a controlled
+  downstream power-cycle. Diagnosed firmware-side as
+  collateral from the chain order: `lab-67` is downstream of
+  `lab-225` and never came back when `lab-225` stayed offline.
+- 18:10 UTC — current snapshot below.
 
-Final state: all 4 devices in `central_state=idle`, last
-heartbeats fresh (within ~1 minute of this snapshot).
+Current state: 2/4 online (`lab-30`, `lab-207`), 2/4 offline
+(`lab-225` — primary blocker, device-side; `lab-67` —
+collateral). Hub-side evidence (zero packets from `lab-225`
+in 13+ h, zero auth rejects, zero 4xx/5xx) confirms the
+firmware-side diagnosis: device-side / lab-network blocker
+centered on `lab-225`.
 
 ---
 
-## Online and idle on central (final state, 04:44 UTC)
+## Current state (18:10 UTC snapshot)
 
-All 4 devices `registration_state=active`, `central_state=idle`,
-heartbeating within the last ~60 seconds. Hub heartbeat-state
-reads `online` for all 4. Verified via direct DB query +
-`/api/v1/admin/devices` JSON.
+| Local IP | MAC | device_id | Alias | Firmware | Last heartbeat (UTC) | State |
+|---|---|---|---|---|---|---|
+| 192.168.1.30  | `C4:D8:D5:0C:F7:A5` | `dev_01KR8127W5XMP6MDF34J0TXQP9` | `lab-30`  | `0.1.1-dev-central` | 18:10:15 | **online** |
+| 192.168.1.207 | `C4:D8:D5:0C:F7:59` | `dev_01KR8126MTTZW22E8F2QVFWT68` | `lab-207` | `0.1.1-dev-central` (upgraded later same day) | 18:10:16 | **online** |
+| 192.168.1.67  | `C4:D8:D5:0C:F7:CA` | `dev_01KR82K0W2WTA2968QEDG0Y42K` | `lab-67`  | `0.1.1-dev-central` | 17:56:26 | offline (collateral) |
+| 192.168.1.225 | `C4:D8:D5:0C:F6:B3` | `dev_01KR812687CEGS7CHXJQ7QAW4H` | `lab-225` | `0.1.0-dev-central` (never upgraded; OTA attempt failed) | 04:56:08 | **offline (primary blocker)** |
 
-| Local IP | MAC | device_id | Alias | Firmware | Last heartbeat (UTC) |
-|---|---|---|---|---|---|
-| 192.168.1.225 | `C4:D8:D5:0C:F6:B3` | `dev_01KR812687CEGS7CHXJQ7QAW4H` | `lab-225` | `0.1.0-dev-central` | 04:43:58 |
-| 192.168.1.207 | `C4:D8:D5:0C:F7:59` | `dev_01KR8126MTTZW22E8F2QVFWT68` | `lab-207` | `0.1.0-dev-central` | 04:43:57 |
-| 192.168.1.30  | `C4:D8:D5:0C:F7:A5` | `dev_01KR8127W5XMP6MDF34J0TXQP9` | `lab-30`  | `0.1.1-dev-central` (upgraded) | 04:43:56 |
-| 192.168.1.67  | `C4:D8:D5:0C:F7:CA` | `dev_01KR82K0W2WTA2968QEDG0Y42K` | `lab-67`  | `0.1.1-dev-central` | 04:42:58 |
+### Diagnosis (firmware-side, hub-confirmed)
+
+`lab-225` took an OTA attempt around 04:56 UTC and dropped off
+the LAN entirely — never came back, no traffic to the hub since.
+`lab-67` is downstream of `lab-225` in the lab's power/network
+chain; a controlled downstream power-cycle didn't bring `lab-67`
+back because `lab-225` itself remained dead. Result: `lab-67` is
+collateral, not an independent failure.
+
+### Hub-side cross-check (negative evidence)
+
+- `unregistered_auth_attempts`: **0 rows** — neither device is
+  hitting the hub with bad tokens
+- `device_mismatch` / `auth_invalid` / `enrollment_*` errors
+  in last 60 min: **0**
+- 4xx / 5xx on `/api/v1/device/*`: **0**
+- nginx log entries for `lab-225`'s device_id in last 30 min:
+  **0** (last seen 04:56 UTC)
+- Any auth-side / token-side / payload-side rejection: **0**
+
+Hub has had no contact from `lab-225` for 13+ hours. Portal
+reflects backend truth correctly; backend truth matches what
+the network shows; the failure is upstream of the network
+from the hub's vantage.
 
 Per-unit firmware variation:
 
