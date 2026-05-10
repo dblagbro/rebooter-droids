@@ -60,13 +60,27 @@ def request_reset(email: str, *, ip: str | None = None) -> tuple[str | None, str
         if u is None or not u.is_active:
             return None, _mask_email(email)
 
+        # v0.4.26: TTL prefers runtime_settings → env-var →
+        # config dataclass default.
+        ttl = settings.password_reset_ttl_seconds
+        try:
+            from app.services import runtime_settings as _rs
+            v = _rs.get(
+                "system.password_reset_ttl_seconds",
+                env_var="REBOOTER_PASSWORD_RESET_TTL_SECONDS",
+                default=None,
+            )
+            if v is not None:
+                ttl = int(v)
+        except Exception:
+            pass
+
         secret = "pwr_" + secrets.token_urlsafe(24)
         record = PasswordReset(
             user_id=u.id,
             email_snapshot=email,
             token_hash=_hash(secret),
-            expires_at=datetime.now(timezone.utc)
-            + timedelta(seconds=settings.password_reset_ttl_seconds),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
             requested_ip=ip,
         )
         session.add(record)
