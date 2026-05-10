@@ -175,6 +175,15 @@ def create_rule(
         raise WatchdogValidationError(
             "target.kind must be 'device' | 'group' | 'tag'"
         )
+    # v0.4.12 (BUG-038): require a concrete identifier per kind.
+    # device/group → `id`; tag → `tag`. Without this the runtime
+    # silently no-ops because _resolve_target_devices returns [].
+    if target["kind"] in ("device", "group") and not (target.get("id") or "").strip():
+        raise WatchdogValidationError(
+            f"target.id is required when target.kind={target['kind']!r}"
+        )
+    if target["kind"] == "tag" and not (target.get("tag") or "").strip():
+        raise WatchdogValidationError("target.tag is required when target.kind='tag'")
     if not isinstance(action, dict) or action.get("kind") not in (
         "cycle", "hold_off", "notify_only"
     ):
