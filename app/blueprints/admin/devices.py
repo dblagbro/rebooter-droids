@@ -36,6 +36,7 @@ from app.services.devices import (
     delete_devices_bulk as svc_delete_devices_bulk,
     firmware_version_breakdown,
     get_device_detail,
+    is_upgrade as _is_upgrade,
     latest_stable_release_dict,
     list_devices as svc_list_devices,
     update_device,
@@ -82,6 +83,11 @@ def list_devices_page():
                 "devices": devices,
                 "fw_breakdown": fw_breakdown,
                 "latest_stable": latest_stable,
+                # v0.4.29: callable for the template to ask "would
+                # going from <current> to <target> be a real
+                # upgrade (numerically newer)?". Replaces the old
+                # `!=` check that fired on downgrades too.
+                "is_upgrade": _is_upgrade,
                 "filters": {
                     "search": request.args.get("search", ""),
                     "status": request.args.get("status", ""),
@@ -172,6 +178,21 @@ def device_upgrade_to_latest_submit(device_id: str):
             "No stable firmware release tracked yet. "
             "Upload one via /app/firmware or run the on-disk scan.",
             "error",
+        )
+        return redirect(url_for("admin_ui.list_devices_page"))
+
+    # v0.4.29: refuse a non-upgrade at the API layer too. The
+    # template hides the button when it would be a downgrade, but
+    # a stale page or a directly-posted form must not be able to
+    # silently push an older firmware to a device.
+    detail = get_device_detail(device_id)
+    current_fw = detail.get("firmware_version") if detail else None
+    if not _is_upgrade(latest["version"], current_fw):
+        flash(
+            f"Refused: device {device_id} is already on {current_fw}, "
+            f"which is not older than the latest stable {latest['version']}. "
+            "No deployment created.",
+            "warning",
         )
         return redirect(url_for("admin_ui.list_devices_page"))
 
