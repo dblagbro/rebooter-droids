@@ -6,9 +6,42 @@
   <p class="v3-page-sub">
     Unified log feed.
     {% if source == "audit" %}<span class="badge">source: audit</span>{% endif %}
-    Watchdog events, power events, schedules, and notifications join this view in P6 of the redesign.
+    Watchdog probe events, power events, schedule fires, and notification sends will join this view as separate sources; for now this is the audit log only.
   </p>
 </div>
+
+{# v0.4.27: preset action-category chips. Each one drops a
+   `?action_prefix=<x>` query param and the handler filters by
+   `LIKE '<x>.%'`. Built from the 30 distinct audit-action prefixes
+   live in the DB today. #}
+{% set chip_defs = [
+    ('device', 'Devices'),
+    ('device_announcement', 'Adoption'),
+    ('watchdog_rule', 'Watchdog rules'),
+    ('schedule', 'Schedules'),
+    ('firmware', 'Firmware'),
+    ('user', 'Users / invites'),
+    ('attention', 'Attention ack'),
+    ('maintenance_mode', 'Maintenance toggle'),
+    ('password_reset', 'Password reset'),
+    ('enrollment_token', 'Enrolment tokens'),
+    ('smtp', 'SMTP config'),
+    ('network', 'Network config'),
+    ('system', 'System config'),
+    ('group', 'Groups'),
+] %}
+<nav class="v3-chips" aria-label="History categories" style="margin:1rem 0;display:flex;flex-wrap:wrap;gap:.4rem">
+  <a class="v3-chip {% if not action_prefix %}v3-chip-active{% endif %}"
+     href="{{ url_for('admin_ui.history_page') }}"
+     aria-pressed="{{ 'true' if not action_prefix else 'false' }}">All</a>
+  {% for prefix, label in chip_defs %}
+    <a class="v3-chip {% if action_prefix == prefix %}v3-chip-active{% endif %}"
+       href="{{ url_for('admin_ui.history_page', action_prefix=prefix) }}"
+       aria-pressed="{{ 'true' if action_prefix == prefix else 'false' }}">
+      {% if action_prefix == prefix %}✓ {% endif %}{{ label }}
+    </a>
+  {% endfor %}
+</nav>
 
 <form method="get" class="actions">
   <label class="muted">
@@ -16,7 +49,7 @@
     <input type="text" name="actor_user_id" value="{{ request.args.get('actor_user_id', '') }}">
   </label>
   <label class="muted">
-    action
+    action (exact)
     <input type="text" name="action" value="{{ request.args.get('action', '') }}" placeholder="e.g. device.updated">
   </label>
   <label class="muted">
@@ -27,10 +60,17 @@
     target id
     <input type="text" name="target_id" value="{{ request.args.get('target_id', '') }}">
   </label>
+  {% if action_prefix %}
+    <input type="hidden" name="action_prefix" value="{{ action_prefix }}">
+  {% endif %}
   <button type="submit">Filter</button>
 </form>
 
 {% if events %}
+<p class="muted" style="font-size:.85rem">
+  {{ events|length }} event{{ '' if events|length == 1 else 's' }}
+  {% if action_prefix %}matching <code>{{ action_prefix }}.*</code>{% endif %}
+</p>
 <div class="table-wrap"><table>
   <thead>
     <tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th></tr>
