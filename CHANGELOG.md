@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.31] - 2026-05-10
+
+### Improved — Device enrolment wizard (E5 from continuation plan v2)
+
+`/app/devices/new` shipped in v0.3.1 as the guided one-stop enrolment
+page but had three rough edges fixed in v0.4.31:
+
+- **Site selector** in the form when sites exist. The mint service
+  already accepted `site_id`; the wizard form just didn't expose it.
+- **TTL picker** — operator-friendly options (1 h / 24 h / 7 d / 30 d)
+  with 24 h as the default. Picks one of an allow-listed set; invalid
+  values silently fall back to the system default rather than 400.
+- **Cross-link to `/app/pending-adoption`** for the no-serial-access
+  flow. Operators who can't paste a token directly into the device
+  now have a clear path to the v0.4.20 announce-then-adopt UX.
+
+The Status page's `+ Enrol a device` button and the
+`unregistered_devices.html` "mint one here" link both used to point
+at `/app/enrollment-tokens` (the token-list management view). They
+now route to `/app/devices/new` (the guided wizard) — a much better
+operator experience.
+
+QR-code support stays deferred (no operator mobile workflow yet that
+would consume one; pending-adoption already covers the "I can't
+paste the token" case).
+
+### Tests
+
+- `tests/qa/test_v0431_enrol_wizard.py` covers TTL picker render +
+  custom-TTL submit round-trip + Status-page link-routing.
+
 ## [0.4.30] - 2026-05-10
 
 ### Added — Unified history feed (C1 from continuation plan v2)
