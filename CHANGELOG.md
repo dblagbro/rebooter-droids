@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.25] - 2026-05-10
+
+### Added — Runtime-editable SMTP credentials
+
+Settings → Notifications is now editable. Operators can rotate
+SMTP creds without recreating the container. Each field reads
+DB → env-var fallback; clearing a field reverts to env-var.
+
+- New `runtime_settings` table (key/value, JSON-typed).
+- New `app/services/runtime_settings.py` with
+  `get(name, env_var=, default=)`, `set_(name, value, user_id=)`,
+  `delete(name)`, `has_db_value(name)`, `list_keys()`,
+  and a typed `smtp_config()` helper used by the email service.
+- `app/services/email.py` now reads SMTP via `runtime_settings.smtp_config()`
+  rather than the once-at-startup `Settings` dataclass — DB
+  rotations take effect immediately on the next email send.
+- New UI:
+  - **Edit SMTP settings** form on `/app/settings/notifications`
+    with per-field "DB override" / "env-var fallback" indicators.
+  - **Save** button (audit-logged as `smtp.config_updated` with
+    a list of which fields changed) — masked password preserved
+    on round-trip via the `********` sentinel value.
+  - **Revert to env-var defaults** button (audit-logged as
+    `smtp.config_cleared`) — drops every DB override at once.
+- Rendered indicator on every field shows whether it's
+  currently DB-backed or env-var-fallback so the operator
+  knows live state at a glance.
+
+### Tests
+
+`tests/qa/test_v0425_runtime_smtp.py` — page renders
+edit form + save/clear round-trip with HELO field (host /
+user / password untouched to avoid breaking real SMTP).
+
+### Compatibility
+
+- All v0.4.24 routes preserved.
+- New `runtime_settings` table created via
+  `Base.metadata.create_all()` at boot.
+- Empty DB on a fresh deployment falls through to env-var
+  defaults (zero behavior change without explicit operator
+  action).
+- Existing email-sending callers (invitations, password-reset,
+  send-test, future watchdog notifications) unchanged — they
+  continue calling `email.send_email()` which now picks up
+  live config.
+
 ## [0.4.24] - 2026-05-10
 
 ### Docs / state checkpoint
