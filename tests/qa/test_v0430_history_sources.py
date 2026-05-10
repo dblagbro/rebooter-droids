@@ -53,7 +53,7 @@ def test_watchdog_probe_source_surfaces_probe_rows(base_url):
     assert "v3-chip-active" in body
     # Probe rows have actions of the form `watchdog_probe.<outcome>`
     import re
-    actions = re.findall(r"<code>([^<]+)</code>", body)
+    actions = re.findall(r"<td><code>([^<]+)</code></td>", body)
     if actions:
         bad = [a for a in actions if not a.startswith("watchdog_probe.")]
         assert not bad, f"non-watchdog_probe rows leaked: {bad[:5]}"
@@ -77,7 +77,7 @@ def test_audit_action_prefix_filter_still_works(base_url):
         timeout=10,
     ).text
     import re
-    actions = re.findall(r"<code>([^<]+)</code>", body)
+    actions = re.findall(r"<td><code>([^<]+)</code></td>", body)
     assert actions, "expected audit rows for watchdog_rule prefix"
     bad = [a for a in actions if not a.startswith("watchdog_rule.")]
     assert not bad, f"v0.4.27 chip filter regressed: {bad[:5]}"
