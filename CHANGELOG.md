@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-05-09
+
+### Operational
+
+- **Database cleanup.** Purged 130 QA-fixture devices, 1522
+  enrollment-token leftovers, 66 noise rows in
+  `unregistered_auth_attempts`, 83 QA-prefixed groups, 25
+  QA-prefixed sites. The cluster is now in a pristine zero-row
+  state across every device-related table — operator can see the
+  truth: zero real devices have ever come online. Status page
+  now reads "No devices yet".
+
+### Fixed
+
+- **BUG-042 — Watchdog rule serializer missing v0.4.2 runtime
+  state.** The `serialize_rule` shape was written in v0.4.0,
+  before v0.4.2 added `failure_streak`, `recovery_streak`,
+  `last_probed_at`, `last_action_at`, `last_outcome` columns.
+  UI templates already referenced these (rendered as empty
+  strings); JSON consumers got KeyError. Now: serializer
+  exposes all five.
+- **BUG-043 — `POST /api/v1/admin/enrollment-tokens` ignored
+  `ttl_seconds` parameter.** Service used the env-var
+  `REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS` (default 24 h) as the
+  only knob. Operators wanting a 30-day token for a firmware-
+  team handoff had to recreate the container with a bumped env
+  var. Now: `ttl_seconds` honored, capped at 30 days.
+
+### Test coverage
+
+- New `tests/qa/test_v0414_watchdog_runtime_e2e.py` (3 tests):
+  end-to-end against the real APScheduler tick — failing TCP
+  probe → action_fired → cooldown_skip transitions; succeeding
+  HTTP probe → no action; maintenance window suppresses firing.
+  Wall-clock ~25 s per test; skip via `SKIP_E2E=1` in
+  budget-constrained CI.
+
+### Compatibility
+
+- All v0.4.13 routes preserved.
+- BUG-042 fix is additive — old fields still present, new ones
+  added alongside.
+- BUG-043 fix is additive — `ttl_seconds=null` keeps the env-var
+  default behavior.
+
 ## [0.4.13] - 2026-05-09
 
 ### Fixed — schema validation hardening (BUG-038, 040, 041)

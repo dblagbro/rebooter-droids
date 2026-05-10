@@ -55,6 +55,14 @@ def serialize_rule(r: WatchdogRule, sentence: str | None = None) -> dict:
         "maintenance_windows": r.maintenance_windows or [],
         "created_at": _iso(r.created_at),
         "updated_at": _iso(r.updated_at),
+        # v0.4.14 (BUG-042): expose v0.4.2 runtime state. Templates
+        # already referenced these fields; before this fix they
+        # rendered as empty strings.
+        "failure_streak": getattr(r, "failure_streak", 0) or 0,
+        "recovery_streak": getattr(r, "recovery_streak", 0) or 0,
+        "last_probed_at": _iso(getattr(r, "last_probed_at", None)),
+        "last_action_at": _iso(getattr(r, "last_action_at", None)),
+        "last_outcome": getattr(r, "last_outcome", None),
         "sentence": sentence,
     }
 
