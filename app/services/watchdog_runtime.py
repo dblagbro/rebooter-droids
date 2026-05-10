@@ -196,30 +196,53 @@ def _probe_tcp(host: str, port: int) -> bool:
         return False
 
 
-def _probe_http(url: str) -> bool:
+def _probe_http(url: str, *, max_redirects: int = 3) -> bool:
+    """v0.4.17 (BUG-048): follow up to 3 redirects so HTTPS upgrades
+    and "/" → "/app/" style redirects don't trip a false failure.
+    The probe is "is the site reachable + responsive", and a 302
+    that resolves to a 200 is a healthy site by every operator's
+    definition.
+    """
     if not url:
         return False
-    try:
-        u = urllib.parse.urlparse(url)
-        if u.scheme not in ("http", "https"):
+    seen: set[str] = set()
+    for _ in range(max_redirects + 1):
+        if not url or url in seen:
             return False
-        host = u.hostname
-        port = u.port or (443 if u.scheme == "https" else 80)
-        path = u.path or "/"
-        if u.query:
-            path += "?" + u.query
-        if u.scheme == "https":
-            conn = http.client.HTTPSConnection(host, port, timeout=PROBE_TIMEOUT_SECONDS)
-        else:
-            conn = http.client.HTTPConnection(host, port, timeout=PROBE_TIMEOUT_SECONDS)
+        seen.add(url)
         try:
-            conn.request("GET", path, headers={"User-Agent": "rebooter-watchdog/0.4.2"})
-            resp = conn.getresponse()
-            return 200 <= resp.status < 300
-        finally:
-            conn.close()
-    except Exception:
-        return False
+            u = urllib.parse.urlparse(url)
+            if u.scheme not in ("http", "https"):
+                return False
+            host = u.hostname
+            port = u.port or (443 if u.scheme == "https" else 80)
+            path = u.path or "/"
+            if u.query:
+                path += "?" + u.query
+            if u.scheme == "https":
+                conn = http.client.HTTPSConnection(host, port, timeout=PROBE_TIMEOUT_SECONDS)
+            else:
+                conn = http.client.HTTPConnection(host, port, timeout=PROBE_TIMEOUT_SECONDS)
+            try:
+                conn.request("GET", path, headers={"User-Agent": "rebooter-watchdog/0.4.2"})
+                resp = conn.getresponse()
+                status = resp.status
+                if 200 <= status < 300:
+                    return True
+                if 300 <= status < 400:
+                    location = resp.getheader("Location")
+                    if not location:
+                        return False
+                    # Resolve relative redirects against current url.
+                    url = urllib.parse.urljoin(url, location)
+                    continue
+                return False
+            finally:
+                conn.close()
+        except Exception:
+            return False
+    # Followed too many redirects → treat as failure (loop or bad CDN).
+    return False
 
 
 def _probe_dns(hostname: str) -> bool:
