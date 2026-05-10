@@ -2,6 +2,32 @@
 {% block title %}Status - Rebooter-Droids{% endblock %}
 {% block content %}
 
+{# ── v0.4.7 (B7) maintenance-mode banner ──────────────────────────── #}
+{% if maintenance and maintenance.on %}
+<section class="v3-card" style="border-color: var(--accent-amber); margin-bottom:1rem">
+  <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap">
+    <strong style="color: var(--accent-amber)">⏸ Watchdog paused</strong>
+    <span class="muted" style="font-size:.9rem">All rules suspended portal-wide.{% if maintenance.reason %} Reason: <em>{{ maintenance.reason }}</em>.{% endif %}</span>
+    {% if current_user is defined and current_user and current_user.role == 'super_admin' %}
+    <form method="post" action="{{ url_for('admin_ui.toggle_maintenance_submit') }}" style="margin-left:auto">
+      <input type="hidden" name="on" value="0">
+      <button type="submit" class="btn-secondary">Resume rules</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% elif current_user is defined and current_user and current_user.role == 'super_admin' %}
+<details class="v3-card" style="margin-bottom:1rem">
+  <summary class="muted" style="cursor:pointer; font-size:.85rem">⏸ Pause watchdog rules portal-wide…</summary>
+  <form method="post" action="{{ url_for('admin_ui.toggle_maintenance_submit') }}" style="margin-top:.6rem; display:flex; gap:.5rem; align-items:center; flex-wrap:wrap">
+    <input type="hidden" name="on" value="1">
+    <input type="text" name="reason" placeholder="Optional reason (e.g. 'cabinet reboot 9pm')" style="flex:1; min-width:220px">
+    <button type="submit" class="btn-secondary" onclick="return confirm('Pause ALL watchdog rules portal-wide?')">Pause all</button>
+  </form>
+  <p class="muted" style="font-size:.8rem; margin:.5rem 0 0">Rules created here keep running on a 10-second tick; pausing stops every probe and action until resumed. Audit-logged.</p>
+</details>
+{% endif %}
+
 {# ── verdict banner ─────────────────────────────────────────────────── #}
 <section class="v3-verdict v3-verdict-{{ inbox.verdict }}" role="status">
   <div class="v3-verdict-icon" aria-hidden="true">
@@ -28,6 +54,13 @@
           <a href="{{ url_for('admin_ui.unregistered_devices_page') }}"
              class="v3-attention-target" title="{{ item.device_id }} from {{ item.source_ip }}">
             {{ item.device_name }}{% if item.source_ip %} <span class="muted">({{ item.source_ip }})</span>{% endif %}
+          </a>
+        {% elif item.kind == 'watchdog_firing' %}
+          {# v0.4.7 (B13): item.device_id is the rule id, not a device id.
+             Route to /app/rules where the operator can probe-now,
+             disable, or inspect the per-rule event log. #}
+          <a href="{{ url_for('admin_ui.rules_page') }}#{{ item.device_id }}" class="v3-attention-target">
+            {{ item.device_name }}
           </a>
         {% else %}
           <a href="{{ url_for('admin_ui.device_detail_page', device_id=item.device_id) }}" class="v3-attention-target">

@@ -119,6 +119,19 @@ def rules_create_submit():
         flash("Unsupported action.", "error")
         return redirect(url_for("admin_ui.rules_page"))
 
+    # v0.4.7 (B7): per-rule maintenance window. Form provides
+    # `maint_start` and `maint_end` as `datetime-local` (no timezone).
+    # Treat as UTC since the operator is global.
+    maint_windows: list[dict] = []
+    maint_start = (request.form.get("maint_start") or "").strip()
+    maint_end = (request.form.get("maint_end") or "").strip()
+    if maint_start and maint_end:
+        # `datetime-local` produces "YYYY-MM-DDTHH:MM"; tag UTC.
+        maint_windows.append({
+            "start": maint_start + ":00+00:00" if len(maint_start) == 16 else maint_start,
+            "end": maint_end + ":00+00:00" if len(maint_end) == 16 else maint_end,
+        })
+
     try:
         rule = svc_create_rule(
             name=name,
@@ -129,6 +142,7 @@ def rules_create_submit():
             recovery_threshold=int(request.form.get("recovery_threshold") or 2),
             window_seconds=int(request.form.get("window_seconds") or 60),
             cooldown_seconds=int(request.form.get("cooldown_seconds") or 300),
+            maintenance_windows=maint_windows or None,
             created_by_user_id=g.current_user.id,
         )
     except WatchdogValidationError as e:

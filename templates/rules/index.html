@@ -79,6 +79,13 @@
       <label>cooldown_seconds (after action, before next attempt) <input type="number" name="cooldown_seconds" value="300" min="0" max="86400"></label>
     </fieldset>
 
+    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>Maintenance window (optional)</legend>
+      <p class="muted" style="font-size:.85rem; margin:0 0 .4rem">Suppress this rule between two timestamps. The probe records `maintenance_skip` events instead of firing. Leave blank if not needed.</p>
+      <label>From <input type="datetime-local" name="maint_start"></label>
+      <label>To   <input type="datetime-local" name="maint_end"></label>
+    </fieldset>
+
     <button type="submit">Create rule</button>
   </form>
   <p class="muted" style="font-size:.85rem">Rules created here run on a 10-second tick. Each rule is probed at its window_seconds cadence; failure_threshold consecutive failures fire the action; recovery_threshold consecutive successes re-arm. See "recent events" under each rule for the live audit log.</p>
