@@ -63,7 +63,8 @@ def test_create_daily_power_cycle(base_url, shell_session):
     try:
         assert s["sentence"]
         assert "every day at 03:00" in s["sentence"]
-        assert "power-cycle" in s["sentence"]
+        # Sentence is sentence-case; check case-insensitively.
+        assert "power-cycle" in s["sentence"].lower()
         assert s["next_run_at"] is not None
     finally:
         _delete(shell_session, base_url, s["id"])
@@ -83,7 +84,7 @@ def test_create_weekly_maintenance(base_url, shell_session):
     assert r.status_code == 201, r.text
     s = r.json()["data"]
     try:
-        assert "pause watchdog" in s["sentence"]
+        assert "pause watchdog" in s["sentence"].lower()
         assert "Sat" in s["sentence"] and "Sun" in s["sentence"]
         assert s["next_run_at"] is not None
     finally:
