@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-05-09
+
+### Fixed — Forgot-password page lied when SMTP failed (BUG-045)
+
+- **BUG-045 — Forgot-password page told the user "we've emailed
+  you a link" even when the SMTP send blew up.** Pre-fix:
+  v0.4.6 (BUG-030) caught the SMTP exception so the request
+  didn't 500, but the user-facing message stayed cheerful and
+  identical to the success path. Users sat waiting for an email
+  that never arrived.
+- Now: when `smtp_ok=False` AND the email IS registered (token
+  was minted), the page renders an additional warning panel with
+  the SMTP-error class name (`SMTPConnectError`,
+  `SMTPRecipientsRefused`, etc.) and a "contact your admin" hint.
+- Disclosure delta is acceptable: the page already echoes a
+  masked email back to the user, which proves the form processed
+  their input. The smtp-status difference between known/unknown
+  email is small relative to that.
+
+### Compatibility
+
+- All v0.4.14 routes preserved.
+- Pure UI / message-rendering change.
+
 ## [0.4.14] - 2026-05-09
 
 ### Operational
