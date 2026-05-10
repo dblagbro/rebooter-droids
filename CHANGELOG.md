@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-05-10
+
+### Added — Operator visibility upgrades while firmware-side debug continues
+
+- **Tier-1 A: Per-firmware-version fleet breakdown.** New
+  `firmware_version_breakdown()` service + collapsible card on
+  `/app/devices`. Groups the fleet by `firmware_version`, marks
+  the majority cohort green, flags any minority cohorts as
+  "outliers" with an amber badge. Operator can spot upgrade
+  drift at a glance. Excludes QA fixtures from the calculation
+  regardless of the show-fixtures toggle. Devices with no
+  reported firmware bucket as `(unknown)`.
+- **Tier-1 B: On-disk firmware reconciliation.** New
+  `discover_on_disk_releases()` service walks
+  `data/firmware/<channel>/` for `.bin` files not already in
+  `firmware_releases`, computes SHA + size, backfills DB rows
+  and mirror records. Closes the gap between the firmware
+  team's direct-to-disk artifact placement and the admin UI's
+  Firmware page. Idempotent. Audit-logged as `firmware.scanned`.
+  UI: "Scan now" button on `/app/firmware`. API:
+  `POST /api/v1/admin/firmware/scan`.
+- **Tier-1 C: Real watchdog rules for the lab fleet** (configured
+  post-deploy via the API, not in the codebase).
+
+### Compatibility
+
+- All v0.4.18 routes preserved.
+- New endpoint `POST /api/v1/admin/firmware/scan` — admin role.
+- New section card on `/app/devices` is purely additive; existing
+  table + filters unchanged.
+
 ## [0.4.18] - 2026-05-09
 
 ### Fixed
