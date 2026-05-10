@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: **2026-05-09 PM** (post v0.4.2).
+Last updated: **2026-05-09 PM** (post v0.4.9).
 
 This is the canonical, ordered backlog for what comes next on
 rebooter-droids. The pause-state doc captures recent history; this
@@ -99,25 +99,27 @@ event log inline on the list page.
 > threshold. Cooldown + recovery work. Operator-stop available via
 > `REBOOTER_WATCHDOG_DISABLED=1`.
 
-### B7. Maintenance windows + portal-wide maintenance mode (v0.4.1+)
+### B7. Maintenance windows + portal-wide maintenance mode (v0.4.7)
 
-- Per-rule maintenance_windows JSON shape (cron-ish blocks).
-- Portal-wide "suspend all rules" toggle so the operator can do a
-  scheduled site reboot without false-positive firing.
-- Audit hook: `maintenance_mode.toggled`.
+✅ **Shipped in v0.4.7.** Per-rule maintenance windows respected
+by the runtime; portal-wide pause toggle on Status page (super-
+admin) + `POST /api/v1/admin/maintenance` API. Audit hook
+`maintenance_mode.toggled`. Runtime records `maintenance_skip`
+events instead of firing during a window.
 
-### B8. Schedules as a separate primitive (v0.4.1+)
+### B8. Schedules as a separate primitive (v0.4.8)
 
-- Recurring power-cycles + recurring maintenance windows.
-- Distinct from watchdog rules: rules fire on probe failure;
-  schedules fire on time.
+✅ **Shipped in v0.4.8.** New `schedules` table, service,
+APScheduler tick at 30s. Two kinds (`power_cycle`,
+`maintenance`), three recurrences (once/daily/weekly). UI at
+`/app/schedules`. Cross-link from the Rules page header.
 
-### B9. Watchdog rule advanced editor
+### B9. Watchdog rule advanced editor (v0.4.9)
 
-- Today the form is a fixed-shape builder. Add a JSON editor for
-  rules whose probe / target / escalation shape doesn't fit the
-  builder.
-- Round-trips: edit-form → JSON → save → edit-form (lossless).
+✅ **Shipped in v0.4.9.** JSON editor folded into the existing
+`/app/rules` page as a `<details>`. Same body shape as the
+v0.4.0 API. Round-trip lossless. Audit-logged with
+`via=json_editor`.
 
 ---
 
@@ -146,14 +148,20 @@ event log inline on the list page.
 
 ## P4 — small wins / housekeeping
 
-### B13. Status inbox: surface `watchdog.firing` items
+### B13. Status inbox: surface `watchdog.firing` items (v0.4.7)
 
-- Will need to land alongside B6 since rules don't fire yet.
+✅ **Shipped in v0.4.7.** Rules with `status='firing'` OR an
+`action_fired` event in the last hour appear as attention items
+on the Status page. Severity warn, rank 70 (between offline_long=60
+and failsafe=80). Click target is `/app/rules#<rule-id>`.
 
-### B14. Devices page: bulk-action audit log
+### B14. Devices page: bulk-action audit log (v0.4.9)
 
-- Today bulk actions audit the meta-action; the operator wants a
-  per-device row for every device touched.
+✅ **Shipped in v0.4.9.** New `audit_service.record_per_device`
+helper. Wired into bulk-delete + group-mass-command. Aggregate
+meta-row still emits; these are *additional* per-device rows so
+`/app/audit?target_id=<dev>` answers "what did this bulk action
+actually do to this device?".
 
 ### B15. Settings → Sync tab content
 
