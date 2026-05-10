@@ -202,6 +202,73 @@ actually do to this device?".
 
 - Replace the stub with real content once B11 is decided.
 
+### B16. Power-usage monitoring + analytics — **NEW 2026-05-10 PM**
+
+Operator-added 2026-05-10 PM: the Sonoff S31 hardware ships with
+an HLW8032 chip that measures **voltage / current / instantaneous
+power / cumulative energy**. We currently throw all of that away.
+Add full ingestion + storage + analytics.
+
+**Scope.**
+
+- **Firmware-side (coordinate with firmware team).** Device must
+  emit a periodic power-sample payload — voltage (V), current
+  (mA), real power (W), reactive power (W), apparent power (VA),
+  power factor, frequency (Hz), accumulated energy (Wh since last
+  reset). Cadence proposal: 1 sample / 10 s in steady state,
+  buffered locally for ≥ 1 hour to ride out central outages.
+- **Hub-side ingestion.** New `POST /api/v1/device/power-samples`
+  endpoint accepting a batch (same auth as `/device/events`).
+  Up to 360 samples per batch (1 hour worth at 10 s cadence).
+- **Storage.** New `device_power_samples` table:
+  `(id, device_id, sampled_at, voltage_v, current_ma, real_power_w,
+  reactive_power_w, apparent_power_va, power_factor, frequency_hz,
+  energy_wh_since_boot, source)`. Indexed on
+  `(device_id, sampled_at)` for time-series queries.
+- **Rollups (perf).** Hourly + daily aggregates table
+  `device_power_rollups(device_id, bucket, granularity, kwh,
+  avg_w, peak_w, min_w, sample_count)`. Nightly job builds the
+  prior-day rollup; on-demand fill for arbitrary ranges via a
+  query view.
+- **UI surfaces.**
+  - Device detail page → new **Power** tab: live last-sample card +
+    24h kWh / peak / avg chart + 7d rollup table.
+  - Fleet-wide → new `/app/power` page: stacked-bar by-device for
+    last 24h / 7d / 30d, sortable by kWh; top-N "biggest hogs".
+  - Site-level rollup once site-as-scope ships (Tier A).
+- **Export.** CSV / JSON download from any chart's range picker
+  (max 90 days per request).
+- **Cost calculation.** Operator-set `power.rate_per_kwh` runtime
+  setting (DB → env → 0). Surface a "$XX this month" widget on
+  device detail + fleet pages.
+- **Alerting (later).** Threshold alerts ("device drawing > X W"
+  for Y minutes; "device drawing 0 W when relay_on=true" → fault
+  detection). Defer until base ingestion is stable.
+- **Retention.** Raw samples kept for 30 days default (tunable
+  via `power.sample_retention_days` runtime setting); rollups
+  kept forever (cheap — ~365 rows/device/year).
+
+**Effort estimate.** ~20-30 h of hub-side work + firmware-team
+coordination. Probably 4-5 ships across a v0.6.x or v0.7.x sprint
+(this slots into Tier C of redesign-continuation-plan-v2.md,
+between notifications and webhooks).
+
+**Dependencies.**
+- Firmware team must add the device-side sampling + buffered
+  upload (independent track; we can build hub-side ingestion +
+  storage first against synthetic samples for testing).
+- Pairs naturally with **C1** (history source extension) — power
+  samples should be queryable via the unified history feed too.
+
+**Open questions for later.**
+- Calibration: does the HLW8032 need per-unit calibration, or is
+  factory calibration good enough? (Firmware team owns this.)
+- Multi-phase / 3-phase support: out of scope for v1 (S31 is
+  single-phase only).
+- Real-time streaming (WebSocket) for live dashboards: defer until
+  there's a clear UX need; polling at 10 s is enough for most
+  views.
+
 ---
 
 ## How to consume this list
