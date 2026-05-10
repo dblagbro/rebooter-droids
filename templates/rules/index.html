@@ -88,6 +88,31 @@
 
     <button type="submit">Create rule</button>
   </form>
+
+  <details style="margin-top:1rem">
+    <summary class="muted" style="cursor:pointer">⚙ Advanced — paste rule JSON instead</summary>
+    <p class="muted" style="font-size:.85rem; margin:.5rem 0">For probe / target / escalation shapes the form above can't express (custom probes, multi-window maintenance, complex escalation chains, etc.). The JSON body matches the v0.4.0 API shape — see <a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/API.md" target="_blank">API.md</a>.</p>
+    <form method="post" action="{{ url_for('admin_ui.rules_create_json_submit') }}">
+      <label>Rule JSON
+        <textarea name="rule_json" rows="14" style="width:100%; font-family:monospace; font-size:.85rem"
+                  placeholder='{
+  "name": "Example",
+  "probe": {"kind": "http", "url": "https://example.com"},
+  "target": {"kind": "tag", "tag": "edge"},
+  "action": {"kind": "cycle", "power_off_seconds": 5},
+  "failure_threshold": 3,
+  "recovery_threshold": 2,
+  "window_seconds": 60,
+  "cooldown_seconds": 300,
+  "maintenance_windows": [
+    {"start": "2026-05-10T02:00:00+00:00", "end": "2026-05-10T03:00:00+00:00"}
+  ]
+}'></textarea>
+      </label>
+      <button type="submit">Create from JSON</button>
+    </form>
+  </details>
+
   <p class="muted" style="font-size:.85rem">Rules created here run on a 10-second tick. Each rule is probed at its window_seconds cadence; failure_threshold consecutive failures fire the action; recovery_threshold consecutive successes re-arm. See "recent events" under each rule for the live audit log.</p>
 </section>
 {% endif %}
