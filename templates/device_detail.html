@@ -85,7 +85,7 @@
   <div class="actions">
     {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
     <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
-          onsubmit="{% if t in ('relay_off', 'device_restart') %}return confirm('{{ t }} on {{ device.display_name or device.id }} — proceed?');{% endif %}">
+          {% if t in ('relay_off', 'device_restart') %}data-confirm-message="{{ t }} on {{ device.display_name or device.id }} — proceed?"{% endif %}>
       <input type="hidden" name="type" value="{{ t }}">
       {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
       <button type="submit"{% if t in ('relay_off', 'device_restart') %} class="btn-danger"{% endif %}>{{ t }}</button>
@@ -94,7 +94,7 @@
   </div>
 
   <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
-        onsubmit="return confirm('relay_cycle on {{ device.display_name or device.id }} — power will drop, then return after {{ '{{' }}power_off_seconds{{ '}}' }} s. Proceed?');">
+        data-confirm-message="relay_cycle on {{ device.display_name or device.id }} — power will drop, then return after {{ '{{' }}power_off_seconds{{ '}}' }} s. Proceed?">
     <input type="hidden" name="type" value="relay_cycle">
     {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
     <label>relay_cycle — power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
@@ -108,7 +108,8 @@
     Watchdog rules and schedules will skip a held-off device.
   </p>
   <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
-        onsubmit="return confirm('Hold off {{ device.display_name or device.id }} — power will drop and STAY OFF until you manually clear it. Type the device name to confirm:') && (function(f){ var ok = prompt('Type the device name to confirm hold-off:'); return ok === '{{ device.display_name or device.id }}'; })(this);">
+        data-confirm-message="Hold off {{ device.display_name or device.id }} — power will drop and STAY OFF until you manually clear it."
+        data-confirm-typed-name="{{ device.display_name or device.id }}">
     <input type="hidden" name="type" value="relay_off">
     <input type="hidden" name="hold_off" value="1">
     {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
@@ -287,7 +288,7 @@
 {% if current_user.role in ('super_admin','admin') %}
 <section class="v3-card" style="border-color: var(--red-fg)" id="danger">
   <h2 style="color: var(--red-fg)">Danger zone</h2>
-  <form method="post" action="{{ url_for('admin_ui.device_delete_submit', device_id=device.id) }}" onsubmit="return confirm('Delete device {{ device.display_name or device.id }} permanently? Heartbeats, commands, events, and group memberships are all removed.');">
+  <form method="post" action="{{ url_for('admin_ui.device_delete_submit', device_id=device.id) }}" data-confirm-message="Delete device {{ device.display_name or device.id }} permanently? Heartbeats, commands, events, and group memberships are all removed.">
     <button type="submit" class="btn-danger">Delete device</button>
   </form>
 </section>

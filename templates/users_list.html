@@ -41,12 +41,12 @@
     <td>
       <div class="actions" style="margin:0">
         {% if current_user.role == 'super_admin' and u.id != current_user.id and u.is_active %}
-        <form method="post" action="{{ url_for('admin_ui.deactivate_user_submit', user_id=u.id) }}" onsubmit="return confirm('Deactivate {{ u.email }}? They will be signed out and unable to log in until you re-activate.');" style="margin:0">
+        <form method="post" action="{{ url_for('admin_ui.deactivate_user_submit', user_id=u.id) }}" data-confirm-message="Deactivate {{ u.email }}? They will be signed out and unable to log in until you re-activate." style="margin:0">
           <button type="submit">Deactivate</button>
         </form>
         {% endif %}
         {% if current_user.role == 'super_admin' %}
-        <form method="post" action="{{ url_for('admin_ui.revoke_tokens_submit', user_id=u.id) }}" onsubmit="return confirm('Revoke ALL active sessions/tokens for {{ u.email }}? They will need to sign in again everywhere they are currently signed in.{% if u.id == current_user.id %} This will also log YOU out of this session.{% endif %}');" style="margin:0">
+        <form method="post" action="{{ url_for('admin_ui.revoke_tokens_submit', user_id=u.id) }}" data-confirm-message="Revoke ALL active sessions/tokens for {{ u.email }}? They will need to sign in again everywhere they are currently signed in.{% if u.id == current_user.id %} This will also log YOU out of this session.{% endif %}" style="margin:0">
           <button type="submit">Revoke tokens</button>
         </form>
         {% endif %}

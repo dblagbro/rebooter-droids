@@ -22,7 +22,7 @@
   <form method="post" action="{{ url_for('admin_ui.toggle_maintenance_submit') }}" style="margin-top:.6rem; display:flex; gap:.5rem; align-items:center; flex-wrap:wrap">
     <input type="hidden" name="on" value="1">
     <input type="text" name="reason" placeholder="Optional reason (e.g. 'cabinet reboot 9pm')" style="flex:1; min-width:220px">
-    <button type="submit" class="btn-secondary" onclick="return confirm('Pause ALL watchdog rules portal-wide?')">Pause all</button>
+    <button type="submit" class="btn-secondary" data-confirm-message="Pause ALL watchdog rules portal-wide?">Pause all</button>
   </form>
   <p class="muted" style="font-size:.8rem; margin:.5rem 0 0">Rules created here keep running on a 10-second tick; pausing stops every probe and action until resumed. Audit-logged.</p>
 </details>
@@ -70,6 +70,25 @@
       </div>
       {% if item.since %}<div class="v3-attention-since muted">since {{ item.since }}</div>{% endif %}
       {% if item.hint %}<div class="v3-attention-hint muted">{{ item.hint }}</div>{% endif %}
+      {# v0.4.22 (Tier-2 E): per-item ack/snooze controls. Hidden
+         when the viewer can't write (operators/viewers) — they can
+         still see attention items, just not silence them. #}
+      {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+      <div class="v3-attention-ack" style="margin-top:.4rem; display:flex; gap:.3rem; flex-wrap:wrap; font-size:.85rem">
+        <form method="post" action="{{ url_for('admin_ui.ack_attention_submit', attention_id=item.id) }}" style="display:inline">
+          <input type="hidden" name="snooze_seconds" value="3600">
+          <button type="submit" class="btn-secondary" title="Hide this item for 1 hour">Snooze 1h</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_ui.ack_attention_submit', attention_id=item.id) }}" style="display:inline">
+          <input type="hidden" name="snooze_seconds" value="86400">
+          <button type="submit" class="btn-secondary" title="Hide this item for 24 hours">Snooze 24h</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_ui.ack_attention_submit', attention_id=item.id) }}" style="display:inline"
+              data-confirm-message="Acknowledge {{ item.title }} permanently? It will only re-surface if the underlying state changes (e.g. device comes back online) or you clear it manually.">
+          <button type="submit" class="btn-secondary" title="Acknowledge until cleared manually or underlying state changes">Ack</button>
+        </form>
+      </div>
+      {% endif %}
     </li>
   {% endfor %}
   </ul>
