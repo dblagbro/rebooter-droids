@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23] - 2026-05-10
+
+### Docs / UI copy refresh — UI redesign continuation plan
+
+The Settings tabs Overview / System / Network / Authentication
+were carrying stale "Coming in P5/P6" placeholder copy from
+v0.3.0. Substantial chunks of P5/P6 actually shipped piecemeal
+across v0.4.x but the placeholder copy never got updated. This
+ship reconciles that.
+
+- **`docs/redesign-continuation-plan.md`** (NEW) — full map of
+  what shipped from the original P5/P6 plan vs what's still
+  queued, plus a re-prioritised next-4-ships proposal.
+- **`templates/settings/index.html`** — Overview points at the
+  per-tab "Live now / Queued" sections + cross-references the
+  continuation plan doc.
+- **`templates/settings/system.html`** — replaced "Coming in P5"
+  empty-state with explicit Live-now (maintenance toggle, schedules)
+  + env-var-driven (read-only) sections.
+- **`templates/settings/network.html`** — replaced "Coming in P6"
+  empty-state with Live-now (CORS, dual hosting, security headers,
+  rate-limit exemption) + Editable-UI-queued sections.
+- **`templates/settings/auth.html`** — replaced "Coming in P5"
+  empty-state with Live-now (session-revoke enforced, password-
+  reset, bootstrap admin password persistence, login rate limit,
+  invitations) + Queued (RBAC, TOTP, OIDC) sections.
+
+### Compatibility
+
+- All v0.4.22 routes preserved.
+- Pure copy / docs change — no code, no schema, no behavior shift.
+
 ## [0.4.22] - 2026-05-10
 
 ### Security — D / BUG-049: CSP `'unsafe-inline'` dropped from `script-src`
