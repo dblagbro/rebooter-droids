@@ -108,8 +108,16 @@ def create(
             )
         # Normalize to zero-padded 5-char form.
         at_time_utc = f"{int(m.group(1)):02d}:{m.group(2)}"
-    if recurrence == REC_WEEKLY and not weekdays:
-        raise ScheduleValidationError("weekdays is required for weekly")
+    if recurrence == REC_WEEKLY:
+        if not weekdays:
+            raise ScheduleValidationError("weekdays is required for weekly")
+        # v0.4.12 (BUG-040 + BUG-041): dedupe + range-check.
+        cleaned = sorted({int(d) for d in weekdays})
+        if any(d < 0 or d > 6 for d in cleaned):
+            raise ScheduleValidationError(
+                "weekdays must be integers 0 (Mon) to 6 (Sun)"
+            )
+        weekdays = cleaned
     if recurrence == REC_ONCE and not start_at:
         raise ScheduleValidationError("start_at is required for once")
     if kind == KIND_POWER_CYCLE:

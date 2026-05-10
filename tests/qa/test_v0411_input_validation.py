@@ -88,6 +88,85 @@ def test_schedule_name_too_long_returns_400(base_url, admin_headers):
 # ── BUG-037 — maintenance reason cap ────────────────────────────────
 
 
+# ── BUG-038 — rule target requires concrete id ───────────────────────
+
+
+@pytest.mark.parametrize("target,expect_field", [
+    ({"kind": "device"}, "target.id"),
+    ({"kind": "device", "id": ""}, "target.id"),
+    ({"kind": "group"}, "target.id"),
+    ({"kind": "tag"}, "target.tag"),
+    ({"kind": "tag", "tag": ""}, "target.tag"),
+])
+def test_rule_target_requires_concrete_id(base_url, admin_headers, target, expect_field):
+    r = requests.post(
+        f"{base_url}/api/v1/admin/rules",
+        headers=admin_headers,
+        json={
+            "name": f"qa-target-{unique_suffix()}",
+            "probe": {"kind": "internet"},
+            "target": target,
+            "action": {"kind": "notify_only"},
+        },
+        timeout=10,
+    )
+    assert r.status_code == 400, r.text
+    assert expect_field in r.json()["error"]["message"]
+
+
+# ── BUG-040 / BUG-041 — schedule weekday hygiene ───────────────────
+
+
+def test_schedule_weekly_dedups_duplicate_weekdays(base_url, admin_headers):
+    """Duplicates → silently deduped + sorted. Avoids 'Sat, Sat, Sat'."""
+    r = requests.post(
+        f"{base_url}/api/v1/admin/schedules",
+        headers=admin_headers,
+        json={
+            "name": f"qa-dups-{unique_suffix()}",
+            "kind": "power_cycle",
+            "recurrence": "weekly",
+            "at_time_utc": "03:00",
+            "weekdays": [5, 5, 5, 1, 1],
+            "target": {"kind": "tag", "tag": "qa"},
+        },
+        timeout=10,
+    )
+    assert r.status_code == 201, r.text
+    sid = r.json()["data"]["id"]
+    try:
+        weekdays = r.json()["data"]["weekdays"]
+        assert weekdays == [1, 5], weekdays
+        # Sentence should not contain double-Sat/Tue
+        sent = r.json()["data"]["sentence"]
+        assert sent.count("Tue") == 1, sent
+        assert sent.count("Sat") == 1, sent
+    finally:
+        requests.delete(
+            f"{base_url}/api/v1/admin/schedules/{sid}",
+            headers=admin_headers, timeout=10,
+        )
+
+
+@pytest.mark.parametrize("weekdays", [[7], [99], [-1], [3, 99]])
+def test_schedule_weekly_rejects_out_of_range_weekdays(base_url, admin_headers, weekdays):
+    r = requests.post(
+        f"{base_url}/api/v1/admin/schedules",
+        headers=admin_headers,
+        json={
+            "name": f"qa-bad-wd-{unique_suffix()}",
+            "kind": "power_cycle",
+            "recurrence": "weekly",
+            "at_time_utc": "03:00",
+            "weekdays": weekdays,
+            "target": {"kind": "tag", "tag": "qa"},
+        },
+        timeout=10,
+    )
+    assert r.status_code == 400, r.text
+    assert "weekdays" in r.json()["error"]["message"]
+
+
 def test_maintenance_reason_capped_at_200(base_url, admin_headers):
     """Long reason is silently truncated to 200 chars (197 + '...').
     Operator-visible behavior: the banner stays readable."""
