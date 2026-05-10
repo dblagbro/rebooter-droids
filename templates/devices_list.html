@@ -130,16 +130,20 @@
         </td>
         <td>
           {{ d.firmware_version or '—' }}
-          {# v0.4.21: one-click upgrade when this device is behind
-             the current latest-stable release. Hidden when:
+          {# v0.4.21 / v0.4.29: one-click upgrade when this device
+             is strictly *behind* the current latest-stable release.
+             Hidden when:
               - we don't track any stable release yet
-              - device is already on it
+              - device's numeric version is already ≥ latest
+                (v0.4.29 — previously a string `!=` check, which
+                offered a downgrade when an older release was the
+                most-recently-uploaded one)
               - device opts out of central (local-only)
               - operator lacks edit permission #}
           {% if latest_stable
                 and d.central_management_enabled
                 and d.firmware_version
-                and d.firmware_version != latest_stable.version
+                and is_upgrade(latest_stable.version, d.firmware_version)
                 and current_user is defined and current_user
                 and current_user.role in ('super_admin','admin') %}
             <form method="post"

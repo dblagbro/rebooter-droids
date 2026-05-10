@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.29] - 2026-05-10
+
+### Fixed — Upgrade button could offer downgrades
+
+`latest_stable_release_dict()` picked "latest" by upload time
+(`created_at desc`), which surfaced the most-recently-uploaded
+stable release regardless of its version number. When an older
+release was re-uploaded after a newer one (e.g. `0.1.2` pushed
+after the fleet had already moved to `0.1.5`), the per-device
+upgrade button on `/app/devices` offered a **downgrade**.
+
+Fix has three layers:
+
+- **Server-side selection.** `latest_stable_release_dict()` now
+  picks the highest-version stable release, comparing by the
+  dotted-int numeric prefix of the version string.
+- **Template gate.** Replaces the old string `!=` check with a new
+  `is_upgrade(target, current)` helper exposed as a Jinja global.
+  Only shows the button when the target is strictly newer
+  numerically. Same-numeric-prefix (e.g. label-only changes like
+  `0.1.1-dev-central` → `0.1.1-dev-central-ui`) is intentionally
+  not flagged as an upgrade.
+- **Handler guard.** The submit handler refuses to create a
+  deployment if the target is not strictly newer than what's on
+  the device. Defends against stale pages or directly-posted forms.
+
+Unit tests at `tests/qa/test_v0429_upgrade_direction.py` cover the
+comparator (numeric ordering, label-only ties, `None` / empty
+inputs, and the actual fleet versions from 2026-05-10).
+
 ## [0.4.28] - 2026-05-10
 
 ### Fixed
