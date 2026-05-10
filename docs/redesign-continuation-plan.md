@@ -107,8 +107,10 @@ Wait on these until you have a moment.
    - Invite shape: do invites get a `site_id?` field?
 6. **B11** — RFC-004 multi-hub sync architecture pick (5 options, B
    recommended)
-7. **B12** — RFC-005 firmware-team Q1..Q9 redlines (firmware-team
-   action, not yours)
+7. ~~**B12**~~ — **CLOSED 2026-05-10**. Firmware team replied with
+   full Q1..Q9 redlines; saved at
+   `docs/notes/2026-05-10-from-firmware-team-rfc005-redlines.md`;
+   RFC-005 §9 updated with the final answers.
 
 ### Tier 3 — useful but lower urgency
 
