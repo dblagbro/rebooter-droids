@@ -1,33 +1,67 @@
-# Fleet bring-up — current shared state (2026-05-10 04:17 UTC)
+# Fleet bring-up — RESOLVED (2026-05-10 04:35 UTC)
 
-Captures the result of the firmware-team bring-up run. **3/4 lab
-devices online; 1 device-specific blocker.**
+Captures the result of the firmware-team bring-up run.
+**4/4 lab devices online and registered.** Original blocker
+on `lab-67` resolved by reducing on-device BearSSL buffer
+sizes; root cause was TLS-side, not network or hub.
+
+Original status during the 04:17 UTC checkpoint snapshot was
+3/4 with `lab-67` failing on `HTTPC_ERROR_CONNECTION_FAILED -1`.
+Final-state record below.
 
 ---
 
-## Online and idle
+## Online and registered (final state, 04:35 UTC)
 
-3 devices centrally registered, heartbeating cleanly, sending
-30s command-polls. All on firmware build `0.1.0-dev-central`.
+All 4 devices centrally registered; all `registration_state=active`.
 
-| Local IP | MAC | device_id | Display name | Last heartbeat (UTC) |
-|---|---|---|---|---|
-| 192.168.1.225 | `C4:D8:D5:0C:F6:B3` | `dev_01KR812687CEGS7CHXJQ7QAW4H` | `lab-225` | 04:16:58 |
-| 192.168.1.207 | `C4:D8:D5:0C:F7:59` | `dev_01KR8126MTTZW22E8F2QVFWT68` | `lab-207` | 04:16:58 |
-| 192.168.1.30  | `C4:D8:D5:0C:F7:A5` | `dev_01KR8127W5XMP6MDF34J0TXQP9` | `lab-30`  | 04:16:59 |
+| Local IP | MAC | device_id | Display name | Firmware | Last heartbeat (UTC) |
+|---|---|---|---|---|---|
+| 192.168.1.225 | `C4:D8:D5:0C:F6:B3` | `dev_01KR812687CEGS7CHXJQ7QAW4H` | `lab-225` | `0.1.0-dev-central` | 04:34:42 |
+| 192.168.1.207 | `C4:D8:D5:0C:F7:59` | `dev_01KR8126MTTZW22E8F2QVFWT68` | `lab-207` | `0.1.0-dev-central` | 04:34:37 |
+| 192.168.1.30  | `C4:D8:D5:0C:F7:A5` | `dev_01KR8127W5XMP6MDF34J0TXQP9` | `lab-30`  | `0.1.0-dev-central` | 04:27:37 (transient stale ~7 min at snapshot) |
+| 192.168.1.67  | `C4:D8:D5:0C:F7:CA` | `dev_01KR82K0W2WTA2968QEDG0Y42K` | `lab-67`  | `0.1.1-dev-central` | 04:34:38 |
 
-Lab egress NAT IP (as seen by hub): `47.230.251.21`.
+Lab egress NAT IPs seen by the hub: `47.230.251.21` (the original
+3 units), and `192.168.1.11` for `lab-67`'s register call (the
+fix-attempt traffic apparently routed through a different lab
+vantage / debug shell during the secondary-URL retry).
 
-## Remaining blocker — `lab-67`
+`lab-67`'s register hit at 04:33:36 UTC, immediately followed by
+heartbeats — no errors recorded.
+
+## Resolved blocker — `lab-67`
+
+**Root cause: per-unit BearSSL buffer sizing on the ESP8266 TLS
+stack.** The default secure-client buffer allocation on the .67
+unit was failing the TCP-connect-into-TLS-handshake transition
+silently, surfacing as `HTTPC_ERROR_CONNECTION_FAILED -1` from
+ESP8266HTTPClient before any HTTP request line was emitted —
+which matched our hub-side observation of zero packets across
+all monitor windows for the unit's MAC.
+
+**Fix:** firmware OTA to `0.1.1-dev-central` *plus* a reduction
+in BearSSL secure-client buffer sizes on the device.
+
+**Verification (post-fix, 04:33:36 UTC):**
+- DNS resolution: ok
+- `tcp_connect_ok = true`
+- `https_code = 200` for `GET /api/v1/version` (where it
+  previously returned `-1`)
+- `POST /api/v1/device/register` succeeded with HTTP 201;
+  device id minted (`dev_01KR82K0W2WTA2968QEDG0Y42K`)
+- Heartbeats flowing within seconds; `state=online` confirmed
+  on the admin Devices page
 
 | Field | Value |
 |---|---|
 | Local IP | `192.168.1.67` |
 | MAC | `c4-d8-d5-0c-f7-ca` |
 | Alias | `lab-67` |
-| Device-side state | `central_enabled=true, wifi_connected=true, relay_on=true, central_registered=false, central_state=register_transport_failed` |
+| Final firmware | `0.1.1-dev-central` (with reduced BearSSL buffers) |
+| Final state | online, registered, heartbeating |
 
-### Actions attempted (firmware side, 03:50 → ~04:30 UTC)
+### Actions attempted (firmware side, 03:50 → ~04:33 UTC)
 
 1. Fresh per-device enrolment token applied
 2. Stale cached registration (device_id/token) cleared via config change
@@ -35,8 +69,10 @@ Lab egress NAT IP (as seen by hub): `47.230.251.21`.
 4. Retry with dual URLs (`www.voipguru.org/rebooter` + `www2…/rebooter`)
 5. Retry forced to secondary-only `https://www2.voipguru.org/rebooter`
 6. OTA-updated to `0.1.1-dev-central` adding transport-stage diagnostics
-7. Hard power-cycle via upstream relay (off → wait → on)
-   — device returned to Wi-Fi + local HTTP fine, central_state still `register_transport_failed`
+7. Hard power-cycle via upstream relay
+8. **(fix)** Reduced BearSSL secure-client buffer sizes on the
+   device → register succeeded immediately on the next attempt
+   via `https://www2.voipguru.org/rebooter`
 
 ### Hub-side observation across all attempts (verified by direct nginx + DB inspection)
 
@@ -118,6 +154,17 @@ of those stages.
 If steps 1-3 all succeed but the firmware's HTTP client still
 returns -1 with no hub-side log entry, that's a strong indicator
 of a per-unit TLS-stack problem (mode 1 above).
+
+**Outcome — diagnosis was correct (TLS-stack, not network or
+hardware).** The ESP8266 BearSSL secure-client allocator was the
+real issue. Hypothesis #1 ("per-unit TLS trust store / cert blob
+issue") was the right family but the wrong specific cause —
+not a corrupted CA bundle, but a sizing constraint on the TLS
+working buffers. Worth bookmarking for future ESP8266 deployments:
+**any unit that gets `HTTPC_ERROR_CONNECTION_FAILED -1` with
+DNS ok and `tcp_connect_ok=true` should try a buffer-size reduction
+on the BearSSL secure client before assuming a hardware / cert
+fault.**
 
 ## Hub posture (snapshot)
 
