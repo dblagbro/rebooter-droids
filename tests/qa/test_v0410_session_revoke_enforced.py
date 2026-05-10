@@ -109,6 +109,40 @@ def test_bearer_jwt_dies_after_explicit_revoke(base_url, disposable_admin_sessio
     )
 
 
+def test_security_headers_present(base_url):
+    """v0.4.10 (BUG-033) — every response carries standard
+    security headers."""
+    r = requests.get(f"{base_url}/api/v1/version", timeout=10)
+    h = r.headers
+    assert h.get("X-Frame-Options") == "DENY"
+    assert h.get("X-Content-Type-Options") == "nosniff"
+    assert "max-age" in h.get("Strict-Transport-Security", "")
+    assert h.get("Referrer-Policy")
+    assert "default-src 'self'" in h.get("Content-Security-Policy", "")
+
+
+def test_schedule_bad_at_time_utc_returns_400_not_500(base_url, admin_headers):
+    """v0.4.10 (BUG-034) — at_time_utc validation prevents the
+    DataError → 500 path."""
+    bad = ["not-a-time", "25:00", "12:99", "12", "abc:de"]
+    for v in bad:
+        r = requests.post(
+            f"{base_url}/api/v1/admin/schedules",
+            headers=admin_headers,
+            json={
+                "name": "qa-bad-time",
+                "kind": "power_cycle",
+                "recurrence": "daily",
+                "at_time_utc": v,
+                "target": {"kind": "tag", "tag": "x"},
+            },
+            timeout=10,
+        )
+        assert r.status_code == 400, f"{v!r} → {r.status_code}: {r.text}"
+        assert r.json()["error"]["code"] == "validation_failed"
+        assert "at_time_utc" in r.json()["error"]["message"]
+
+
 def test_legacy_cookie_without_sid_still_works(base_url, disposable_admin_session):
     """Defensive: a session cookie that doesn't carry `sid` (legacy
     pre-v0.2.10 format) should still authenticate. The enforce check
