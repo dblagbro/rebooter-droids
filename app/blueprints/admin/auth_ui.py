@@ -91,16 +91,17 @@ def forgot_password_submit():
     email = (request.form.get("email") or "").strip()
     ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
     token, masked = request_reset(email, ip=ip)
+    smtp_error: str | None = None
     if token:
         settings = load_settings()
         url = f"{settings.public_base_url.rstrip('/')}/app/reset-password?token={token}"
         # BUG-030 (v0.4.6): never let an SMTP-side failure 500 the
         # forgot-password handler. The token IS minted in the DB
-        # already; if email delivery fails (bad creds, network,
-        # server-side disconnect), the request still succeeds-shaped
-        # — the operator can dig the URL out of the audit log.
+        # already; if email delivery fails the request still
+        # succeeds-shaped, but the page tells the user (BUG-045
+        # v0.4.15) so they don't sit waiting for an email that
+        # never arrives.
         smtp_ok = False
-        smtp_error: str | None = None
         try:
             smtp_ok = send_password_reset_email(email, url)
         except Exception as e:
@@ -117,13 +118,19 @@ def forgot_password_submit():
             target_id=None,
             details={"ip": ip, "smtp_ok": smtp_ok, "smtp_error": smtp_error},
         )
-    # Always render the same "we sent it if it exists" page — don't
-    # leak whether the email was registered.
+    # v0.4.15 (BUG-045): if SMTP failed AND we know the email is
+    # registered (token was minted), surface the delivery failure
+    # in the response. Pre-fix the page lied — claimed "we've
+    # emailed" even when the SMTP send blew up. Users sat waiting
+    # for an email that never arrived. The disclosure delta is
+    # acceptable (an attacker can already see the masked email
+    # echo, which proves the form processed their input).
     return render_template(
         "forgot_password.html",
         version=__version__,
         sent=True,
         masked=masked,
+        delivery_warning=(smtp_error if token else None),
     )
 
 
