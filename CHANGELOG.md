@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-05-09
+
+### Added — Watchdog rule JSON editor (B9) + bulk-action per-device audit (B14)
+
+- **JSON editor** on `/app/rules` for shapes the form-builder
+  can't express (custom probes, multi-window maintenance,
+  complex escalation chains). Same body shape as the v0.4.0 API.
+  Round-trip lossless. Audit-logged with `via=json_editor`.
+- **Per-device audit fanout** for bulk actions. New helper
+  `audit_service.record_per_device(action, device_ids, ...)`.
+  Wired into:
+  - `device.bulk_deleted_per_device` — one row per deleted
+    device on bulk-delete from the Devices page.
+  - `device.bulk_delete_skipped_per_device` — for protected
+    devices that the bulk-delete refused to touch.
+  - `device.mass_command_issued_per_device` — one row per
+    device when a group command fans out.
+  - `device.mass_command_skipped_per_device` — for protected
+    devices skipped during a group fan-out.
+  The aggregate meta-row (`device.bulk_deleted`,
+  `group.mass_command_issued`) still emits — these are
+  *additional* rows that make "what did this bulk-delete
+  actually touch?" answerable from `/app/audit?target_id=<dev>`.
+
+### Compatibility
+
+- All v0.4.8 routes preserved.
+- New audit-action names; existing meta-action queries unchanged.
+
 ## [0.4.8] - 2026-05-09
 
 ### Added — Schedules as a separate primitive (B8)
