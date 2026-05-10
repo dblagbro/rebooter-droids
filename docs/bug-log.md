@@ -450,6 +450,36 @@ order found.
   actually deliver. Audit log will say `smtp_ok=true` once that
   happens.
 
+### BUG-044 — No API DELETE endpoint for enrollment tokens (fixed v0.4.17)
+
+- **Severity:** low (API consistency)
+- **Area:** `app/blueprints/admin/enrollment_tokens.py`
+- **Status:** **fixed in v0.4.17**
+- **Detail:** Pre-v0.4.17 the only revoke path was the UI form
+  POST `/app/enrollment-tokens/<id>/revoke`. API consumers
+  could not programmatically revoke tokens (DELETE returned 404
+  Not Found). Caught during the 2026-05-09 PM cleanup when
+  trying to revoke 3 leftover test tokens from this very
+  iteration loop.
+- **Fix:** new `DELETE /api/v1/admin/enrollment-tokens/<id>`
+  matching the UI semantics (hard-deletes only when not yet
+  consumed; consumed tokens are kept for audit).
+
+### BUG-048 — HTTP watchdog probe treats 3xx as failure (fixed v0.4.17)
+
+- **Severity:** medium (false-positive watchdog alerts)
+- **Area:** `app/services/watchdog_runtime.py::_probe_http`
+- **Status:** **fixed in v0.4.17**
+- **Detail:** Pre-fix the probe checked `200 <= status < 300`.
+  Health-check URLs that legitimately redirect (HTTPS upgrades
+  via 301, app-root → /app/ patterns via 302, CDN routing) all
+  returned a 3xx that the probe scored as failure. Operator
+  using `https://example.com/` as a probe URL would see
+  watchdog rules fire spuriously every cycle.
+- **Fix:** follow up to 3 redirects (with loop-detection on
+  the URL set) and treat a final 2xx as success. Bare 3xx with
+  no Location header still treated as failure.
+
 ### BUG-046 — Bootstrap admin password reverts on container restart (fixed v0.4.16)
 
 - **Severity:** high (operator footgun + auth surprise)
