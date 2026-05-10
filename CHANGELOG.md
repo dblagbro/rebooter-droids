@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-05-09
+
+### Added — Maintenance windows + portal-pause + watchdog.firing inbox (B7 + B13)
+
+- **Portal-wide watchdog maintenance toggle.** Super-admin
+  toggles via the Status page (or
+  `POST /api/v1/admin/maintenance`). When ON, the watchdog tick
+  short-circuits — no probes, no actions. Operator can do a
+  scheduled cabinet reboot without false-positive firing. ON-state
+  shows a banner on the Status page; OFF-state shows a collapsed
+  "pause all" form. Audit hook: `maintenance_mode.toggled`.
+- **Per-rule maintenance windows.** Each rule's existing
+  `maintenance_windows` JSON is now honored by the runtime. Rule-
+  create form gets a "From/To" datetime-local pair (treated as
+  UTC). During the window the runtime records
+  `maintenance_skip` events instead of firing the rule's action.
+- **Status inbox surfaces watchdog.firing rules.** Any rule with
+  `status='firing'` OR an `action_fired` event in the last hour
+  shows up as an attention item, severity warn, ranking between
+  `device_offline_long` and `device_failsafe`. Click target is
+  `/app/rules#<rule-id>` (rule-list anchor).
+
+### New table: `runtime_flags`
+
+Tiny key/value store for flags the operator must change without a
+redeploy. Today only `maintenance_mode_active` lives here; future
+operator-toggles (e.g. "freeze fleet during incident") will share
+the table.
+
+### Compatibility
+
+- All v0.4.6 routes preserved.
+- New tables created via `Base.metadata.create_all()` at boot.
+- Rules created pre-v0.4.7 have empty `maintenance_windows`; runtime
+  treats empty as "always run" — no behavior change.
+
 ## [0.4.6] - 2026-05-09
 
 ### Fixed — forgot-password handler crashes on SMTP failure (BUG-030)
