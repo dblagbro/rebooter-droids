@@ -3,23 +3,29 @@
 {% block content %}
 <div class="v3-page-header">
   <h1>Settings</h1>
-  <p class="v3-page-sub">System, network, authentication, users, firmware, and theme.</p>
+  <p class="v3-page-sub">System, network, authentication, sync, notifications, users, firmware, theme, and your profile.</p>
 </div>
 
 {% include "_components/settings_tabs.html" %}
 
 <div class="v3-card">
   <h2>Overview</h2>
-  <p class="muted">Choose a section above. Many of the settings surfaces are still placeholders in v0.3.0 — the system / network / auth / backup / API token / webhook screens land in P5 and P6 of <code>docs/webui-redesign-plan.md</code>.</p>
+  <p class="muted">Choose a section above. The redesign plan from
+  <code>docs/webui-redesign-plan.md</code> is folded into the live tabs;
+  what was P5/P6 placeholder copy in v0.3.0 has shipped piecemeal across
+  v0.4.x. See <code>docs/redesign-continuation-plan.md</code> for a
+  tab-by-tab map of what's done and what's queued.</p>
   <ul>
-    <li><a href="{{ url_for('admin_ui.settings_system_page') }}">System</a> — portal name, retention, maintenance mode</li>
-    <li><a href="{{ url_for('admin_ui.settings_network_page') }}">Network</a> — public URL, secondary URL, CORS allowlist</li>
-    <li><a href="{{ url_for('admin_ui.settings_auth_page') }}">Authentication</a> — session timeout, MFA, OIDC</li>
+    <li><a href="{{ url_for('admin_ui.settings_system_page') }}">System</a> — portal-wide maintenance toggle live; portal name / retention env-var-driven</li>
+    <li><a href="{{ url_for('admin_ui.settings_network_page') }}">Network</a> — public + secondary URL + CORS allowlist (env-var-driven; editable UI queued)</li>
+    <li><a href="{{ url_for('admin_ui.settings_auth_page') }}">Authentication</a> — session-revoke enforced (v0.4.10), password-reset live (v0.4.1); TOTP/OIDC queued</li>
+    <li><a href="{{ url_for('admin_ui.settings_sync_page') }}">Sync</a> — multi-hub sync (awaiting your architecture pick on RFC-004)</li>
+    <li><a href="{{ url_for('admin_ui.settings_notifications_page') }}">Notifications</a> — SMTP config + send-test (env-var-driven, runtime-editable queued)</li>
     {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
     <li><a href="{{ url_for('admin_ui.users_page') }}">Users</a> — role management</li>
-    <li><a href="{{ url_for('admin_ui.invitations_page') }}">Invitations</a> — invite + redeem flow</li>
+    <li><a href="{{ url_for('admin_ui.invitations_page') }}">Invitations</a> — invite-via-email (30-day TTL) + redeem flow</li>
     {% endif %}
-    <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a> — releases + deployments</li>
+    <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a> — releases, deployments, on-disk scan</li>
     <li><a href="{{ url_for('admin_ui.settings_theme_page') }}">Theme</a> — light · dark · system</li>
     <li><a href="{{ url_for('admin_ui.me_page') }}">Profile</a> — your account</li>
   </ul>

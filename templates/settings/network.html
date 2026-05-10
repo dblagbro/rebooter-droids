@@ -8,9 +8,40 @@
 
 <div class="v3-card">
   <h2>Network</h2>
-  <p class="muted">Public URL, secondary URL, and the strict CORS allowlist (<code>REBOOTER_CORS_ALLOWED_ORIGINS</code>) shipped in v0.2.11.</p>
-  {% set empty_title = "Coming in P6 of the redesign" %}
-  {% set empty_body = "The CORS allowlist is currently env-var-driven. The editable UI lands with the broader settings surface in P6." %}
-  {% include "_components/empty_state.html" %}
+  <p class="muted">Public URLs the hub serves on, CORS allowlist, and rate-limit exemption list.</p>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Live now</h3>
+  <ul class="muted">
+    <li><strong>Strict CORS allowlist</strong> —
+      <code>REBOOTER_CORS_ALLOWED_ORIGINS</code>, env-var-driven (v0.2.11).</li>
+    <li><strong>Dual canonical hosting</strong> —
+      <code>REBOOTER_PUBLIC_BASE_URL</code> +
+      <code>REBOOTER_FIRMWARE_PUBLIC_BASE</code>, both nodes mirror;
+      device-side fallback queries primary then secondary (RFC-002 P1).</li>
+    <li><strong>Security headers</strong> on every response — HSTS,
+      X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy,
+      and a tightened CSP (<code>script-src 'self'</code>, no
+      <code>'unsafe-inline'</code>; v0.4.11 + v0.4.22).</li>
+    <li><strong>Rate-limit exemption list</strong> —
+      <code>REBOOTER_RATE_LIMIT_EXEMPT_IPS</code> for the QA host
+      (v0.4.4). Empty by default in any internet-facing deployment.</li>
+  </ul>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Editable-UI queued</h3>
+  <ul class="muted">
+    <li>Public + secondary URL inputs</li>
+    <li>CORS-allowlist add/remove with one-click validate</li>
+    <li>Rate-limit exemption list add/remove</li>
+    <li>HSTS / CSP profile picker (strict, balanced, dev)</li>
+  </ul>
+  <p class="muted" style="font-size:.85rem">
+    These end up DB-backed with env-var fallback for safety
+    (an empty DB still picks up env defaults). See
+    <code>docs/redesign-continuation-plan.md</code>.
+  </p>
 </div>
 {% endblock %}

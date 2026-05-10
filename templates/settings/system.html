@@ -8,9 +8,35 @@
 
 <div class="v3-card">
   <h2>System</h2>
-  <p class="muted">Portal name, branding, retention windows, timezone defaults, and the maintenance-mode toggle.</p>
-  {% set empty_title = "Coming in P5 of the redesign" %}
-  {% set empty_body = "These knobs are env-var driven today; the editable UI surface lands with the broader RBAC + auth foundation work. Track progress in docs/webui-redesign-plan.md §9 (P5)." %}
-  {% include "_components/empty_state.html" %}
+  <p class="muted">Portal-wide knobs and the maintenance toggle.</p>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Live now</h3>
+  <ul class="muted">
+    <li><strong>Portal-wide watchdog maintenance toggle</strong> — surfaces on
+      the <a href="{{ url_for('admin_ui.index') }}">Status page</a> for super-
+      admins. Pauses every watchdog rule and schedule with one click;
+      audit-logged as <code>maintenance_mode.toggled</code>. Shipped v0.4.7.</li>
+    <li><strong>Schedules</strong> — at <a href="{{ url_for('admin_ui.schedules_page') }}">/app/schedules</a>:
+      time-driven power-cycles + recurring maintenance windows. Shipped v0.4.8.</li>
+  </ul>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Env-var-driven today (read-only here)</h3>
+  <ul class="muted">
+    <li>Portal name + branding</li>
+    <li>Retention windows (audit log, heartbeats, events)</li>
+    <li>Timezone defaults</li>
+    <li>Bootstrap admin email + password
+      (<code>REBOOTER_BOOTSTRAP_ADMIN_*</code> — v0.4.16: password
+      no longer overwritten on container restart unless
+      <code>REBOOTER_BOOTSTRAP_ADMIN_FORCE_PASSWORD_ON_STARTUP=1</code>)</li>
+  </ul>
+  <p class="muted" style="font-size:.85rem">
+    Editable UI for these is queued; see
+    <code>docs/redesign-continuation-plan.md</code>.
+  </p>
 </div>
 {% endblock %}
