@@ -25,6 +25,47 @@ def _server_time_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+@bp.post("/announce")
+def announce():
+    """v0.4.20 — Pending-adoption announce poll.
+
+    Unauthenticated. A device boots without an enrolment token,
+    POSTs its claims here every ~30s. The hub records the
+    announcement; the operator sees it on
+    `/app/pending-adoption` and clicks Adopt; the next announce
+    poll returns the freshly-minted enrolment token for the
+    device to use against `/register`.
+
+    See `docs/notes/2026-05-10-firmware-team-announce-adopt-contract.md`
+    for the firmware-side contract.
+    """
+    from app.services.announcements import (
+        AnnouncementError, upsert_announcement,
+    )
+
+    body = request.get_json(silent=True) or {}
+    source_ip = (
+        request.headers.get("X-Forwarded-For", request.remote_addr or "")
+        .split(",")[0].strip()
+    )
+    user_agent = request.headers.get("User-Agent")
+    try:
+        result = upsert_announcement(
+            mac_address=body.get("mac_address", ""),
+            hardware_model=body.get("hardware_model"),
+            hardware_revision=body.get("hardware_revision"),
+            firmware_version=body.get("firmware_version"),
+            local_ip=body.get("local_ip"),
+            serial_number=body.get("serial_number"),
+            display_name_hint=body.get("display_name_hint"),
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    except AnnouncementError as e:
+        return err(e.code, e.message, status=400)
+    return ok(result)
+
+
 @bp.post("/register")
 def register():
     body = request.get_json(silent=True) or {}
