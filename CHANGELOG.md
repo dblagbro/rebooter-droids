@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.22] - 2026-05-10
+
+### Security — D / BUG-049: CSP `'unsafe-inline'` dropped from `script-src`
+
+- **CSP `script-src 'self'`** — no longer allows arbitrary inline
+  scripts or event handlers. Real defense-in-depth XSS hardening.
+- The 1 inline `<script>` previously in `templates/layout.html`
+  (theme-flash mitigation) extracted to
+  `static/js/theme_flash.js`.
+- 18 inline `onsubmit="return confirm(...)"` /
+  `onclick="return confirm(...)"` handlers across 12 templates
+  migrated to `data-confirm-message="..."` data attributes;
+  centrally wired by `static/js/confirm_handlers.js` via
+  `addEventListener` on DOMContentLoaded.
+- Custom-function inline handlers (`confirmMassAction(this, ...)`,
+  `confirmFirmwareDeploy(this)`) replaced with
+  `data-mass-action-verb` / `data-mass-action-count` /
+  `data-firmware-deploy-confirm` data attributes; wired in
+  `static/js/mass_action.js`.
+- Hold-off type-the-name confirm preserved via
+  `data-confirm-typed-name="..."` (single template, single
+  pattern).
+- `style-src` keeps `'unsafe-inline'` for now — 123 inline
+  `style=` attributes across templates are a separate migration
+  with much lower security impact.
+
+### Added — E / Tier-2: Status-inbox attention ack / snooze
+
+- New `attention_acks` table + service. Per-attention-item ack
+  with optional snooze duration.
+- Status-page attention items now render **Snooze 1h**,
+  **Snooze 24h**, and **Ack** buttons (super-admin / admin only).
+  Ack hides the item until manually cleared OR the underlying
+  state changes (e.g. device comes back online).
+- Inbox service filters acked items at read time.
+- API: `POST /api/v1/admin/attention/<id>/ack` (with optional
+  JSON body `{snooze_seconds, reason}`) +
+  `DELETE /api/v1/admin/attention/<id>/ack` (un-ack).
+- Audit hooks: `attention.acked`, `attention.unacked`.
+
+### Tests
+
+`tests/qa/test_v0422_csp_and_ack.py` — 6 tests covering CSP
+header tightness, no-inline-script-blocks-in-rendered-HTML,
+unauth pages still load post-CSP, ack lifecycle, ack hides
+items, garbage snooze handled.
+
+### Compatibility
+
+- All v0.4.21 routes preserved.
+- New tables created via `Base.metadata.create_all()` at boot.
+- The CSP change is breaking for any operator who had heavily
+  customised templates with their own inline scripts (none in
+  the standard tree).
+
 ## [0.4.21] - 2026-05-10
 
 ### Added — One-click "Upgrade to <latest-stable>" on the devices list

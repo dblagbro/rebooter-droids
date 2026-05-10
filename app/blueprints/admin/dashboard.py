@@ -98,3 +98,104 @@ def get_maintenance_api():
     from app.services import runtime_flags
 
     return ok(runtime_flags.maintenance_mode_details())
+
+
+# ── v0.4.22 (Tier-2 E): Status-inbox attention ack/snooze ──────────
+
+
+@admin_ui_bp.post("/attention/<path:attention_id>/ack")
+@role_required_ui(*ADMIN_AND_UP)
+def ack_attention_submit(attention_id: str):
+    from app.services import attention_acks
+
+    snooze_raw = (request.form.get("snooze_seconds") or "").strip()
+    snooze = int(snooze_raw) if snooze_raw.isdigit() else None
+    reason = (request.form.get("reason") or "").strip() or None
+    result = attention_acks.ack(
+        attention_id,
+        by_user_id=g.current_user.id,
+        snooze_seconds=snooze,
+        reason=reason,
+    )
+    audit_service.record(
+        "attention.acked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="attention",
+        target_id=attention_id,
+        details={"snooze_seconds": snooze, "reason": reason, "ack_id": result["id"]},
+    )
+    flash(
+        "Acknowledged. " + (
+            f"Will re-surface after {snooze} s."
+            if snooze else
+            "Will stay hidden until manually cleared (or the device's underlying state changes)."
+        ),
+        "info",
+    )
+    return redirect(url_for("admin_ui.index"))
+
+
+@admin_ui_bp.post("/attention/<path:attention_id>/unack")
+@role_required_ui(*ADMIN_AND_UP)
+def unack_attention_submit(attention_id: str):
+    from app.services import attention_acks
+
+    if attention_acks.unack(attention_id):
+        audit_service.record(
+            "attention.unacked",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="attention",
+            target_id=attention_id,
+            details={},
+        )
+        flash("Acknowledgement cleared. Item will re-surface on the next page load.", "info")
+    return redirect(url_for("admin_ui.index"))
+
+
+@admin_api_bp.post("/attention/<path:attention_id>/ack")
+@role_required_api(*ADMIN_AND_UP)
+def ack_attention_api(attention_id: str):
+    from app.services import attention_acks
+
+    body = request.get_json(silent=True) or {}
+    snooze = body.get("snooze_seconds")
+    reason = body.get("reason")
+    try:
+        snooze = int(snooze) if snooze is not None else None
+    except (TypeError, ValueError):
+        snooze = None
+    result = attention_acks.ack(
+        attention_id,
+        by_user_id=g.current_user.id,
+        snooze_seconds=snooze,
+        reason=reason,
+    )
+    audit_service.record(
+        "attention.acked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="attention",
+        target_id=attention_id,
+        details={"snooze_seconds": snooze, "reason": reason, "via": "api"},
+    )
+    return ok(result)
+
+
+@admin_api_bp.delete("/attention/<path:attention_id>/ack")
+@role_required_api(*ADMIN_AND_UP)
+def unack_attention_api(attention_id: str):
+    from app.services import attention_acks
+
+    if not attention_acks.unack(attention_id):
+        return err("not_found", "No active ack for this attention id.", status=404)
+    audit_service.record(
+        "attention.unacked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="attention",
+        target_id=attention_id,
+        details={"via": "api"},
+    )
+    return ok({"unacked": True})
