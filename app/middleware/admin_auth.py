@@ -21,6 +21,28 @@ ADMIN_AND_UP = {ROLE_SUPER_ADMIN, ROLE_ADMIN}
 SUPER_ADMIN_ONLY = {ROLE_SUPER_ADMIN}
 
 
+def _is_jti_revoked(jti: str | None) -> bool:
+    """v0.4.10 (BUG-005 enforce-mode): consult the server-side session
+    table. Returns True only when an explicit revoked_at row exists.
+    Missing rows fall through as not-revoked so legacy cookies/tokens
+    that predate server-side bookkeeping still authenticate.
+    """
+    if not jti:
+        return False
+    try:
+        from app.db import session_scope
+        from app.models import Session as SessionRow
+        with session_scope() as db:
+            row = db.scalar(
+                __import__("sqlalchemy").select(SessionRow)
+                .where(SessionRow.jti == jti)
+            )
+            return bool(row and row.revoked_at is not None)
+    except Exception:
+        # Best-effort: never block auth on a session-store hiccup.
+        return False
+
+
 def _resolve_user_and_iat() -> tuple[object | None, int | None]:
     """Returns (user, iat_seconds_epoch) or (None, None)."""
     # Cookie session
@@ -28,6 +50,9 @@ def _resolve_user_and_iat() -> tuple[object | None, int | None]:
     if user_id:
         user = load_user(user_id)
         if user is None:
+            return None, None
+        # v0.4.10: enforce server-side cookie revocation (BUG-005).
+        if _is_jti_revoked(session.get("sid")):
             return None, None
         iat = session.get("iat")
         return user, iat
@@ -44,6 +69,9 @@ def _resolve_user_and_iat() -> tuple[object | None, int | None]:
             return None, None
         user = load_user(payload.get("sub", ""))
         if user is None:
+            return None, None
+        # v0.4.10: enforce JWT-jti revocation (BUG-005).
+        if _is_jti_revoked(payload.get("jti")):
             return None, None
         return user, payload.get("iat")
     return None, None
