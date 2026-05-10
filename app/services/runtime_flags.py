@@ -54,11 +54,22 @@ def is_maintenance_mode_active() -> bool:
 
 
 def set_maintenance_mode(on: bool, *, user_id: str | None, reason: str | None = None) -> None:
-    set_(
-        MAINTENANCE_MODE,
-        {"on": bool(on), "reason": reason, "set_at": datetime.now(timezone.utc).isoformat()},
-        user_id=user_id,
-    )
+    """v0.4.10 (BUG-032): when an operator toggles, also stamp the
+    `operator_override_at` so the schedule_tick reconciler doesn't
+    fight them. The override lapses when the next scheduled window
+    starts (the reconciler recomputes against window boundaries).
+    """
+    payload = {
+        "on": bool(on),
+        "reason": reason,
+        "set_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Anything the operator changes carries an override stamp;
+    # `reason='schedule'` and `reason='schedule_window_ended'` are
+    # the schedule-runtime's own writes and do NOT mark override.
+    if reason not in ("schedule", "schedule_window_ended"):
+        payload["operator_override_at"] = payload["set_at"]
+    set_(MAINTENANCE_MODE, payload, user_id=user_id)
 
 
 def maintenance_mode_details() -> dict:

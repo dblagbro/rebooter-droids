@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-05-09
+
+### Security
+
+- **BUG-005 — Server-side cookie + JWT revocation now ENFORCED.**
+  Previous behaviour (v0.2.10–v0.4.9): the auth path wrote
+  session rows on issuance and `revoke_one`/`revoke_all_for_user`
+  set `revoked_at`, but the middleware ignored those rows. A
+  cookie or access-token exfiltrated before logout could keep
+  authenticating until its hard expiry. Now: the middleware
+  consults `sessions.revoked_at` on every authenticated request.
+  Revoked rows are treated as unauthenticated. Legacy cookies
+  with no `sid` claim still work (graceful fallback).
+
+### Fixed
+
+- **BUG-031 — JSON-rule editor preserved input on validation
+  failure.** Previously a typo or validation error redirected
+  away and the operator's pasted JSON was lost. Now the form
+  re-renders with the JSON pre-filled and the error inline.
+  Saves a re-paste on every typo.
+- **BUG-032 — Schedule-vs-operator maintenance race.** If the
+  operator manually toggled portal-wide maintenance OFF during
+  a scheduled-maintenance window, the schedule_tick reconciler
+  would re-enable it ~30 s later. Now: operator toggles stamp
+  `operator_override_at` and the reconciler respects that for
+  the rest of the active window.
+
+### Bug-log housekeeping
+
+Five "open" bugs were already fixed in earlier releases — the
+bug-log tracker had simply gone stale. No code change needed
+beyond status updates:
+- **BUG-007** — Group/site name uniqueness — already enforced
+  via DB unique constraint + 409 `name_conflict` error path.
+- **BUG-008** — 0-byte firmware upload — already rejected with
+  `ValueError → 400`.
+- **BUG-009** — Favicon 404 — favicon shipped + `<link rel="icon">`
+  in layout.
+- **BUG-010** — PATCH ignores unknown fields — already returns
+  400 `validation_failed` with the allowed-fields list.
+- **BUG-011** — Empty PATCH bumps `updated_at` — already
+  short-circuits when the diff is empty.
+
+### Compatibility
+
+- All v0.4.9 routes preserved.
+- Auth-middleware change is additive: legacy cookies/tokens
+  without a `sid`/`jti` continue to authenticate. Only revoked
+  rows are denied.
+- Pure code-path fixes; no schema changes.
+
 ## [0.4.9] - 2026-05-09
 
 ### Added — Watchdog rule JSON editor (B9) + bulk-action per-device audit (B14)
