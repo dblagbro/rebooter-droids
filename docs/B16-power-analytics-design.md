@@ -490,7 +490,7 @@ make it default-on" milestone — probably v1.0.0 of rebooter-droids.
 
 ---
 
-## 8. Open questions for firmware team (asked 2026-05-10 PM, awaiting reply)
+## 8. Open questions for firmware team (asked 2026-05-10 PM)
 
 Sent 2026-05-10 PM in a cross-team note. Summarised here for
 implementer's reference:
@@ -511,9 +511,156 @@ implementer's reference:
 7. **Version bump**: when relay_off bug fix lands, please ship
    as ≥ `0.1.6-dev-central` so hub's upgrade button picks it up.
 
-When the answers come back, this doc gets a §8b "DECIDED" block
-similar to RFC-005 §9 and the API contract in §3.3 may shift to
-match what the firmware can actually do.
+## 8b. DECIDED 2026-05-10 PM — firmware-team answers
+
+Firmware-team replied 2026-05-10 PM (item 7 also closed — 0.1.6
+shipped, hub registered it after v0.4.34's `os.sync()` fix).
+Constraints land below; they tighten parts of §3 and §4.
+
+### Chip identity (Q1) — not yet code-truthful
+
+Firmware does **not currently probe or read any metering IC at
+all**. CSE7766 is "the most likely chip" per Sonoff S31
+hardware-family expectations, but treat as a hardware expectation,
+not a firmware-proven fact, until either:
+- the firmware adds an actual meter driver and confirms it
+  enumerates, OR
+- a unit is physically inspected to confirm the chip silkscreen
+  / package marking.
+
+**Hub-side implication**: design the ingestion contract
+**chip-agnostic**. Every field except `v_v`, `i_ma`, `p_w`,
+`energy_wh` is nullable in `device_power_samples` so we can ship
+even if the eventual chip exposes fewer values than the CSE7766
+would. No chip-name baked into table names or column names.
+
+### Current firmware emits nothing (Q2)
+
+No code path today reads the meter chip. **Tier-1 ingestion will
+ship against synthetic samples first** (already the plan) and
+have nothing real to ingest until firmware adds the driver.
+That's fine for the v0.6.0/v0.6.1 ships — we want the storage +
+UI proven on synthetic data before any real device emits.
+
+### Cadence (Q3) — 1 Hz steady-state, batch upload
+
+Firmware-team confirms: 1 Hz steady is reasonable; do NOT do
+one HTTP POST per second; batch on the device side and upload
+periodically. Burst rates above 1 Hz are "possible later, but we
+should not promise that until we measure actual CPU, serial, and
+filesystem behavior on the live ESP8266 build."
+
+**Hub-side decision (overrides §5's 10 Hz burst-window default)**:
+- **steady-state default**: 1 Hz samples, batched at 60-sample
+  granularity (1 minute per batch) by default. Operator-tunable
+  via runtime setting `power.steady_batch_seconds`.
+- **burst-window default**: drop from 10 Hz → **1 Hz with a
+  shorter batch interval** (e.g. 10-second batches for near-
+  real-time visibility), until firmware proves higher rate is
+  safe on the live build. The `device_burst_windows.target_rate_hz`
+  column stays as designed; the *default* is now 1.
+- **Plan revision**: the "v0.6.3 burst-window control plane" ship
+  is still valid, but its v1 sets `rate_hz=1` and we re-evaluate
+  raising it after the firmware team measures load.
+
+### 24h buffer (Q4) — cautious; 10 Hz unrealistic
+
+Firmware-team: "On ESP8266, 24 hours of raw 1 Hz storage may be
+possible only with a compact binary format and careful space
+budgeting; 24 hours of 10 Hz raw buffering is not a realistic
+first target on this footprint."
+
+**Hub-side decision (overrides §5's "24 h burst every 7 days"
+default)**:
+- The **operator-facing default cadence stays "intensive
+  monitoring window every 7 days"** but the *intensity* drops:
+  during a burst window the device samples at the same 1 Hz it
+  does at steady-state, with a tighter batch upload interval
+  (10 s vs 60 s) so the hub gets near-real-time data during the
+  window. No new compression / packing on the device side
+  required.
+- The **"raw 10 Hz for 24 h"** mode is **deferred** as a v2
+  feature that's gated on:
+  1. firmware-team prototyping a compact binary buffer format
+     for ESP8266 flash/RAM
+  2. measurement of actual sustainable rate on the live build
+- Hub-side ingestion API contract stays as-is (accepts batches
+  with any `source` value); the change is purely default
+  cadence + a more conservative `target_rate_hz` ceiling on the
+  control-plane endpoint.
+
+### Power factor + frequency (Q5) — not computed today
+
+Current firmware does not compute / expose PF or frequency.
+Plan to add when the metering path lands; whether they're
+exposed depends on whether the chosen chip/driver gives them
+cleanly enough.
+
+**Hub-side implication**: `pf` and `hz` columns in
+`device_power_samples` stay **nullable**. Analytics tiers that
+depend on them (Tier 4 startup-PF-dip drift detection,
+generator/UPS frequency-drift detection) gracefully degrade to
+"insufficient data" when the columns are null. This was already
+the design.
+
+### Calibration (Q6) — not implemented
+
+No calibration logic in firmware today. Firmware-team
+expectation: factory calibration is probably adequate for
+trend / relative analytics; sub-2% absolute accuracy claims need
+either a firmware calibration mode or per-unit validation
+against a known reference.
+
+**Hub-side decision**:
+- **Tier 2 trend / drift detection** does not need calibration —
+  it's all relative-to-prior-baseline. Ship it on factory cal.
+- **Tier 1 dollar-cost reporting** is sensitive to absolute
+  accuracy. Frame the $ number with "±2% typical" disclosure
+  text in the UI and add an operator-settable per-device
+  `power.cal_offset_pct` runtime setting (default 0) so an
+  operator with a clamp meter can dial in a unit if they care.
+- **No "calibrate now" workflow** in v1. Add to the v2 backlog.
+
+### Raw waveform snapshot (Q7) — assume no
+
+Firmware-team: "assume no practical raw waveform dump path
+through the current planned device stack." Matches the research
+agent's "hardware impossible at this tier" answer for CSE7766's
+public UART path.
+
+**Hub-side implication**: harmonic / THD analysis, MCSA
+bearing-fault detection, arc-fault detection stay in §9
+("deliberately do not promise"). Doc unchanged on this point.
+
+### Firmware-team-suggested sequencing (added 2026-05-10 PM)
+
+Firmware-team recommended order:
+1. finish rolling 0.1.6 onto remaining older 0.1.3/0.1.5 devices
+2. resolve hub firmware-scan / catalogue mismatch
+   (✅ resolved 2026-05-10 PM by hub v0.4.34's `os.sync()` fix —
+   scan now picks up 0.1.6 on first invocation)
+3. then start metering / power-telemetry implementation spike
+
+Aligns with our existing ship plan in §7: Tier 1 hub-side
+ingestion (v0.6.0) can land while firmware-team works the
+metering driver spike in parallel; the hub-side surface ships
+against synthetic samples first regardless.
+
+### What this section did NOT change
+
+- §1 four-tier executive summary — same.
+- §3.1 + §3.2 table shapes — same (all the new constraints are
+  default-value or nullability tightenings, not schema changes).
+- §3.3 ingestion API contract — same field set; defaults adjust.
+- §4 analytics-tier scoping — same. Tier 4's PF-dip drift is
+  marked "gracefully degrades when pf is null" but otherwise
+  unchanged.
+- §6 privacy posture — same.
+- §7 ship plan — same; v0.6.x dates not yet committed and we
+  keep the synthetic-samples-first approach so firmware-team can
+  work the metering spike on their own track.
+- §9 "will not promise" — same; raw waveform / arc-fault /
+  harmonic stay firmly on the do-not-promise list.
 
 ---
 
