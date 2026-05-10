@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.26] - 2026-05-10
+
+### Added — Runtime-editable Network + System settings
+
+Settings → Network and Settings → System are now editable. Same
+DB-backed-with-env-var-fallback pattern as the SMTP work in v0.4.25.
+
+#### Network tab — fields editable
+
+- **Public base URL** (`network.public_base_url`) — env
+  `REBOOTER_PUBLIC_BASE_URL`. **Live** (effective immediately).
+- **Firmware public base** — env `REBOOTER_FIRMWARE_PUBLIC_BASE`. **Live.**
+- **CORS allowed origins** — env `REBOOTER_CORS_ALLOWED_ORIGINS`.
+  **Restart required** (Flask-CORS reads once at app init).
+- **Rate-limit exempt IPs** — env `REBOOTER_RATE_LIMIT_EXEMPT_IPS`.
+  **Live** (read per-request).
+- **Cookie domain** — env `REBOOTER_COOKIE_DOMAIN`. **Restart required**.
+
+#### System tab — fields editable, all **Live**
+
+- **Invitation TTL (seconds)** — env `REBOOTER_INVITATION_TTL_SECONDS`.
+  Live: `invitations.mint` now reads from `runtime_settings`.
+- **Password-reset TTL (seconds)** — env `REBOOTER_PASSWORD_RESET_TTL_SECONDS`.
+  Live: `password_resets.request_reset` reads from `runtime_settings`.
+- **Enrollment-token default TTL** — env `REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS`.
+  Live: `enrollment.mint_enrollment_token` reads from `runtime_settings`.
+- **Session idle timeout** — env `REBOOTER_SESSION_IDLE_TIMEOUT_SECONDS`.
+  Restart required (Flask session config wired at app init).
+- **Portal name** (display only).
+
+#### New service helpers
+- `runtime_settings.network_config()` — full live network config dict
+- `runtime_settings.system_config()` — full live system config dict
+- `runtime_settings.is_live_editable(name)` — per-field UI badge hint
+- `NETWORK_KEYS` / `SYSTEM_KEYS` constants for enumeration
+
+#### New audit hooks
+- `network.config_updated` / `network.config_cleared`
+- `system.config_updated` / `system.config_cleared`
+
+#### Indicators on every field
+Per-field "DB override" vs "env-var fallback" indicator (matches
+the v0.4.25 SMTP pattern), plus **live** vs **restart required**
+badges so the operator knows what takes effect when.
+
+### Compatibility
+
+- All v0.4.25 routes preserved.
+- Empty DB on a fresh deployment still picks up env-var defaults.
+- The `_exempt_ips()` rate-limit helper now reads
+  `runtime_settings` → env-var fallback so the QA host's
+  exemption is preserved.
+
 ## [0.4.25] - 2026-05-10
 
 ### Added — Runtime-editable SMTP credentials

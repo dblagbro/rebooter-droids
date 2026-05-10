@@ -33,7 +33,19 @@ def mint_enrollment_token(
     with effectively-immortal tokens lying around.
     """
     if ttl_seconds is None or ttl_seconds <= 0:
-        ttl = settings.enrollment_token_ttl_seconds
+        # v0.4.26: prefer runtime_settings DB override over env-var
+        # so an operator-set "default TTL" from /app/settings/system
+        # takes effect without container recreate.
+        try:
+            from app.services import runtime_settings as _rs
+            v = _rs.get(
+                "system.enrollment_token_ttl_seconds",
+                env_var="REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS",
+                default=None,
+            )
+            ttl = int(v) if v is not None else settings.enrollment_token_ttl_seconds
+        except Exception:
+            ttl = settings.enrollment_token_ttl_seconds
     else:
         # Cap at 30 days so the operator can't accidentally mint a
         # year-long token by typo.

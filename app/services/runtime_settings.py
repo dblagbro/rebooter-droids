@@ -119,6 +119,25 @@ SMTP_KEYS = (
 )
 
 
+# v0.4.26: Network keys
+NETWORK_KEYS = (
+    ("network.public_base_url",       "REBOOTER_PUBLIC_BASE_URL"),
+    ("network.firmware_public_base",  "REBOOTER_FIRMWARE_PUBLIC_BASE"),
+    ("network.cors_allowed_origins",  "REBOOTER_CORS_ALLOWED_ORIGINS"),
+    ("network.rate_limit_exempt_ips", "REBOOTER_RATE_LIMIT_EXEMPT_IPS"),
+    ("network.cookie_domain",         "REBOOTER_COOKIE_DOMAIN"),
+)
+
+# v0.4.26: System keys
+SYSTEM_KEYS = (
+    ("system.portal_name",                "REBOOTER_PORTAL_NAME"),
+    ("system.invitation_ttl_seconds",     "REBOOTER_INVITATION_TTL_SECONDS"),
+    ("system.password_reset_ttl_seconds", "REBOOTER_PASSWORD_RESET_TTL_SECONDS"),
+    ("system.session_idle_timeout_seconds", "REBOOTER_SESSION_IDLE_TIMEOUT_SECONDS"),
+    ("system.enrollment_token_ttl_seconds", "REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS"),
+)
+
+
 def smtp_config() -> dict:
     """Returns the live SMTP config the email service should use.
     Each value comes from `runtime_settings` if a DB override
@@ -133,3 +152,42 @@ def smtp_config() -> dict:
     except (TypeError, ValueError):
         out["smtp.port"] = 587
     return out
+
+
+def network_config() -> dict:
+    """v0.4.26: live network config. CORS + cookie_domain are
+    consumed at app-start; changes show up here after edit but
+    *don't take effect* until next container restart (the
+    Flask-CORS init reads once). Public URLs + rate-limit
+    exempt IPs are consumed per-request and ARE live."""
+    out = {}
+    for name, env in NETWORK_KEYS:
+        out[name] = get(name, env_var=env, default="")
+    return out
+
+
+def system_config() -> dict:
+    """v0.4.26: live system config. TTLs are consumed at point-
+    of-use and ARE live. portal_name is just a display label."""
+    out = {}
+    for name, env in SYSTEM_KEYS:
+        v = get(name, env_var=env, default=None)
+        # Coerce numeric TTLs
+        if name.endswith(("_seconds", "_ttl_seconds")) and v is not None:
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                pass
+        out[name] = v
+    return out
+
+
+def is_live_editable(name: str) -> bool:
+    """Whether changing this setting takes effect without a
+    container restart. Used by the UI to label fields with
+    "live" vs "restart-required" badges."""
+    # CORS and cookie_domain are wired at Flask app-init time.
+    if name in ("network.cors_allowed_origins", "network.cookie_domain"):
+        return False
+    # Public URLs + rate-limit-exempt-IPs + TTLs are read per use.
+    return True
