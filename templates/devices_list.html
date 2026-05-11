@@ -3,7 +3,25 @@
 {% block content %}
 <div class="v3-page-header">
   <h1>Devices</h1>
-  <p class="v3-page-sub">{{ devices|length }} device{{ '' if devices|length == 1 else 's' }}{% if filters.chips %} · {{ filters.chips|length }} filter{{ '' if filters.chips|length == 1 else 's' }} active{% endif %} · <a href="{{ url_for('admin_ui.pending_adoption_page') }}">Pending adoption →</a></p>
+  {# v0.5.2: split the fleet-count from the pending-adoption link
+     so they aren't read as one ambiguous phrase. Pre-fix this line
+     rendered "1 device · Pending adoption →" which the eye reads
+     as "1 device pending adoption" — but the "1" was actually the
+     fleet-list count and the link target had a wholly separate
+     count of zero. Now: fleet-count + filter-count are on the sub-
+     line; the pending-adoption link sits below as its own chip
+     with its own visible count, colour-coded amber when > 0. #}
+  <p class="v3-page-sub">
+    {{ devices|length }} device{{ '' if devices|length == 1 else 's' }} in fleet{% if filters.chips %} · {{ filters.chips|length }} filter{{ '' if filters.chips|length == 1 else 's' }} active{% endif %}
+  </p>
+  <p style="margin:.25rem 0 0 0">
+    <a href="{{ url_for('admin_ui.pending_adoption_page') }}"
+       class="v3-chip {% if pending_adoption_count and pending_adoption_count > 0 %}v3-chip-active{% endif %}"
+       title="Devices that have announced themselves but aren't adopted yet"
+       style="{% if pending_adoption_count and pending_adoption_count > 0 %}border-color:var(--amber-fg, #d97706);color:var(--amber-fg, #d97706);{% endif %}">
+      Pending adoption: {{ pending_adoption_count or 0 }} →
+    </a>
+  </p>
 </div>
 
 {# ── v0.4.19 (Tier-1 A): firmware-version breakdown ────────────────── #}

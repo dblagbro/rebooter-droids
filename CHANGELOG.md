@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-05-11
+
+### Fixed — misleading "1 device · Pending adoption →" sub-header on /app/devices
+
+Operator-flagged regression: the devices-list sub-line rendered
+
+```
+{{ devices|length }} device · Pending adoption →
+```
+
+which, when the fleet view contained 1 device, read as
+"1 device · Pending adoption →" — the eye parses this as
+**"1 device pending adoption →"**. The "1" was actually the
+fleet-count and the link target was an unrelated page showing
+zero pending announcements. Clicking through left the operator
+staring at "No pending devices" wondering where the alleged 1
+went.
+
+#### Fix (three layers)
+
+- **New `count_pending_announcements()` service helper** in
+  `app/services/announcements.py` — single `SELECT COUNT(*)` over
+  `device_announcements` filtered to rows where `consumed_at IS
+  NULL AND rejected_at IS NULL` (the same predicate
+  `list_announcements()` uses by default).
+- **Wired into the devices-list page context** as
+  `pending_adoption_count`.
+- **Sub-header restructured**:
+  - Fleet count now ends with the qualifier "in fleet" so it
+    cannot be misread as "pending": "5 devices in fleet".
+  - Pending-adoption link is on its own line as a styled chip
+    with the count baked into the visible text: "Pending
+    adoption: 0 →" or "Pending adoption: N →".
+  - Chip turns **amber** when the count is > 0 so the operator
+    actually notices when there's something to action.
+
+### Tests
+
+- `tests/qa/test_v0502_pending_adoption_count.py` — verifies the
+  link-bound count format and cross-checks against the actual
+  pending-adoption page contents.
+
 ## [0.5.1] - 2026-05-11
 
 ### Fixed — v0.5.0 backfill over-granted bindings to operator users

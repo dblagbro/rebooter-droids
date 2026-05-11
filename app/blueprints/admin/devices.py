@@ -30,6 +30,7 @@ from app.services.commands import (
     cancel_pending_command,
     enqueue_for_device,
 )
+from app.services.announcements import count_pending_announcements
 from app.services.devices import (
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
@@ -76,6 +77,13 @@ def list_devices_page():
     # behind. None when no stable release tracked → no buttons.
     latest_stable = latest_stable_release_dict()
 
+    # v0.5.2: pending-adoption count for the sub-header chip.
+    # Pre-fix the page rendered "{{ devices|length }} device · Pending
+    # adoption →" which the eye reads as "1 device pending adoption"
+    # — bound the count to the link directly so the meaning is
+    # unambiguous.
+    pending_count = count_pending_announcements()
+
     return render_template(
         "devices_list.html",
         **_ctx(
@@ -88,6 +96,7 @@ def list_devices_page():
                 # upgrade (numerically newer)?". Replaces the old
                 # `!=` check that fired on downgrades too.
                 "is_upgrade": _is_upgrade,
+                "pending_adoption_count": pending_count,
                 "filters": {
                     "search": request.args.get("search", ""),
                     "status": request.args.get("status", ""),
