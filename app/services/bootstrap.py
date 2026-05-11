@@ -81,6 +81,99 @@ def _ensure_columns(conn) -> None:
         )
 
 
+# v0.5.0 (A1): one-shot RBAC role-binding backfill. Runs once per
+# database; tracked via a `runtime_settings` row.
+_RBAC_BACKFILL_KEY = "rbac.role_bindings_backfilled_at"
+
+
+def ensure_role_bindings_backfill() -> None:
+    """Populate `role_bindings` from the legacy `users` columns per
+    B10 Q2 (RFC-003 §9.0):
+
+    - existing super_admin → ('global', NULL, 'super_admin')
+    - existing admin (not super) → one row per current site_id;
+      if no sites exist yet, one ('global', NULL, 'admin') as a
+      safety net so we don't lock the operator out on day 1.
+    - existing operator → no rows (forced re-grant by an admin
+      before the enforce flip).
+
+    Idempotent: if `runtime_settings[rbac.role_bindings_backfilled_at]`
+    is set, do nothing. The shadow-mode middleware (A2) will start
+    *logging* would-have-denied requests against these bindings
+    without enforcing; the enforce flip is a separate ship (A8)
+    gated on ≥ 7 days of clean shadow logs.
+    """
+    from datetime import datetime, timezone
+    from app.models import RoleBinding, Site
+    from app.models.users import (
+        ROLE_ADMIN,
+        ROLE_SUPER_ADMIN,
+    )
+    from app.models.role_bindings import (
+        SCOPE_GLOBAL,
+        SCOPE_SITE,
+    )
+    from app.services import runtime_settings as rs
+
+    if rs.has_db_value(_RBAC_BACKFILL_KEY):
+        return  # already done
+
+    log.info("Running one-shot RBAC role-binding backfill (v0.5.0 / A1)")
+    now = datetime.now(timezone.utc)
+    inserted = 0
+    with session_scope() as session:
+        users = list(session.scalars(select(User).where(User.is_active.is_(True))))
+        sites = list(session.scalars(select(Site)))
+        site_ids = [s.id for s in sites]
+
+        for u in users:
+            if u.is_super_admin:
+                session.add(RoleBinding(
+                    user_id=u.id,
+                    scope_type=SCOPE_GLOBAL,
+                    scope_id=None,
+                    role=ROLE_SUPER_ADMIN,
+                    created_at=now,
+                    updated_at=now,
+                    created_by_user_id=None,
+                ))
+                inserted += 1
+                continue
+            if u.is_admin:
+                if site_ids:
+                    for sid in site_ids:
+                        session.add(RoleBinding(
+                            user_id=u.id,
+                            scope_type=SCOPE_SITE,
+                            scope_id=sid,
+                            role=ROLE_ADMIN,
+                            created_at=now,
+                            updated_at=now,
+                            created_by_user_id=None,
+                        ))
+                        inserted += 1
+                else:
+                    # Safety net: no sites yet, give global admin so the
+                    # operator can still configure things. Will be tightened
+                    # when sites get created and the operator manually
+                    # re-scopes.
+                    session.add(RoleBinding(
+                        user_id=u.id,
+                        scope_type=SCOPE_GLOBAL,
+                        scope_id=None,
+                        role=ROLE_ADMIN,
+                        created_at=now,
+                        updated_at=now,
+                        created_by_user_id=None,
+                    ))
+                    inserted += 1
+            # operator / viewer → no rows (forced re-grant)
+
+    # Mark backfill complete so this never runs again
+    rs.set_(_RBAC_BACKFILL_KEY, now.isoformat())
+    log.info("RBAC backfill inserted %d role_bindings rows", inserted)
+
+
 def ensure_bootstrap_admin(settings: Settings) -> None:
     if not (settings.bootstrap_admin_email and settings.bootstrap_admin_password):
         return
@@ -124,3 +217,13 @@ def ensure_bootstrap_admin(settings: Settings) -> None:
 def run_startup_bootstrap(settings: Settings) -> None:
     ensure_schema()
     ensure_bootstrap_admin(settings)
+    # v0.5.0 (A1): one-shot RBAC backfill. Runs once per database;
+    # idempotent (tracked via runtime_settings row).
+    try:
+        ensure_role_bindings_backfill()
+    except Exception:
+        # Never let the backfill block startup. If it errors we want
+        # the container to come up anyway; the operator will see the
+        # exception in logs and can re-run by deleting the tracking
+        # runtime_setting row.
+        log.exception("RBAC role-bindings backfill failed; container will continue")
