@@ -275,7 +275,97 @@ between notifications and webhooks).
   there's a clear UX need; polling at 10 s is enough for most
   views.
 
-### B17. External-source rule triggers (Roku / TV / calendar / weather / etc.) — **NEW 2026-05-11**
+### B18. Inline on/off toggle in the devices list — **NEW 2026-05-11** (regression of redesign plan)
+
+Operator-flagged 2026-05-11 AM: the devices list at `/app/devices`
+has no inline power control. Operator has to drill into the device
+detail page to fire relay_on / relay_off. Every commercial smart-
+plug app (Kasa, Shelly, Home Assistant, SmartThings) puts a toggle
+on the row itself; we don't.
+
+**This was in the redesign plan and never shipped.**
+`docs/webui-redesign-plan.md` Phase 2 §9.2:
+
+> Device list: card layout on mobile, table on desktop, saved-
+> filter chips with URL round-trip (R-DEV-3, R-DEV-4, R-DEV-5).
+> Device card: **inline switch + badge cluster**; QA badge from
+> v0.2.8 preserved; central-vs-local cue (R-DEV-2).
+
+R-DEV-2 was supposed to ship in P2 (around v0.3.1) and it didn't.
+The list got chip filters, bulk-select, the firmware-version
+breakdown card, and (much later) the upgrade button — but never
+the inline switch. Operator is right to call this out.
+
+#### Scope
+
+Two parts:
+
+1. **Backend**: surface `relay_on` + `mode` + `is_held_off` from
+   the latest heartbeat in the device-list API response. Today
+   `GET /api/v1/admin/devices` returns those fields as `None`
+   because we serialise from the `Device` row, not from
+   `DeviceHeartbeat`. Fix: join the latest heartbeat row per
+   device in the list query. ~1h.
+
+2. **Frontend**: add a 4th-column control on each list row:
+   - Devices reporting `relay_on=true` → green "ON" toggle button
+     that POSTs `relay_off` on click.
+   - Devices reporting `relay_on=false` → grey "OFF" toggle that
+     POSTs `relay_on`.
+   - Devices in `is_held_off=true` → grey "HELD" badge (cannot
+     toggle without clearing the hold-off first; tooltip
+     explains).
+   - Devices with `is_protected=true` → toggle present but
+     guarded by the same typed-confirmation modal as the detail
+     page (operator typed the device name to override).
+   - Devices `online=false` → toggle disabled with "offline"
+     tooltip (queueing a command at the hub still works, but
+     the operator should know the device won't act on it until
+     it reconnects).
+   - Mobile (≤ 640 px) layout: toggle stays leftmost-after-name
+     so it's thumb-reachable.
+
+   Reuse existing `POST /app/devices/<id>/commands` form-submit
+   path. No new endpoints. ~2h.
+
+3. **Per-row response feedback**: the form-submit currently does
+   a full-page redirect. Optional HTMX-ish enhancement: PATCH
+   the row in place after submit using a JSON response. Defer to
+   a follow-up; the redirect is fine for v1.
+
+**Total effort**: ~3-4 h for parts 1 + 2.
+
+#### Newly important now that the firmware bug is fixed
+
+The relay command dispatcher only got fixed in 0.1.6-dev-central
+(operator-verified 2026-05-10 PM end-to-end). Before that the
+toggle would have been a footgun — clicking it on a 0.1.3 device
+would have appeared to do nothing, blamed the hub, and frustrated
+the operator into thinking the list-row toggle was the broken
+piece when the real bug was 6 layers down. Now that the firmware
+side actually executes relay_on / relay_off and reports back, the
+inline toggle becomes the satisfying single-click action it should
+have been at v0.3.1.
+
+#### Where it lands
+
+Slots cleanly into **Tier E polish or as a hotfix-style v0.5.x**
+ship. Not blocked by anything. Reasonable next ship after A2
+shadow-mode middleware, or interleaved with the Tier-1 power-
+monitoring ingestion if we go synthetic-first.
+
+#### Honest note on why this was missed
+
+The redesign plan's Phase 2 shipped piecemeal across v0.2.x and
+v0.3.x. The "inline switch" item was bundled with the larger card-
+layout redesign, which itself was rescoped during the firmware
+bring-up sprint (v0.4.0 onwards). It fell off the active checklist
+and never made it back. The continuation plans (v1 and v2) both
+inherited this miss without flagging it. Worth a once-over of
+the rest of R-DEV-* to find other Phase-2 items that quietly
+didn't ship.
+
+
 
 Operator-added 2026-05-11 AM: the watchdog rules engine today fires
 on **internal** signals (ICMP / HTTP probes, device events,
