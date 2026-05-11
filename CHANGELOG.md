@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-05-11
+
+### Refactor — split `devices.py` blueprint by concern
+
+The heaviest blueprint in the codebase (630 lines, mixed UI + API
++ bulk-delete + upgrade-to-latest + protection toggle + cancel
+command + ...) split into three files by concern:
+
+```
+app/blueprints/admin/devices.py       —  23 lines (back-compat shim)
+app/blueprints/admin/devices_ui.py    — 427 lines (UI handlers)
+app/blueprints/admin/devices_api.py   — 246 lines (JSON API handlers)
+```
+
+#### What's where now
+
+- **`devices_ui.py`** — every `@admin_ui_bp` handler:
+  list/detail/update/delete/send_command/cancel_command/
+  upgrade-to-latest/bulk-delete (UI)/protection-toggle.
+  Includes the `_show_qa_fixtures` helper.
+- **`devices_api.py`** — every `@admin_api_bp` handler:
+  list/get/patch/send_command/delete/bulk-delete (API)/
+  cancel_command.
+- **`devices.py`** — thin shim that imports both for side-effect
+  route registration. Preserves `from app.blueprints.admin.devices
+  import ...` for any external introspection.
+
+#### Endpoint names preserved
+
+All `url_for("admin_ui.<name>")` and `url_for("admin_api.<name>")`
+calls in templates and tests resolve unchanged. The blueprint
+object (`admin_ui_bp` / `admin_api_bp`) is shared across files —
+both new modules import it from `app.blueprints.admin`.
+
+#### Why now
+
+- v0.5.5 unblocks the upcoming B18 ship (inline on/off toggle in
+  the devices list) — that work would have added another ~80
+  lines of UI logic to the already-630-line single file.
+- Lines-per-file rule (operator's coordinator-hub convention was
+  <1,200 per file) was still satisfied at 630 but trending
+  upward. Splitting now is cheap; splitting at 900+ is harder.
+
+No behaviour change. No new tests needed beyond the existing
+regression coverage (24+ live tests already exercise the routes,
+all green post-split).
+
 ## [0.5.4] - 2026-05-11
 
 ### Refactor — version helpers extracted; package import-clean
