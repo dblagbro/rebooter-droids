@@ -21,11 +21,34 @@
   }
 
   function init(form) {
-    var rows = form.querySelectorAll('input[type="checkbox"][data-bulk-row]');
-    var master = form.querySelector('input[type="checkbox"][data-bulk-master]');
+    // v0.5.3: form-associated elements may live OUTSIDE the form's
+    // DOM subtree if they reference it by `form="<id>"` attribute.
+    // form.querySelectorAll() only walks descendants; switch to a
+    // document-wide query filtered by ownership so we pick up
+    // checkboxes/buttons associated via the attribute too. This is
+    // what enabled v0.5.3's nested-form-bug fix on /app/devices —
+    // the row checkboxes there now sit OUTSIDE the bulk-delete form
+    // so per-row upgrade forms above them don't nest.
+    function ownedBy(selector) {
+      var all = document.querySelectorAll(selector);
+      var owned = [];
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].form === form) owned.push(all[i]);
+      }
+      return owned;
+    }
+    function ownedFirst(selector) {
+      var owned = ownedBy(selector);
+      return owned.length ? owned[0] : null;
+    }
+    var rows = ownedBy('input[type="checkbox"][data-bulk-row]');
+    var master = ownedFirst('input[type="checkbox"][data-bulk-master]');
+    // Bulk-bar + counter live inside the form DOM-wise (they're not
+    // form-control elements, so the form= attribute doesn't apply to
+    // them). Keep the descendant query for those.
     var bar = form.querySelector('[data-bulk-bar]');
     var counter = form.querySelector('[data-bulk-bar-count]');
-    var buttons = form.querySelectorAll('button[data-bulk-submit]');
+    var buttons = ownedBy('button[data-bulk-submit]');
 
     function selectedCount() {
       var n = 0;
@@ -63,12 +86,15 @@
     // toggling one toggle its pair too.
     function syncPairs(cb) {
       if (!cb.value || !cb.name) return;
-      var siblings = form.querySelectorAll(
+      // v0.5.3: rows can be outside the form DOM-wise (form=
+      // attribute association); filter document-wide siblings by
+      // ownership instead of descendant query.
+      var allSiblings = document.querySelectorAll(
         'input[type="checkbox"][data-bulk-row][name="'
         + cb.name + '"][value="' + cb.value + '"]'
       );
-      each(siblings, function (s) {
-        if (s !== cb) s.checked = cb.checked;
+      each(allSiblings, function (s) {
+        if (s !== cb && s.form === form) s.checked = cb.checked;
       });
     }
 

@@ -101,10 +101,23 @@
 
 {% set can_bulk_delete = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
 
-<form method="post" action="{{ url_for('admin_ui.devices_bulk_delete_submit') }}"
-      data-bulk-form>
-  <input type="hidden" name="confirmation_level" value="">
-  <input type="hidden" name="confirmation_typed_value" value="">
+{# v0.5.3: the bulk-delete form is now rendered AT THE BOTTOM of the
+   page (after the table + cards). Row checkboxes use the HTML5
+   `form="devices-bulk-delete-form"` attribute to associate with it
+   across the DOM. This eliminates the nested-form parser bug where:
+     - Per-row upgrade <form> tags inside the bulk-delete form caused
+       the HTML5 parser to treat them as parse-errors-then-ignore,
+       which left the upgrade button as a *submitter of the outer
+       form*. Clicking Upgrade therefore submitted the bulk-delete
+       form, with whatever checkboxes happened to be checked, and the
+       confirmation dialog showed the bulk-delete prompt that the
+       operator misread as the upgrade prompt.
+     - The bug deleted Erica's R.L. Speaker at 2026-05-11 17:45 UTC
+       and the prior 4 devices at 01:53 UTC. R.L. was restored from
+       the v0.5.2 backup; v0.5.3 prevents recurrence.
+   Each row's <input type="checkbox" form="devices-bulk-delete-form">
+   is now associated with the form via attribute, even though it
+   isn't a DOM descendant. #}
 
 {# ── desktop table layout ────────────────────────────────────────────── #}
 <div class="v3-devices-table">
@@ -112,7 +125,8 @@
     <thead>
       <tr>
         {% if can_bulk_delete %}<th class="v3-bulk-checkbox-cell">
-          <input type="checkbox" class="v3-bulk-master" data-bulk-master aria-label="Select all devices">
+          <input type="checkbox" class="v3-bulk-master" data-bulk-master
+                 form="devices-bulk-delete-form" aria-label="Select all devices">
         </th>{% endif %}
         <th>Name</th>
         <th>State</th>
@@ -128,6 +142,7 @@
       <tr>
         {% if can_bulk_delete %}<td class="v3-bulk-checkbox-cell">
           <input type="checkbox" class="v3-bulk-checkbox" name="device_id" value="{{ d.id }}"
+                 form="devices-bulk-delete-form"
                  data-bulk-row aria-label="Select {{ d.display_name or d.id }}">
         </td>{% endif %}
         <td>
@@ -193,6 +208,7 @@
       {% if can_bulk_delete %}
       <label style="display:inline-flex;align-items:center;gap:.5rem;cursor:pointer">
         <input type="checkbox" class="v3-bulk-checkbox" name="device_id" value="{{ d.id }}"
+               form="devices-bulk-delete-form"
                data-bulk-row aria-label="Select {{ d.display_name or d.id }}">
         <span class="v3-device-card-name">
           <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
@@ -229,23 +245,31 @@
 </div>
 
 {% if can_bulk_delete %}
-<div class="v3-bulk-bar" data-bulk-bar role="region" aria-label="Bulk actions">
-  <div>
-    <span class="v3-bulk-bar-count" data-bulk-bar-count>0</span> selected
-  </div>
-  <div class="v3-bulk-bar-actions">
-    <label style="display:inline-flex;align-items:center;gap:.35rem;font-size:.9rem">
-      <input type="checkbox" name="override_lockout" value="1">
-      override 🔒 protected
-    </label>
-    <button type="submit" class="btn-danger" data-bulk-submit
-            data-bulk-verb="delete" data-bulk-noun="device">
-      Delete selected
-    </button>
-  </div>
-</div>
-{% endif %}
+{# v0.5.3: bulk-delete form sits OUTSIDE the table so per-row
+   upgrade forms above no longer nest inside it. Checkboxes
+   reference this form via the form="..." attribute. #}
+<form id="devices-bulk-delete-form" method="post"
+      action="{{ url_for('admin_ui.devices_bulk_delete_submit') }}"
+      data-bulk-form>
+  <input type="hidden" name="confirmation_level" value="">
+  <input type="hidden" name="confirmation_typed_value" value="">
 
+  <div class="v3-bulk-bar" data-bulk-bar role="region" aria-label="Bulk actions">
+    <div>
+      <span class="v3-bulk-bar-count" data-bulk-bar-count>0</span> selected
+    </div>
+    <div class="v3-bulk-bar-actions">
+      <label style="display:inline-flex;align-items:center;gap:.35rem;font-size:.9rem">
+        <input type="checkbox" name="override_lockout" value="1">
+        override 🔒 protected
+      </label>
+      <button type="submit" class="btn-danger" data-bulk-submit
+              data-bulk-verb="delete" data-bulk-noun="device">
+        Delete selected
+      </button>
+    </div>
+  </div>
 </form>
+{% endif %}
 {% endif %}
 {% endblock %}

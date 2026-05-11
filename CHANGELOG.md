@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-05-11
+
+### Fixed — clicking Upgrade button could delete the device (critical)
+
+Operator hit this twice today. Audit-log evidence:
+
+- 2026-05-11 17:45:50 UTC — clicked Upgrade on R.L. Speaker;
+  audit emitted `device.bulk_deleted_per_device` for R.L. instead of
+  `device.upgrade_initiated`.
+- 2026-05-11 01:53 UTC — same pattern deleted 4 devices.
+
+**Root cause**: per-row upgrade `<form>` tags were rendered INSIDE
+the wrapping bulk-delete `<form>`. Per the WHATWG HTML5 parser
+spec:
+
+- An inner `<form>` start tag inside an existing form context is a
+  parse error and is **ignored** (no nested form element created).
+- The corresponding `</form>` end tag DOES close whichever form is
+  currently open — which means it closes the OUTER bulk-delete
+  form mid-table.
+- Buttons inside the "ignored" inner form become submitters of the
+  OUTER form. Clicking Upgrade submitted the bulk-delete form with
+  whatever device_id checkboxes were checked, then showed the
+  `confirm()` prompt from `bulk_select.js` that the operator
+  misread as the upgrade confirmation.
+
+#### Fix
+
+- Moved the bulk-delete `<form>` to AFTER the table + mobile cards.
+  It now only wraps the bulk-action bar at the bottom.
+- Row checkboxes (desktop + mobile + master) carry the HTML5
+  `form="devices-bulk-delete-form"` attribute to associate with the
+  form across the DOM. No nesting.
+- Per-row upgrade forms are now top-level (no enclosing form).
+- `bulk_select.js` switched from `form.querySelectorAll()`
+  (descendant-only) to a document-wide query filtered by `.form`
+  ownership so it still picks up the now-DOM-detached checkboxes.
+
+#### Recovery
+
+Erica's R.L. Speaker device row + credentials restored from the
+v0.5.2 POST-RESTORE backup at 2026-05-11 17:50 UTC via targeted
+INSERT replay (same procedure used for the 4 devices on 2026-05-11
+02:30).
+
+### Tests
+
+- `tests/qa/test_v0503_devices_list_nested_form.py` — verifies the
+  rendered page has no nested forms (max depth ≤ 1, balanced), all
+  device_id checkboxes carry the form= attribute, and the bulk-delete
+  form has the expected id.
+
 ## [0.5.2] - 2026-05-11
 
 ### Fixed — misleading "1 device · Pending adoption →" sub-header on /app/devices
