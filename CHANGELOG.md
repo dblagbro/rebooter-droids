@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-05-11
+
+### Fixed — v0.5.0 backfill over-granted bindings to operator users
+
+v0.5.0's one-shot RBAC backfill gated on `users.is_admin` which is
+also True for users with `role='operator'` in this schema. Result:
+every active operator got incorrect site-admin bindings in
+`role_bindings` that they should not have per B10 Q2 ("operators
+→ no rows; forced re-grant").
+
+Live evidence post-v0.5.0 deploy:
+
+```
+scope_type | role        | count
+-----------+-------------+-------
+global     | super_admin |     1   ← correct
+site       | admin       |   220   ← expected 110 (22 admins × 5 sites);
+                                     extra 110 came from 22 operators
+                                     × 5 sites being mis-classified
+```
+
+#### Fix
+
+`ensure_role_bindings_backfill()` now gates on the actual `role`
+column instead of `is_admin`:
+
+- `is_super_admin=True` → `('global', NULL, 'super_admin')`
+- `role == 'admin'` (and not super) → one row per site
+- everything else (including operators, viewers) → **no rows**
+
+#### Corrective one-shot
+
+A new corrective step runs once on first deploy of v0.5.1,
+tracked via `rbac.role_bindings_v050_correction_applied_at`. It:
+
+1. Deletes every `role_bindings` row whose user has
+   `role IN ('operator', 'viewer')` — drops the bad rows v0.5.0
+   created.
+2. De-duplicates `(user_id, scope_type, scope_id)` rows in case
+   gunicorn-worker contention in v0.5.0 also produced duplicates
+   (using `IS NOT DISTINCT FROM` so NULL scope_ids dedupe correctly).
+3. Records completion in `runtime_settings`. Never re-runs.
+
+The v0.5.0 backfill tracking row (`rbac.role_bindings_backfilled_at`)
+is **preserved** by the correction step — we don't want the
+corrected backfill to also re-run on every restart. The correction
+is one-shot, the backfill remains one-shot, both are idempotent.
+
+If the v0.5.0 image somehow gets re-deployed before v0.5.1 lands
+(e.g., a rollback) the correction would re-execute on the next
+v0.5.1 upgrade, which is the intended safety net.
+
 ## [0.5.0] - 2026-05-10
 
 ### Added — RBAC role_bindings table + one-shot backfill (Tier A / A1)
