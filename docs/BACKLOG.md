@@ -519,6 +519,52 @@ Ship Layer 1 only against a single Roku for the Jeopardy use case:
 That's ~4 h of work and delivers 80% of the dream without needing
 EPG, OCR, or Spectrum-specific anything.
 
+### B19. Firmware scan misses content-changed binaries with same filename — **NEW 2026-05-11 PM**
+
+Operator-hit 2026-05-11 PM: when the sub-firmware team replaces
+`rebooter-0.1.9-dev-central.bin` with a new build (same filename,
+different SHA — typical iterative-fix workflow), the scan in
+`app/services/firmware.py::discover_on_disk_releases` skips it as
+"already existing" because the dedupe key is `entry.name in
+existing` (filename only).
+
+Result: the hub registry still has the OLD SHA. Devices polling
+`/device/firmware` get the new bytes from disk but the SHA in the
+hub response is stale → device's SHA verification fails → OTA
+refuses to flash, even though both sides are operating correctly.
+
+Live evidence today: sub-FW team rebuilt 0.1.9 to fix BearSSL heap
+exhaustion. New on-disk SHA `5002836883a4...`. Hub-registry SHA
+still `a6b415b3aa28...` until I manually `UPDATE firmware_releases`.
+
+**Fix scope** (~1 h):
+
+In `discover_on_disk_releases`, when `entry.name in existing`,
+also re-compute the SHA of the on-disk file and compare to the
+existing row's `sha256`. If different:
+  1. Update `firmware_releases.sha256` + `size_bytes` for that row
+  2. Update all `firmware_release_mirrors` rows for that release_id
+     to set `verified_sha256` + `last_probed_at`
+  3. Return the row in a new `updated` (or `content_changed`) list
+     in the scan response so the operator-visible flash message
+     surfaces the change
+  4. Audit event: `firmware.content_updated` with old + new SHA
+
+Edge case: if `firmware_releases.size_bytes` differs but
+`sha256` matches (unlikely but theoretically possible with
+identical-payload-different-padding), still update size_bytes
+for accuracy.
+
+Additional defence the firmware-team can do too: when shipping a
+new build, increment the version string (e.g. `0.1.9.1`, or
+`0.1.9-r2`). That avoids the issue entirely because the new
+filename hits the existing-by-name check correctly. But the hub
+should be robust to content-change-with-same-name regardless.
+
+Tracked together: `firmware.content_updated` should also surface
+on the unified `/app/history` feed (C1 — already shipped) so
+operators can audit "did anyone secretly swap a firmware on us?"
+
 ---
 
 ## How to consume this list
