@@ -104,10 +104,13 @@ def ensure_role_bindings_backfill() -> None:
     gated on ≥ 7 days of clean shadow logs.
     """
     from datetime import datetime, timezone
+    from sqlalchemy import delete, text
     from app.models import RoleBinding, Site
     from app.models.users import (
         ROLE_ADMIN,
+        ROLE_OPERATOR,
         ROLE_SUPER_ADMIN,
+        ROLE_VIEWER,
     )
     from app.models.role_bindings import (
         SCOPE_GLOBAL,
@@ -115,10 +118,59 @@ def ensure_role_bindings_backfill() -> None:
     )
     from app.services import runtime_settings as rs
 
+    # v0.5.1: corrective step. v0.5.0's backfill (shipped 2026-05-10
+    # 23:53 UTC) gated on `users.is_admin` which is also True for
+    # users with role='operator' in this schema — so every active
+    # operator got incorrect site-admin bindings they should not have
+    # per B10 Q2. Delete every binding that doesn't match the user's
+    # actual role + clear the tracking row so the corrected backfill
+    # below re-runs idempotently. Tracked separately so this never
+    # re-runs after v0.5.1.
+    _RBAC_V050_CORRECTION_KEY = "rbac.role_bindings_v050_correction_applied_at"
+    if not rs.has_db_value(_RBAC_V050_CORRECTION_KEY):
+        with session_scope() as session:
+            # Drop bindings created by the v0.5.0 bug: every binding
+            # for a user whose actual `role` is operator / viewer.
+            bad_user_ids = list(session.scalars(
+                select(User.id).where(
+                    User.role.in_((ROLE_OPERATOR, ROLE_VIEWER))
+                )
+            ))
+            if bad_user_ids:
+                deleted = session.execute(
+                    delete(RoleBinding).where(
+                        RoleBinding.user_id.in_(bad_user_ids)
+                    )
+                ).rowcount
+                log.warning(
+                    "v0.5.1 RBAC correction: deleted %d role_bindings "
+                    "rows that v0.5.0's backfill incorrectly created for "
+                    "operator/viewer users",
+                    deleted,
+                )
+            # Also clear the original tracking key so the corrected
+            # backfill below re-runs. If admin rows somehow ALSO got
+            # double-inserted (e.g., gunicorn-worker race in v0.5.0),
+            # we also need to dedupe them. UniqueConstraint on
+            # (user_id, scope_type, scope_id) covers post-correction.
+            session.execute(
+                text(
+                    "DELETE FROM role_bindings rb1 "
+                    "USING role_bindings rb2 "
+                    "WHERE rb1.id > rb2.id "
+                    "AND rb1.user_id = rb2.user_id "
+                    "AND rb1.scope_type = rb2.scope_type "
+                    "AND rb1.scope_id IS NOT DISTINCT FROM rb2.scope_id"
+                )
+            )
+        rs.set_(_RBAC_V050_CORRECTION_KEY, datetime.now(timezone.utc).isoformat())
+        # Don't reset _RBAC_BACKFILL_KEY — we don't want to fully
+        # re-run on each container start. Correction is one-shot.
+
     if rs.has_db_value(_RBAC_BACKFILL_KEY):
         return  # already done
 
-    log.info("Running one-shot RBAC role-binding backfill (v0.5.0 / A1)")
+    log.info("Running one-shot RBAC role-binding backfill (v0.5.1 / A1)")
     now = datetime.now(timezone.utc)
     inserted = 0
     with session_scope() as session:
@@ -139,7 +191,10 @@ def ensure_role_bindings_backfill() -> None:
                 ))
                 inserted += 1
                 continue
-            if u.is_admin:
+            # v0.5.1 fix: gate on the actual `role` column, NOT the
+            # legacy `is_admin` boolean (which is True for operators
+            # in this schema and led to over-granting in v0.5.0).
+            if u.role == ROLE_ADMIN:
                 if site_ids:
                     for sid in site_ids:
                         session.add(RoleBinding(
@@ -167,7 +222,7 @@ def ensure_role_bindings_backfill() -> None:
                         created_by_user_id=None,
                     ))
                     inserted += 1
-            # operator / viewer → no rows (forced re-grant)
+            # operator / viewer → no rows (forced re-grant per B10 Q2)
 
     # Mark backfill complete so this never runs again
     rs.set_(_RBAC_BACKFILL_KEY, now.isoformat())
