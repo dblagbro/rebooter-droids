@@ -22,7 +22,11 @@ from __future__ import annotations
 
 
 def test_is_upgrade_strict_numeric_order():
-    from app.services.devices import is_upgrade
+    # v0.5.4: import from _versions module so this test can run on
+    # hosts without flask-limiter (e.g. a developer's Ubuntu box).
+    # `app.services.devices` re-exports for back-compat, but pulls in
+    # the full Flask runtime stack.
+    from app.services._versions import is_upgrade
 
     # Strictly newer numeric prefix → True
     assert is_upgrade("0.1.5", "0.1.2")
@@ -39,7 +43,11 @@ def test_is_upgrade_strict_numeric_order():
 
 
 def test_is_upgrade_handles_suffix_labels():
-    from app.services.devices import is_upgrade
+    # v0.5.4: import from _versions module so this test can run on
+    # hosts without flask-limiter (e.g. a developer's Ubuntu box).
+    # `app.services.devices` re-exports for back-compat, but pulls in
+    # the full Flask runtime stack.
+    from app.services._versions import is_upgrade
 
     # Suffix shouldn't change the answer when numerics differ
     assert is_upgrade("0.1.5-dev-central", "0.1.2-dev-central")
@@ -53,7 +61,11 @@ def test_is_upgrade_handles_suffix_labels():
 
 
 def test_is_upgrade_handles_none_and_empty():
-    from app.services.devices import is_upgrade
+    # v0.5.4: import from _versions module so this test can run on
+    # hosts without flask-limiter (e.g. a developer's Ubuntu box).
+    # `app.services.devices` re-exports for back-compat, but pulls in
+    # the full Flask runtime stack.
+    from app.services._versions import is_upgrade
 
     # Either side missing → False (no upgrade offered)
     assert not is_upgrade(None, "0.1.5")
@@ -64,7 +76,7 @@ def test_is_upgrade_handles_none_and_empty():
 
 
 def test_version_sort_key_orders_real_fleet_versions():
-    from app.services.devices import _version_sort_key
+    from app.services._versions import _version_sort_key  # v0.5.4 (see above)
 
     # The actual fleet on 2026-05-10:
     versions = [
