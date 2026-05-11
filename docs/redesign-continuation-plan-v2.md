@@ -35,6 +35,48 @@ of the operator-input-gated items are **unblocked**.
 
 ---
 
+## Status update — 2026-05-11 00:56 UTC (post v0.5.1)
+
+**Currently active inside this v2 plan.** 10 ships since v2 was written:
+
+| Ship | Tier | Plan item |
+|---|---|---|
+| v0.4.27 | C/E | History chip filters + API.md refresh (closed C1 prep + Tier-3 #8) |
+| v0.4.28 | bug | Upgrade-button NameError hotfix |
+| v0.4.29 | bug | Upgrade-button direction (offering downgrades) hotfix |
+| v0.4.30 | **C1** | Unified history feed (audit + watchdog_probe + device_event + all) |
+| v0.4.31 | **E5** | Device-add wizard polish (site selector + TTL + cross-link) |
+| v0.4.32 | **C2 + C3** | History CSV/JSON export + free-text search |
+| v0.4.33 | **D3** | Firmware UI moves under `/app/settings/firmware` |
+| v0.4.34 | bug | Firmware scan `os.sync()` before walk (bind-mount cache miss) |
+| v0.5.0 | **A1** | `role_bindings` table + one-shot backfill from legacy users columns |
+| v0.5.1 | bug | v0.5.0 backfill over-granted bindings to operators; corrected |
+
+**Current position**: just landed **Tier A / A1 (v0.5.0 + v0.5.1)**.
+Backfill verified live: 1 super_admin global binding + 110 site-admin
+bindings (22 admins × 5 sites), 0 incorrect operator/viewer bindings.
+Legacy auth still authoritative; the table is shadow-only until A8.
+
+**Next ship**: A2 shadow-mode middleware. The 7-day shadow soak before
+A8 enforce flip begins on its deploy.
+
+**Updated tier rollup**:
+
+| Tier | Done | In flight | Queued | Notes |
+|---|---|---|---|---|
+| **Trailing v0.4.x quick wins** | C1, C2, C3, D1, D3, E5 | — | — | D2 deferred (no automated backup yet); arc complete |
+| **Tier A — RBAC scoping** | A1 | A2 (next) | A3-A9 | 7-day shadow soak gate between A2 and A8 |
+| **Tier B — Auth (TOTP / OIDC)** | — | — | B1-B5 | Gated on A1+A2 (now landed / next) |
+| **Tier C — remaining** | (C1+C2+C3 above) | — | C4-C7 | C4-C5 = notifications surface; C6 = webhooks; C7 = API tokens (needs A1 for scope) |
+| **Tier D — remaining** | (D1+D3 above) | — | D4 | D2 deferred; D4 backup/restore queued |
+| **Tier E — remaining** | (E5 above) | — | E1-E4 | a11y CI, onboarding tour, command palette, pull-to-refresh |
+| **Tier F — B16 power monitoring** | Design doc | — | F1-F8 ships | Hub-side Tier-1 ingestion can ship against synthetic samples; firmware-team metering driver in parallel |
+
+**External blockers still live**:
+- **Windows workstation OFFLINE** since 2026-05-09 (Chrome Remote Desktop stuck "starting up"). Firmware repo at `C:\dev\rebooter-firmware\` unreachable. Firmware iteration fully blocked. Hub iteration unblocked.
+
+---
+
 ## Scope-shape correction from B10
 
 The original `webui-redesign-plan.md` §6 + RFC-003 §9.1 modelled
