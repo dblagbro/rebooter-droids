@@ -228,6 +228,23 @@ def list_announcements(*, include_consumed: bool = False) -> list[dict]:
         return [serialize(r) for r in rows]
 
 
+def count_pending_announcements() -> int:
+    """v0.5.2: cheap pending-adoption count for the devices-list
+    sub-header. Counts rows with consumed_at IS NULL AND
+    rejected_at IS NULL — the same predicate `list_announcements`
+    uses by default. Done as a single SELECT COUNT(*) to avoid
+    serializing the full rows just to render a badge.
+    """
+    from sqlalchemy import func, select as _select
+    with session_scope() as session:
+        return session.scalar(
+            _select(func.count(DeviceAnnouncement.id)).where(
+                DeviceAnnouncement.consumed_at.is_(None),
+                DeviceAnnouncement.rejected_at.is_(None),
+            )
+        ) or 0
+
+
 def adopt(announcement_id: str, *, by_user_id: str | None,
           display_name: str | None = None) -> dict:
     """Operator action: mint a fresh enrolment token and stash it
