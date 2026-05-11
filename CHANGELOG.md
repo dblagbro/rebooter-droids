@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-10
+
+### Added — RBAC role_bindings table + one-shot backfill (Tier A / A1)
+
+Foundation ship of the RBAC scoping migration locked by B10
+redlines 2026-05-10 PM (RFC-003 §9.0). **Non-enforcing.** This
+release adds the table, populates it from the legacy
+`users.is_super_admin` / `is_admin` / `role` columns, and exposes
+a service-level CRUD + effective-scope resolver. The shadow-mode
+middleware that *logs* would-have-denied decisions (A2) and the
+enforce flip (A8) are later ships gated on ≥ 7 days of clean
+shadow-log soak per RFC-003 §6.3.
+
+#### New schema
+
+```
+role_bindings
+├── id                  (rb_<ulid>)
+├── user_id             FK users.id ON DELETE CASCADE
+├── scope_type          'global' | 'site' | 'group' | 'device'
+├── scope_id            NULL for global; ULID otherwise
+├── role                'super_admin' | 'admin' | 'operator' | 'viewer'
+├── created_at, updated_at
+├── created_by_user_id  FK users.id ON DELETE SET NULL
+└── UNIQUE (user_id, scope_type, scope_id)
+INDEX (user_id), (scope_type, scope_id)
+```
+
+#### Auto-backfill (one-shot per database, idempotent)
+
+Runs on container startup after `ensure_schema()` /
+`ensure_bootstrap_admin()`. Tracked via a `runtime_settings` row
+under `rbac.role_bindings_backfilled_at` so it's a hard no-op on
+subsequent boots. Per B10 Q2:
+
+- existing super_admins → `('global', NULL, 'super_admin')`
+- existing admins (not super) → one row per current `site_id`,
+  `('site', <site_id>, 'admin')`. If no sites exist yet, one
+  `('global', NULL, 'admin')` row as a safety net so the operator
+  isn't locked out on day one.
+- existing operators / viewers → **no rows**. Per B10 Q2, the
+  operator tier must be re-granted explicitly by an admin before
+  the enforce flip.
+
+If the backfill errors (e.g., DB constraint surprise), startup
+continues — we never block a healthy container on this one-shot
+data migration. The exception is logged; operator can re-run by
+deleting the `runtime_settings` tracking row.
+
+#### New service module
+
+`app/services/role_bindings.py`:
+
+- `grant(user_id, scope_type, scope_id, role)` — idempotent upsert
+- `revoke(user_id, scope_type, scope_id)` — drop a binding
+- `list_for_user(user_id)` — enumerate
+- `has_global_role(user_id, role_needed)` — fast hot-path check
+- `effective_site_ids(user_id, role_needed)` → `"ALL"` sentinel or set
+- `effective_device_ids(user_id, role_needed)` → `"ALL"` or set,
+  computed by unioning global / site / group / device bindings via
+  GroupMembership joins
+- `can_act_on_device(user_id, device_id, role_needed)`
+- `can_act_on_site(user_id, site_id, role_needed)`
+
+Role-hierarchy enforcement built in: a `super_admin` binding
+satisfies an `admin`-required check; an `admin` binding satisfies
+`operator`; etc.
+
+#### What this doesn't do (yet)
+
+- Does **not** change any existing auth-decorator behaviour. All
+  `@admin_required_ui` / `@role_required_*` decorators keep their
+  v0.4.x semantics. The legacy `users.role` + `users.is_admin` +
+  `users.is_super_admin` columns stay authoritative until A8.
+- Does **not** scope queries. `GET /api/v1/admin/devices` still
+  returns every device an admin can see today — scope-filtered
+  queries land in A4.
+- Does **not** expose any UI for grant/revoke. CRUD UI lands in
+  A6 / A7.
+
+### Tests
+
+- `tests/qa/test_v0500_role_bindings.py` — verifies v0.5.0
+  deployment health, legacy auth back-compat preserved.
+
 ## [0.4.34] - 2026-05-10
 
 ### Fixed — Firmware on-disk scan misses recently-written .bin files
