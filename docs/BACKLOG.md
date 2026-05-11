@@ -275,6 +275,160 @@ between notifications and webhooks).
   there's a clear UX need; polling at 10 s is enough for most
   views.
 
+### B17. External-source rule triggers (Roku / TV / calendar / weather / etc.) — **NEW 2026-05-11**
+
+Operator-added 2026-05-11 AM: the watchdog rules engine today fires
+on **internal** signals (ICMP / HTTP probes, device events,
+schedules). Extend it to fire on **external** signals so rules can
+say things like:
+
+> "If Roku in living room is on Spectrum TV between 7:00-7:30 PM
+> weekdays (i.e., Jeopardy is on), turn off the speaker subwoofer."
+
+The full goal — "detect Jeopardy specifically and turn off X" — is
+a chain of inferences with different difficulty levels. The ideal
+implementation isn't required; "as best as it could be implemented
+is okay". We bake the easy 80% first, leave hooks for the hard
+20%.
+
+#### Layer 1 — Roku app-active sensor (~4-6 h)
+
+Roku exposes a documented LAN-local HTTP API on port 8060
+(Roku ECP — External Control Protocol). No auth, same-LAN only.
+Useful endpoints:
+
+- `GET /query/active-app` — returns the currently-foreground app
+  (e.g., "Spectrum TV", "Netflix", "YouTube", or "Roku" if idle on
+  the home screen). Updates in real time.
+- `GET /query/device-info` — model, serial, name.
+- `GET /query/media-player` — playback state (playing / paused /
+  stopped) for media-aware apps.
+
+**Hub-side build**:
+- New "Roku source" registered on `/app/settings/integrations`
+  taking the Roku's IP + a friendly name. We poll
+  `/query/active-app` every 30 s and store last-known app + last-
+  seen time per Roku in a new `external_sensor_samples` table.
+- A new rule probe type: `roku_app_active`. Operator picks the
+  Roku source + an app name (free-text or autocomplete from
+  recently-seen apps). Probe outcome `success` when the named
+  app is the current foreground app, `failure` otherwise.
+- Wires into the existing watchdog rules surface — same trigger /
+  action semantics, just a new probe source.
+
+**What this gets you immediately**: "if Roku-A is on Spectrum TV
+right now, do X." About 80% of the Jeopardy use case without
+needing to know what's on the screen, because TV viewing is a
+*time-bounded* activity — the operator can pair the app-active
+probe with the existing schedule primitive (B8) to get
+"Spectrum TV active AND it's currently in the Jeopardy time
+window" rules.
+
+#### Layer 2 — EPG (Electronic Program Guide) lookup (~8-12 h)
+
+Gives the rules engine real "what show is on right now on channel
+X" answers without an operator manually typing time windows.
+
+**Source options**:
+- **TVMaze API** (https://www.tvmaze.com/api) — free, no auth,
+  has US schedule data, returns "what's airing now on this
+  channel/network" via `GET /schedule?country=US&date=…`. Best
+  starting point for a free integration.
+- **Schedules Direct** (https://schedulesdirect.org) — $25/yr
+  but is the canonical NA EPG source most DVRs use; way more
+  accurate than free sources for cable-specific channel lineups.
+- **Gracenote / TMS** — gold standard but enterprise pricing;
+  out of scope.
+- **Local OTA tuner scraping** (`zap2it` etc. — deprecated):
+  skip.
+
+**Hub-side build**:
+- New `external_epg_cache` table: `(provider, channel_id,
+  airing_start, airing_end, show_title, season, episode)`. We
+  poll the EPG provider every 4-6 hours for the next 24 h of
+  programming on whitelisted channels. Cache hits answer "what's
+  on channel X right now" in O(1).
+- New rule probe type: `epg_show_airing`. Operator picks a show
+  title (e.g., "Jeopardy!") + a channel (e.g., "ABC affiliate
+  for region 90210"); probe succeeds when the EPG says that show
+  is currently airing on that channel.
+- Combined with Layer 1: "Roku on Spectrum TV AND EPG says
+  Jeopardy is airing on Spectrum channel 27" → 95% reliable
+  Jeopardy detection.
+
+**Open question**: Spectrum's channel numbering is regional. Need
+operator to map "the channel name as Spectrum displays it" to "the
+EPG provider's channel id". One-time setup per Roku location.
+
+#### Layer 3 — Spectrum-specific (skip / very hard)
+
+Spectrum doesn't expose a "what channel is the box on right now"
+API. Roku knows the app is Spectrum TV but not which channel
+inside the app. **Skip this layer**; rely on Layer 2 + time window
+heuristics for the same outcome.
+
+If we ever need true channel awareness, last-resort options would
+be screen OCR (capture Roku screenshot via ECP, OCR the
+channel-number overlay) — fragile and creepy. Defer indefinitely.
+
+#### Adjacent external sources worth scoping in the same backlog
+
+Same protocol shape (poll an external source, store samples,
+expose as a rule probe). Each is roughly Layer-1 effort:
+
+| Source | What rules can use it for |
+|---|---|
+| **Home Assistant** integration | Bridge to literally everything HA already supports — z-wave / zigbee / matter sensors, presence, door state, motion. If operator has HA running this is the highest-ROI integration. |
+| **MQTT broker** | Generic pub/sub — any device that speaks MQTT can trigger rules. Pairs well with Tasmota / ESPHome devices. |
+| **Plex / Jellyfin** | "If TV-watching session active on Plex, [do X]" — webhook-based, real-time. |
+| **Google Calendar** | "If meeting on calendar AND device in office, ensure power-on" or "If 'do not disturb' calendar event, pause watchdogs". |
+| **Weather** (NWS, OpenWeatherMap) | "If storm warning, cycle the modem proactively"; "If outside temp > 90°F, ensure AC plug stays on". |
+| **Computer activity** (wake/sleep ping) | "If workstation has been awake 8 h, suggest break" — softer use case but compositional with calendar. |
+| **iCal / WebCal feeds** | Same as Google Calendar but generic. |
+| **Solar production** (Enphase / SolarEdge local APIs) | "If solar output > home load, run high-watt appliances" — energy-savings rules, pairs with B16 power monitoring. |
+| **iOS Shortcuts / Apple Home webhooks** | Operator-side automation triggers if they have an iPhone. |
+
+#### Effort estimate + dependencies
+
+- Layer 1 (Roku ECP + new probe type): ~4-6 h. Independent of
+  RBAC, fits cleanly into existing watchdog-rule machinery.
+- Layer 2 (EPG cache + probe type): ~8-12 h. Independent.
+- Adjacent integrations: each ~4-6 h, all share the
+  `external_sensor_samples` table pattern.
+
+Total for "comfortable v1 covering Roku + EPG + HA bridge":
+~20-30 h.
+
+#### Privacy + ethics
+
+External-source data is at least as sensitive as power-monitoring
+data:
+- Roku-app-active reveals media consumption habits.
+- Calendar integration leaks meeting subjects and timing.
+- HA-bridged sensors leak motion / occupancy / sleep patterns.
+
+Same posture as B16: local-first, aggregate only, no occupancy-
+heatmap UI, hard-delete on integration removal.
+
+#### Where this lands in the redesign plan
+
+New **Tier G** (post Tier F / B16 power monitoring), or a sibling
+to Tier C (notification rules) since both extend the rules engine.
+Probably a separate doc — `docs/B17-external-integrations-design.md`
+— once the operator wants to commit. Until then, this backlog
+entry is the durable home for the idea.
+
+#### Quickest demo path (if operator wants a single-evening proof)
+
+Ship Layer 1 only against a single Roku for the Jeopardy use case:
+1. Add an `external_rokus` table + nightly-cached app-active samples.
+2. Wire `roku_app_active` probe type into watchdog rules.
+3. Operator builds the rule by hand:
+   "rule: ROKU(living-room) = 'Spectrum TV' AND schedule(weekdays 19:00-19:30) → relay_off (subwoofer)".
+
+That's ~4 h of work and delivers 80% of the dream without needing
+EPG, OCR, or Spectrum-specific anything.
+
 ---
 
 ## How to consume this list
