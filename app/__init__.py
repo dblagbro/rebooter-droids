@@ -8,8 +8,11 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import load_settings
 from app.db import init_engine
-from app.middleware.rate_limit import init_rate_limit
-from app.middleware.response import register_envelope_handlers
+# v0.5.4: deferred to create_app() so importing `app.services._versions`
+# (pure-Python helpers) doesn't pull in flask_limiter on host environments
+# where it's not installed. The Flask app factory still loads them.
+# from app.middleware.rate_limit import init_rate_limit   ← moved
+# from app.middleware.response import register_envelope_handlers ← moved
 
 
 _SCHEDULER_LOCK_KEY = 4242117310
@@ -93,6 +96,10 @@ def create_app() -> Flask:
     app.wsgi_app = ProxyFix(
         PrefixMiddleware(app.wsgi_app), x_for=1, x_proto=1, x_host=1, x_prefix=1
     )
+
+    # v0.5.4: deferred imports — see top-of-file comment.
+    from app.middleware.rate_limit import init_rate_limit
+    from app.middleware.response import register_envelope_handlers
 
     init_engine(settings)
     init_rate_limit(app)

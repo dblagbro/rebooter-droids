@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-05-11
+
+### Refactor — version helpers extracted; package import-clean
+
+Two related, behaviour-preserving changes:
+
+- `is_upgrade()` and `_version_sort_key()` moved from
+  `app/services/devices.py` to a new minimal module
+  `app/services/_versions.py`. Pure-Python, no Flask/SQLAlchemy
+  dependencies. Re-exported from `app/services/devices.py` for
+  back-compat with existing callers (template Jinja global
+  `is_upgrade=`, blueprint imports).
+
+- `app/__init__.py` deferred its top-level imports of
+  `app.middleware.rate_limit.init_rate_limit` and
+  `app.middleware.response.register_envelope_handlers` into the
+  `create_app()` function. The package can now be imported
+  (e.g. for unit tests) without pulling in the entire Flask
+  runtime stack (`flask_limiter`, etc.). The Flask app itself
+  still loads them on `create_app()` so live behaviour is
+  unchanged.
+
+#### Why
+
+`tests/qa/test_v0429_upgrade_direction.py` was failing on developer
+hosts that don't have `flask_limiter` installed (e.g. anywhere
+outside the Docker image) because importing
+`from app.services.devices import is_upgrade` triggered
+`app/__init__.py`'s eager Flask-stack imports. Now the test file
+imports from `app.services._versions` directly and the package
+load is clean.
+
+4/4 v0.4.29 tests pass on the host now (previously: 4/4 fail
+outside the container).
+
+### Tests
+
+- v0.4.29 upgrade-direction tests now run host-side without the
+  container. Test file's `is_upgrade` import points at
+  `app.services._versions`.
+
 ## [0.5.3] - 2026-05-11
 
 ### Fixed — clicking Upgrade button could delete the device (critical)
