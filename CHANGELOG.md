@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-05-12
+
+### Added — LAN-bridge command types for remote fleet recovery
+
+Three new entries in `commands.ALLOWED_TYPES` so the hub can enqueue
+the LAN-recovery commands the firmware team added in v0.1.11:
+
+- **`lan_scan`** — payload `{start, end}` (integer last-octet
+  range, 1-254 each, max 254 IPs). Tells a bridge device to scan
+  its LAN subnet for live rebooter devices and return the map via
+  `/device/command-result`.
+
+- **`lan_proxy`** — payload `{ip, path, method, body?, headers?}`.
+  Tells a bridge device to make an HTTP request to a LAN peer
+  (e.g. `POST http://192.168.1.30/api/system/reboot`) and return
+  the response. `method` ∈ {GET, POST}; `path` must start with `/`.
+
+- **`lan_ota_push`** — payload `{ip, url, sha256?}`. Tells a bridge
+  device to instruct a LAN peer to OTA-pull from the given URL and
+  self-flash. Unlocks the operator-remote silent-fleet recovery
+  path documented in B19/staged-deployments without requiring the
+  operator to be on the LAN.
+
+Validation is light by design — these are operator-triggered
+recovery commands, not customer-facing endpoints, so the schema
+checks catch the obvious wrong-type cases (`ip` is a string,
+`url` starts with `http://` or `https://`, etc.) but don't try to
+prevent every misuse.
+
+#### Required firmware
+
+Device must be on **0.1.11-dev-central or later** to dispatch these
+command types. Older firmware silently ignored or rejected them.
+
+#### Operational pattern
+
+The hub-side recovery sequence remains operator-paused per the
+fail-safe gate, but with 0.1.11 + v0.5.6 the actual mechanics are:
+
+1. Operator green-lights an OTA push to a bridge device (e.g. R.R.
+   Speaker) — un-pauses the paused `deployment_assignment`.
+2. Bridge device upgrades to 0.1.11.
+3. Operator enqueues `lan_scan` against the bridge device — finds
+   the silent peers' IPs.
+4. Operator enqueues `lan_ota_push` against the bridge device,
+   targeting each silent peer with the same firmware URL.
+5. Silent peers self-flash, reboot, and re-authenticate with their
+   restored hub-side credentials. Fleet recovered.
+
+No hub-side test ships yet — coverage will land with the operator-
+fired recovery run. The schema-validator code path is exercised
+implicitly by every `lan_*` command issued.
+
 ## [0.5.5] - 2026-05-11
 
 ### Refactor — split `devices.py` blueprint by concern
