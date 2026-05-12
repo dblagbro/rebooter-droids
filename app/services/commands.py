@@ -19,6 +19,15 @@ ALLOWED_TYPES = {
     "apply_config",
     "check_firmware",
     "start_firmware_update",
+    # v0.5.6: LAN-bridge commands — firmware ≥ 0.1.11 handles these.
+    # A "bridge" device (one that's heartbeating) executes them
+    # against other devices on its own LAN, returning the result via
+    # /device/command-result. Unlocks remote fleet recovery without
+    # the operator needing LAN access. See firmware-team note
+    # 2026-05-12 for the device-side endpoints these wrap.
+    "lan_scan",       # scan LAN subnet for live rebooter devices
+    "lan_proxy",      # proxy an HTTP request to a LAN peer
+    "lan_ota_push",   # tell a LAN peer to OTA-pull a firmware URL
 }
 ALLOWED_RESULT_STATUSES = {"accepted", "running", "completed", "failed", "expired"}
 
@@ -62,6 +71,47 @@ def _validate_payload(cmd_type: str, payload: dict | None) -> dict:
             if k in payload and not isinstance(payload[k], int):
                 raise ValueError(f"relay_cycle.{k} must be an integer")
         return payload
+    # v0.5.6: LAN-bridge commands. Light schema validation — these
+    # are operator-triggered recovery commands, not customer-facing,
+    # so we trust the caller more than we trust device-facing
+    # endpoints.
+    if cmd_type == "lan_scan":
+        start = payload.get("start")
+        end = payload.get("end")
+        if not isinstance(start, int) or not isinstance(end, int):
+            raise ValueError("lan_scan requires integer 'start' and 'end'")
+        if not (1 <= start <= 254 and 1 <= end <= 254 and start <= end):
+            raise ValueError("lan_scan start/end must be in 1..254 with start <= end")
+        if end - start > 254:
+            raise ValueError("lan_scan range too wide (max 254 IPs)")
+        return {"start": start, "end": end}
+    if cmd_type == "lan_proxy":
+        ip = payload.get("ip")
+        path = payload.get("path")
+        if not isinstance(ip, str) or not ip:
+            raise ValueError("lan_proxy requires non-empty 'ip'")
+        if not isinstance(path, str) or not path.startswith("/"):
+            raise ValueError("lan_proxy 'path' must be a string starting with '/'")
+        method = (payload.get("method") or "GET").upper()
+        if method not in ("GET", "POST"):
+            raise ValueError("lan_proxy 'method' must be GET or POST")
+        out = {"ip": ip, "path": path, "method": method}
+        if "body" in payload:
+            out["body"] = payload["body"]
+        if "headers" in payload and isinstance(payload["headers"], dict):
+            out["headers"] = payload["headers"]
+        return out
+    if cmd_type == "lan_ota_push":
+        ip = payload.get("ip")
+        url = payload.get("url")
+        if not isinstance(ip, str) or not ip:
+            raise ValueError("lan_ota_push requires non-empty 'ip'")
+        if not isinstance(url, str) or not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError("lan_ota_push 'url' must be a http(s) URL")
+        out = {"ip": ip, "url": url}
+        if "sha256" in payload:
+            out["sha256"] = payload["sha256"]
+        return out
     return payload
 
 
