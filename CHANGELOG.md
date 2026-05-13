@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-05-13
+
+### Added — Auto-push display_name on restore-after-reflash
+
+QA finding 2026-05-13: hub-side B20 restore correctly preserves
+the device row identity (display_name "Erica's Subwoofer", id
+`dev_01KR8127W5XMP6MDF34J0TXQP9`, audit history, group memberships)
+but the reflashed device kept its local `device_name="Rebooter"`
+because hub-side restore didn't push hub-side metadata back DOWN
+to the device.
+
+Short-term fix per firmware-team collaboration:
+
+In `consume_enrollment_token`'s restore branch, after the
+credential rotation completes, automatically enqueue an
+`apply_config` command carrying the hub's `display_name` as
+`device_name`. Delivered on the device's first `/device/commands`
+poll after `/register` completes — typically ~30 seconds.
+
+Best-effort; never raises out of `/register`. If the enqueue
+fails (e.g., command-queue full, unusual error) the restore
+itself still succeeds — only the auto-push is skipped, and the
+operator can manually re-enqueue via /app/devices later.
+
+Audit event: `device.restore_config_pushed` with
+`{trigger: "restore_after_reflash", pushed_fields: [...], device_name: ...}`.
+
+### Medium-term tracked separately as B21
+
+Full `desired_config` blob on each device row (matches the locked
+v0.1 apply_config schema), `last_reported_config` for drift
+detection, operator-edit UI on device detail, optional auto-
+repair-on-drift. Will land as v0.6.0 behind a feature flag.
+
 ## [0.5.7] - 2026-05-12
 
 ### Added — B20: MAC-based duplicate detection at adoption + restore-vs-fresh choice
