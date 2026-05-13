@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +10,8 @@ from sqlalchemy import select
 from app.config import Settings
 from app.db import session_scope
 from app.models import Device, DeviceCredential, EnrollmentToken
+
+log = logging.getLogger(__name__)
 
 
 def _hash(token: str) -> str:
@@ -291,6 +294,12 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
         et.consumed_by_device_id = device.id
         session.add(et)
 
+        # v0.5.8: capture rebind metadata before session expunges
+        # the et object — needed by the post-register apply_config
+        # push below.
+        rebind_target_id = getattr(et, "target_device_id", None)
+        rebind_issuer_id = et.issued_by_user_id
+
         session.flush()
         session.expunge(device)
 
@@ -301,6 +310,47 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
         mark_consumed(device.mac_address or "")
     except Exception:
         pass
+
+    # v0.5.8 (B20 follow-up): on RESTORE-after-reflash, push the
+    # hub's display_name down to the device via apply_config so the
+    # reflashed unit doesn't keep its temporary local device_name
+    # (e.g. "Rebooter"). QA finding 2026-05-13 caught Erica's
+    # Subwoofer restored hub-side but the device still reporting
+    # local device_name="Rebooter". Short-term fix per firmware-team
+    # collab: at restore-success, enqueue ONE apply_config command
+    # carrying just the display_name (the only hub-side metadata
+    # field we know is correct and apply_config-supported today).
+    # Best-effort — never raises out of /register. Medium-term
+    # (desired_config blob) covers full config rebind; tracked in
+    # B21.
+    if rebind_target_id and device.display_name:
+        try:
+            from app.services.commands import enqueue_for_device
+            from app.services import audit as audit_service
+            enqueue_for_device(
+                device_id=device.id,
+                cmd_type="apply_config",
+                payload={"device_name": device.display_name},
+                issued_by_user_id=rebind_issuer_id,
+                ttl_seconds=600,
+            )
+            audit_service.record(
+                "device.restore_config_pushed",
+                actor_user_id=rebind_issuer_id,
+                actor_email_snapshot=None,
+                target_type="device",
+                target_id=device.id,
+                details={
+                    "trigger": "restore_after_reflash",
+                    "pushed_fields": ["device_name"],
+                    "device_name": device.display_name,
+                },
+            )
+        except Exception as e:
+            log.warning(
+                "v0.5.8 restore-config-push failed for %s: %s",
+                device.id, e,
+            )
 
     return device, raw_secret
 
