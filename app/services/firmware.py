@@ -331,9 +331,17 @@ def discover_on_disk_releases(
                 # Strip a trailing `-<channel>` if it matches
                 if version.endswith(f"-{channel}"):
                     version = version[: -(len(channel) + 1)]
-                download_url = f"{base}/{entry.name}"
+                # v0.5.11 (B22): the scan loop only enumerates files
+                # under `firmware_dir/<channel>/`, so the artifact is at
+                # the per-channel URL. The canonical root URL is only
+                # populated by the upload path (which copies the file
+                # into BOTH locations). Setting download_url to the
+                # root URL here caused devices to 404 on assigned
+                # firmware — bug B22, fixed in v0.5.11 by handing the
+                # device the URL we actually serve.
                 per_channel_url = f"{base}/{channel}/{entry.name}"
                 pointer_url = f"{api_root}/{channel}/latest"
+                download_url = per_channel_url
 
                 with session_scope() as session:
                     record = FirmwareRelease(
@@ -350,8 +358,13 @@ def discover_on_disk_releases(
                     session.add(record)
                     session.flush()
                     rid = record.id
+                    # v0.5.11 (B22): omit the root-path `MIRROR_KIND_LOCAL`
+                    # row for scanned releases — the scan only walks the
+                    # per-channel subdir, so no file lives at the root
+                    # URL. Marking it live + verified_sha would be a lie.
+                    # The upload path still emits all three because it
+                    # writes to both locations.
                     for kind, url in (
-                        (MIRROR_KIND_LOCAL, download_url),
                         (f"{MIRROR_KIND_LOCAL}_per_channel", per_channel_url),
                         (f"{MIRROR_KIND_LOCAL}_channel_pointer", pointer_url),
                     ):

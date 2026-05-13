@@ -565,6 +565,42 @@ Tracked together: `firmware.content_updated` should also surface
 on the unified `/app/history` feed (C1 — already shipped) so
 operators can audit "did anyone secretly swap a firmware on us?"
 
+### B22. `discover_on_disk_releases` writes wrong `download_url` for scanned releases — **NEW 2026-05-13** — FIXED in v0.5.11
+
+Firmware-team caught 2026-05-13 PM after end-to-end UI-driven OTA
+test: device on 0.1.15 received a `/device/firmware` response
+pointing at the canonical root URL
+`https://www.voipguru.org/rebooter/firmware/rebooter-0.1.15-dev-central.bin`
+and got HTTP 404 because the scanned `.bin` actually lives at
+`https://www.voipguru.org/rebooter/firmware/stable/rebooter-0.1.15-dev-central.bin`
+(per-channel subdirectory).
+
+Root cause in `app/services/firmware.py::discover_on_disk_releases`:
+
+```python
+download_url = f"{base}/{entry.name}"          # ← root path, but...
+per_channel_url = f"{base}/{channel}/{entry.name}"  # ← ...file is HERE
+```
+
+The scan loop only walks `firmware_dir/<channel>/`, so every
+scanned artifact lives at the per-channel path. The upload path
+(`save_release` ~:130) gets away with the same `{base}/{filename}`
+shape because it copies the file to BOTH locations — the scan path
+does no such copy. Device reads `release.download_url` verbatim
+(`app/blueprints/device_api.py:230`), so the field-level mismatch
+produces the 404.
+
+**Fix scope**: one-line — set `download_url = per_channel_url` in
+the scan path. Mirror rows (`local`, `local_per_channel`,
+`local_channel_pointer`) keep their current shapes for operator
+visibility into all three URLs. Existing scanned rows in the DB
+need a one-shot UPDATE to rewrite their `download_url` for any
+release where `download_url` points at root + no file is there.
+
+Operational workaround applied 2026-05-13 PM by firmware team:
+manually duplicated the current `.bin` at the canonical root so
+the live bench test could continue while the hub fix lands.
+
 ### B21. Desired-config blob per device + drift detection + push-on-restore — **NEW 2026-05-13**
 
 QA team flagged 2026-05-13 after the v0.5.7 restore-after-reflash
