@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-05-13
+
+### Changed — Pending-adoption responsiveness (firmware-team priority bump)
+
+Two small responsiveness wins ahead of the bigger v0.5.11 long-poll
+work for `/device/commands`:
+
+- `/api/v1/device/announce` now responds to pending devices with
+  `retry_after_seconds: 5` (was `30`). Operator clicks "Adopt", the
+  device sees the token within ~5s instead of up to 30s. Tunable
+  via the new `REBOOTER_ANNOUNCE_PENDING_RETRY_AFTER_SECONDS` env
+  (default 5). Other states (rejected/adopted/registered/
+  awaiting_register) unchanged.
+- `/app/pending-adoption` now auto-refreshes every 3 seconds via a
+  small JS interval. The refresh is suppressed when (a) the browser
+  tab is backgrounded, (b) an input/textarea/select is focused, or
+  (c) a `<dialog open>` is showing — so it never eats operator
+  keystrokes during typed-confirm prompts. No SSE/WebSocket; the
+  fleet-side request rate stays bounded by operator count, not
+  device count.
+
+Files: `app/config.py`, `app/services/announcements.py`,
+`templates/pending_adoption.html`.
+
 ## [0.5.9] - 2026-05-13
 
 ### Added — Multi-target `internet` watchdog probe

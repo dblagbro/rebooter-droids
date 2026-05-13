@@ -19,6 +19,7 @@ class Settings:
     log_level: str
     heartbeat_interval_seconds: int
     poll_interval_seconds: int
+    announce_pending_retry_after_seconds: int
     enrollment_token_ttl_seconds: int
     invitation_ttl_seconds: int
     password_reset_ttl_seconds: int
@@ -66,6 +67,15 @@ def load_settings() -> Settings:
         ),
         poll_interval_seconds=int(
             os.environ.get("REBOOTER_POLL_INTERVAL_SECONDS", "30")
+        ),
+        # v0.5.10: how long an unadopted device should wait before re-
+        # announcing while it sits on /pending-adoption. Pre-v0.5.10 this
+        # was hardcoded 30s, which made adoption feel sluggish — operator
+        # clicks "Adopt" and the device takes up to 30s to notice. 5s is
+        # the new default; raise via env if a large fleet's pending
+        # backlog floods the endpoint.
+        announce_pending_retry_after_seconds=int(
+            os.environ.get("REBOOTER_ANNOUNCE_PENDING_RETRY_AFTER_SECONDS", "5")
         ),
         enrollment_token_ttl_seconds=int(
             os.environ.get("REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS", "86400")

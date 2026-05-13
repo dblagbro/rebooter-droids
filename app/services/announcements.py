@@ -5,7 +5,7 @@ The contract:
   with `mac_address` + claims.
 - Hub upserts a `device_announcements` row keyed on MAC.
 - Response shape:
-    pending  → {"status":"pending","retry_after_seconds":30}
+    pending  → {"status":"pending","retry_after_seconds":5}
     adopted  → {"status":"adopted","enrollment_token":"et_…",
                "retry_after_seconds":0,
                "central_register_url":"…/api/v1/device/register"}
@@ -144,9 +144,13 @@ def upsert_announcement(
                 "message": "This device was rejected by the operator. Reset device or contact admin.",
             }
         if row.adopted_at is None:
+            # v0.5.10: 5s default (was 30s) — operator adoption is
+            # interactive and benefits from a tight loop. Tunable via
+            # REBOOTER_ANNOUNCE_PENDING_RETRY_AFTER_SECONDS.
+            pending_retry = load_settings().announce_pending_retry_after_seconds
             return {
                 "status": "pending",
-                "retry_after_seconds": 30,
+                "retry_after_seconds": pending_retry,
                 "message": "Awaiting operator adoption. Visit /app/pending-adoption.",
             }
         if row.adoption_token_secret:
