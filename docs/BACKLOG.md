@@ -565,6 +565,115 @@ Tracked together: `firmware.content_updated` should also surface
 on the unified `/app/history` feed (C1 — already shipped) so
 operators can audit "did anyone secretly swap a firmware on us?"
 
+### B20. MAC-based duplicate detection at adoption — restore-vs-fresh choice — **NEW 2026-05-12 PM**
+
+Firmware team flagged 2026-05-12 PM after a real production incident
+on 192.168.1.30 (MAC `C4:D8:D5:0C:F7:A5`): a reflashed device went
+through announce → adopt → register cleanly, but got a FRESH
+`device_id` (`dev_01KRH81ASVCMHZ7SXC72J0RHPH`, display_name
+"Rebooter") even though the same MAC was already registered as
+`dev_01KR8127W5XMP6MDF34J0TXQP9` ("Erica's Subwoofer"). Two
+device_ids, one physical box. Orphan audit history + group
+memberships + schedules + watchdog rules on the old row.
+
+Firmware team observations (their summary):
+1. ✅ Firmware sends MAC on both /announce and /register.
+2. 🟡 Hub's `pending-adoption` service upserts announcements by MAC,
+   but `adopt()` always mints a brand-new enrollment token, and
+   `/device/register` always creates a new Device row. No
+   replace-vs-fresh choice.
+3. 🟡 `/app/pending-adoption` UI shows display_name + Adopt/Reject;
+   no duplicate-MAC warning, no existing-device match card, no
+   restore/replace path.
+4. ✅ Firmware can support either outcome (replace OR restore) as
+   long as the hub makes the choice explicit.
+
+#### Fix scope (hub-side, ~3-4h)
+
+Schema:
+- Add `target_device_id` column to `enrollment_tokens` (varchar(40),
+  nullable, FK to `devices.id` ON DELETE SET NULL). When set, tells
+  `/device/register` to rebind the existing device row instead of
+  creating a new one.
+
+Service layer (`app/services/announcements.py` +
+`app/services/enrollment.py`):
+- `find_existing_devices_by_mac(mac)` → list[Device] (cheap query
+  against `devices.mac_address`)
+- `adopt(announcement_id, ..., mode='fresh'|'restore',
+        target_device_id=None)` — when mode='restore', mints
+  an enrollment token with `target_device_id` populated
+- `mint_enrollment_token(..., target_device_id=None)` — passes
+  through to the new column
+
+Device API (`app/blueprints/device_api.py::register`):
+- After validating the enrollment token, check if it has a
+  `target_device_id`. If yes:
+  - Look up that device row; verify MAC matches the registering
+    payload (defensive — should always be true if operator picked
+    restore correctly)
+  - Update existing row's `last_ip`, `firmware_version`,
+    `registration_state='active'`, `last_heartbeat_at=NULL` (will
+    populate on first heartbeat)
+  - Rotate `device_credentials.token_hash` to the new bearer
+  - Return the EXISTING `device_id` (not a fresh one)
+
+UI (`templates/pending_adoption.html` +
+`app/blueprints/admin/pending_adoption.py`):
+- For each announcement in the list, also compute and pass
+  `existing_devices_with_same_mac` (list of matching device rows)
+- Template renders: if matches exist, show a yellow "Duplicate
+  MAC detected" card with each existing device's
+  `display_name + id + last_heartbeat_at + firmware_version` and
+  TWO new action buttons per match:
+    - **Restore to this device** — calls `/app/pending-adoption/
+      <announcement_id>/restore/<existing_device_id>`
+    - **Decommission old + adopt fresh** — marks old row
+      `registration_state='decommissioned'`, then standard adopt
+- Existing **Adopt as new** stays available (with an inline
+  warning when duplicates exist)
+
+Audit events:
+- `device.restored_from_reflash` — on successful restore path
+- `device.adopted_with_mac_duplicate` — on fresh adoption while
+  same-MAC device row existed (operator chose "Adopt as new"
+  despite the duplicate warning)
+- `device.decommissioned_for_replacement` — when old row marked
+  decommissioned during "Decommission old + adopt fresh" flow
+
+Tests:
+- Restore preserves device_id + audit history + group memberships
+- Fresh-with-warning path increments device count + leaves old
+  row intact
+- API endpoint `/device/register` rejects mismatched MAC against
+  `target_device_id` (defensive)
+
+#### Cleanup for the CURRENT production dupe (.30 / `C4:D8:D5:0C:F7:A5`)
+
+Before B20 ships, the existing dupe needs operator-decision
+handling. Options:
+
+a) **Wait for B20 to ship, then run a one-shot reconciliation**:
+   update `dev_01KRH81ASVCMHZ7SXC72J0RHPH` rows to use the old
+   `dev_01KR8127W5XMP6MDF34J0TXQP9` id (rebind credentials,
+   delete the new row). Requires brief device downtime for token
+   re-issue.
+
+b) **Manual SQL merge now** (no B20 dependency): copy
+   `display_name + notes + central_management_enabled + site_id`
+   from old row to new row; rename new row to "Erica's
+   Subwoofer (reflashed 2026-05-12)"; mark old row
+   `registration_state='decommissioned'`. Audit history stays
+   split.
+
+c) **Leave as-is** for now and clean up when B20 ships.
+
+#### Sequencing
+
+B20 lands BEFORE the 4 bricked Erica's speakers get reflashed and
+re-adopted, otherwise we'll have 4 more dupes. Probably the next
+ship after the immediate refactor/B18 sprint.
+
 ---
 
 ## How to consume this list
