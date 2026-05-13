@@ -246,7 +246,9 @@ def count_pending_announcements() -> int:
 
 
 def adopt(announcement_id: str, *, by_user_id: str | None,
-          display_name: str | None = None) -> dict:
+          display_name: str | None = None,
+          mode: str = "fresh",
+          target_device_id: str | None = None) -> dict:
     """Operator action: mint a fresh enrolment token and stash it
     on the announcement row. Returns the serialized announcement
     (no secret). Idempotent — adopting an already-adopted row
@@ -254,7 +256,24 @@ def adopt(announcement_id: str, *, by_user_id: str | None,
 
     `display_name` overrides the claimed hint; defaults to the
     hint, or `device-<last 4 of MAC>` if nothing else.
+
+    v0.5.7 (B20): `mode` and `target_device_id` add the
+    restore-after-reflash flow.
+      - mode='fresh' (default): today's behaviour. Mints a token
+        that /device/register will use to create a brand-new
+        Device row.
+      - mode='restore': requires `target_device_id`. Mints a token
+        with `target_device_id` set; /device/register rebinds the
+        existing Device row's credentials instead of creating a
+        new one. Caller must have verified that the existing
+        device's MAC matches the announcement's MAC (the UI does
+        this; /device/register also checks defensively).
     """
+    if mode not in ("fresh", "restore"):
+        raise AnnouncementError("validation_failed", f"unknown adopt mode: {mode}")
+    if mode == "restore" and not target_device_id:
+        raise AnnouncementError("validation_failed", "restore mode requires target_device_id")
+
     settings = load_settings()
     now = datetime.now(timezone.utc)
     with session_scope() as session:
@@ -269,17 +288,45 @@ def adopt(announcement_id: str, *, by_user_id: str | None,
             # Idempotent — already adopted
             return serialize(row)
 
+        # Defensive MAC-match check for restore mode (UI should have
+        # filtered to matching devices already, but trust nothing).
+        if mode == "restore":
+            from app.models import Device
+            existing = session.get(Device, target_device_id)
+            if existing is None:
+                raise AnnouncementError(
+                    "not_found", f"target device {target_device_id} not found"
+                )
+            if existing.registration_state == "decommissioned":
+                raise AnnouncementError(
+                    "validation_failed",
+                    "target device is decommissioned; cannot restore",
+                )
+            ann_mac = (row.mac_address or "").strip().upper()
+            dev_mac = (existing.mac_address or "").strip().upper()
+            if ann_mac and dev_mac and ann_mac != dev_mac:
+                raise AnnouncementError(
+                    "validation_failed",
+                    "MAC mismatch between announcement and target device",
+                )
+
         hint = (
             display_name
             or row.claimed_display_name_hint
             or f"device-{row.mac_address[-5:].replace(':','')}"
         )
+        note = (
+            f"Adopted via /app/pending-adoption (announcement {row.id}, MAC {row.mac_address})"
+            if mode == "fresh"
+            else f"Restored to existing device {target_device_id} via /app/pending-adoption (announcement {row.id}, MAC {row.mac_address})"
+        )
         record, raw_secret = mint_enrollment_token(
             settings,
             issued_by_user_id=by_user_id,
             display_name_hint=hint,
-            note=f"Adopted via /app/pending-adoption (announcement {row.id}, MAC {row.mac_address})",
+            note=note,
             ttl_seconds=86400 * 7,  # 7-day TTL — plenty for the device's next poll
+            target_device_id=target_device_id if mode == "restore" else None,
         )
         row.adopted_at = now
         row.adopted_by_user_id = by_user_id

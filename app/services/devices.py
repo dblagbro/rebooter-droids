@@ -54,6 +54,37 @@ def _iso(dt) -> str | None:
 from app.services._versions import _version_sort_key, is_upgrade  # noqa: F401
 
 
+def find_by_mac(mac_address: str | None) -> list[dict]:
+    """v0.5.7 (B20): lookup existing devices by MAC. Used by
+    pending-adoption to surface "this hardware is already in the
+    fleet" matches so the operator can pick rebind vs fresh-adopt
+    explicitly. Normalised to uppercase + stripped. Excludes rows
+    in registration_state='decommissioned' (the dead-row marker
+    we use post-replacement).
+    """
+    if not mac_address:
+        return []
+    mac = mac_address.strip().upper()
+    if not mac:
+        return []
+    with session_scope() as session:
+        rows = list(session.scalars(
+            select(Device).where(
+                # Postgres case-insensitive compare via UPPER() works
+                # whether the existing rows are upper, lower, or mixed.
+                Device.mac_address.is_not(None),
+            )
+        ))
+        out = []
+        for d in rows:
+            if (d.mac_address or "").strip().upper() != mac:
+                continue
+            if d.registration_state == "decommissioned":
+                continue
+            out.append(serialize_device(d, include_secret_status=False))
+        return out
+
+
 def latest_stable_release_dict() -> dict | None:
     """v0.4.29: helper for the devices page to know what version
     a device "should" be on. Returns the **highest-version**
