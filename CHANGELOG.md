@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-05-13
+
+### Fixed — B22: scanned releases handed devices the wrong OTA URL
+
+Firmware-team caught 2026-05-13 PM after live UI-driven OTA test:
+device on 0.1.15 received a `/device/firmware` response pointing at
+the canonical root URL
+`/rebooter/firmware/rebooter-0.1.15-dev-central.bin` and got HTTP
+404, because the scanned `.bin` actually lives under the per-channel
+subdirectory at `/rebooter/firmware/stable/rebooter-0.1.15-dev-central.bin`.
+
+Root cause in `app/services/firmware.py::discover_on_disk_releases`:
+the scan loop only enumerates files under `firmware_dir/<channel>/`,
+but `download_url` was being set to `{base}/{filename}` (root path).
+The upload path got away with the same shape because it copies the
+artifact into both locations — the scan path does no such copy. The
+device reads `release.download_url` verbatim, so the field-level
+mismatch produced the 404.
+
+Fix:
+- `discover_on_disk_releases` now sets `download_url = per_channel_url`
+- Mirror-row emission for scanned releases drops the bogus root
+  `local` mirror row (would have claimed `status=live`+`verified_sha`
+  for a URL that doesn't serve anything). `local_per_channel` +
+  `local_channel_pointer` are still emitted as before.
+- One-shot data fix: existing `firmware_releases.download_url` rows
+  for scanned entries (16 rows pre-fix) rewritten via SQL UPDATE so
+  in-flight deployments resolve correctly; matching `local` mirror
+  rows deleted. Defensive backup at
+  `rebooter-droids-db-PRE-B22-fix-20260513T212822Z.sql.gz`.
+- Upload-path behaviour is unchanged — it still writes both
+  locations and keeps the `local` root URL as a live mirror.
+
+Tests: `tests/qa/test_v0511_scan_download_url.py` — exercises
+scan-then-HEAD against the live deployment + asserts mirror-row
+layout no longer claims a root-path `local` mirror for scanned
+entries.
+
+Backlog: B22 entry added in `docs/BACKLOG.md` (marked FIXED in
+v0.5.11). Long-poll `/device/commands` (previously planned as
+v0.5.11 per the firmware-team responsiveness ask) is bumped to
+v0.5.12 to make room for this hot-fix.
+
 ## [0.5.10] - 2026-05-13
 
 ### Changed — Pending-adoption responsiveness (firmware-team priority bump)
