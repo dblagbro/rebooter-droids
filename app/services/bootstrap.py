@@ -69,6 +69,9 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("watchdog_rules", "last_probed_at",  "TIMESTAMPTZ"),                       # v0.4.2
     ("watchdog_rules", "last_action_at",  "TIMESTAMPTZ"),                       # v0.4.2
     ("watchdog_rules", "last_outcome",    "VARCHAR(40)"),                       # v0.4.2
+    # v0.5.7 (B20): enrollment-token can target an existing device for
+    # restore-after-reflash; null = current "create fresh row" behavior.
+    ("enrollment_tokens", "target_device_id", "VARCHAR(40) REFERENCES devices(id) ON DELETE SET NULL"),
 )
 
 

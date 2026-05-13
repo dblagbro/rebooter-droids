@@ -22,6 +22,7 @@ def mint_enrollment_token(
     display_name_hint: str | None = None,
     note: str | None = None,
     ttl_seconds: int | None = None,
+    target_device_id: str | None = None,
 ) -> tuple[EnrollmentToken, str]:
     """v0.4.14 (BUG-043): caller-supplied `ttl_seconds` now honored.
 
@@ -58,6 +59,10 @@ def mint_enrollment_token(
         display_name_hint=display_name_hint,
         note=note,
         expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
+        # v0.5.7 (B20): when set, /device/register rebinds this
+        # device row instead of creating a new one (restore-after-
+        # reflash flow).
+        target_device_id=target_device_id,
     )
     with session_scope() as session:
         session.add(record)
@@ -201,28 +206,86 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
         is_qa = bool(registration_payload.get("qa_fixture")) or _looks_like_qa(
             resolved_name, et.display_name_hint, et.note
         )
-        device = Device(
-            display_name=resolved_name,
-            hardware_model=registration_payload.get("hardware_model"),
-            hardware_revision=registration_payload.get("hardware_revision"),
-            firmware_version=registration_payload.get("firmware_version"),
-            mac_address=registration_payload.get("mac_address"),
-            serial_number=registration_payload.get("serial_number"),
-            local_ip=registration_payload.get("local_ip"),
-            site_id=et.site_id,
-            registration_state="active",
-            capabilities=registration_payload.get("capabilities") or {},
-            is_qa_fixture=is_qa,
-        )
-        session.add(device)
-        session.flush()
 
+        # v0.5.7 (B20): restore-after-reflash branch.
+        # If the enrollment token was minted with target_device_id set,
+        # rebind the existing Device row instead of creating a new one.
+        # This preserves device_id + audit-history + group memberships
+        # + scheduled rules across a reflash.
         raw_secret = "dt_" + secrets.token_urlsafe(32)
-        credential = DeviceCredential(
-            device_id=device.id,
-            token_hash=_hash(raw_secret),
-        )
-        session.add(credential)
+        target_id = getattr(et, "target_device_id", None)
+        if target_id:
+            device = session.get(Device, target_id)
+            if device is None or device.registration_state == "decommissioned":
+                # Target was deleted or decommissioned after the
+                # enrollment-token was minted — this restore is no
+                # longer valid. Refuse rather than silently creating
+                # a fresh row.
+                raise EnrollmentError(
+                    "enrollment_invalid",
+                    "Restore target device no longer exists.",
+                )
+            incoming_mac = (registration_payload.get("mac_address") or "").strip().upper()
+            existing_mac = (device.mac_address or "").strip().upper()
+            if incoming_mac and existing_mac and incoming_mac != existing_mac:
+                # Defensive — should be impossible if the operator
+                # picked restore through the UI which always matches
+                # MAC. Belt-and-suspenders against a malicious or
+                # mis-issued token.
+                raise EnrollmentError(
+                    "device_mismatch",
+                    "MAC address does not match restore target.",
+                )
+
+            # Update the existing row in place. Preserve id +
+            # display_name + notes + site_id + group memberships
+            # (all left untouched). Update only the physical-state
+            # facts the freshly-flashed device sends.
+            device.firmware_version = registration_payload.get("firmware_version") or device.firmware_version
+            device.hardware_revision = registration_payload.get("hardware_revision") or device.hardware_revision
+            device.local_ip = registration_payload.get("local_ip") or device.local_ip
+            if incoming_mac and not existing_mac:
+                device.mac_address = registration_payload.get("mac_address")
+            device.registration_state = "active"
+            device.capabilities = registration_payload.get("capabilities") or device.capabilities or {}
+            device.last_heartbeat_at = None  # cleared; next heartbeat re-populates
+            device.updated_at = now
+            session.add(device)
+
+            # Rotate credential. Delete any existing then insert.
+            session.execute(
+                DeviceCredential.__table__.delete().where(
+                    DeviceCredential.device_id == device.id
+                )
+            )
+            credential = DeviceCredential(
+                device_id=device.id,
+                token_hash=_hash(raw_secret),
+            )
+            session.add(credential)
+        else:
+            # Fresh adoption (today's path, unchanged behaviour).
+            device = Device(
+                display_name=resolved_name,
+                hardware_model=registration_payload.get("hardware_model"),
+                hardware_revision=registration_payload.get("hardware_revision"),
+                firmware_version=registration_payload.get("firmware_version"),
+                mac_address=registration_payload.get("mac_address"),
+                serial_number=registration_payload.get("serial_number"),
+                local_ip=registration_payload.get("local_ip"),
+                site_id=et.site_id,
+                registration_state="active",
+                capabilities=registration_payload.get("capabilities") or {},
+                is_qa_fixture=is_qa,
+            )
+            session.add(device)
+            session.flush()
+
+            credential = DeviceCredential(
+                device_id=device.id,
+                token_hash=_hash(raw_secret),
+            )
+            session.add(credential)
 
         et.consumed_at = now
         et.consumed_by_device_id = device.id

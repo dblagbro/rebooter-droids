@@ -18,7 +18,20 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models import Base
 from app.models._helpers import new_id, ts_column
 
-REGISTRATION_STATES = ("pending", "active", "disabled", "revoked")
+REGISTRATION_STATES = (
+    "pending",
+    "active",
+    "disabled",
+    "revoked",
+    # v0.5.7 (B20): set by the "Decommission old + adopt fresh" flow
+    # on /app/pending-adoption when MAC dupe is intentional (operator
+    # replaces a physical device with a different one that happens to
+    # share a MAC, or wants to abandon an old logical device row in
+    # favour of the freshly-registered one). Decommissioned rows are
+    # hidden from find_by_mac dupe-detection so future re-flashes of
+    # the SAME physical box don't surface the abandoned row.
+    "decommissioned",
+)
 
 
 class Device(Base):
@@ -126,8 +139,19 @@ class EnrollmentToken(Base):
     expires_at: Mapped[datetime] = ts_column(default_now=False, nullable=False)
     created_at: Mapped[datetime] = ts_column()
 
+    # v0.5.7 (B20): when set, /device/register REBINDS this device row
+    # instead of creating a new one. Used for the
+    # restore-after-reflash flow on /app/pending-adoption when the
+    # incoming announcement's MAC matches an existing device row.
+    target_device_id: Mapped[str | None] = mapped_column(
+        String(40),
+        ForeignKey("devices.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
 
 Index("ix_enrollment_tokens_expires_at", EnrollmentToken.expires_at)
+Index("ix_enrollment_tokens_target_device", EnrollmentToken.target_device_id)
 
 
 class DeviceHeartbeat(Base):
