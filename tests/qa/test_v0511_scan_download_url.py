@@ -37,9 +37,10 @@ def test_scanned_stable_release_download_url_is_per_channel_and_serves(base_url,
     )
     assert scan.status_code == 200, scan.text
 
-    rows = shell_session.get(
+    body = shell_session.get(
         f"{base_url}/api/v1/admin/firmware/releases", timeout=10
     ).json()["data"]
+    rows = body["releases"] if isinstance(body, dict) else body
     stable = [r for r in rows if r.get("channel") == "stable"]
     assert stable, "no stable releases found"
 
@@ -71,9 +72,10 @@ def test_scanned_release_mirror_row_layout(base_url, shell_session):
     pointing at the root URL (the file isn't there). Only
     `local_per_channel` + `local_channel_pointer` are valid for scanned
     artifacts."""
-    rows = shell_session.get(
+    body = shell_session.get(
         f"{base_url}/api/v1/admin/firmware/releases", timeout=10
     ).json()["data"]
+    rows = body["releases"] if isinstance(body, dict) else body
     scanned = [
         r for r in rows
         if (r.get("release_notes") or "").startswith("discovered")
@@ -82,16 +84,9 @@ def test_scanned_release_mirror_row_layout(base_url, shell_session):
     if not scanned:
         pytest.skip("no scanned releases to verify mirror layout against")
 
+    # The list response carries mirrors inline on this hub version.
     rel = scanned[0]
-    detail = shell_session.get(
-        f"{base_url}/api/v1/admin/firmware/releases/{rel['id']}", timeout=10
-    )
-    if detail.status_code == 404:
-        # If there's no per-id endpoint, the list response already carries
-        # mirrors inline on some hub versions; just skip the strict
-        # assertion in that case.
-        pytest.skip("no per-id release endpoint available for mirror introspection")
-    mirrors = detail.json()["data"].get("mirrors") or []
+    mirrors = rel.get("mirrors") or []
     kinds = {m.get("kind") for m in mirrors}
     assert "local_per_channel" in kinds
     assert "local_channel_pointer" in kinds
