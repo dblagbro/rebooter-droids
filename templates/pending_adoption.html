@@ -3,8 +3,31 @@
 {% block content %}
 <div class="v3-page-header">
   <h1>Pending Adoption</h1>
-  <p class="v3-page-sub">Devices that have announced themselves to the hub but haven't been adopted yet. Click <strong>Adopt</strong> to mint and deliver an enrolment token; the device will register itself within ~30s of pickup.</p>
+  <p class="v3-page-sub">Devices that have announced themselves to the hub but haven't been adopted yet. Click <strong>Adopt</strong> to mint and deliver an enrolment token; the device will register itself within ~5s of pickup.</p>
 </div>
+{# v0.5.10: auto-refresh every 3s so the page reflects new
+   announcements without operator action. Paused when (a) the tab is
+   backgrounded, (b) any input/textarea is focused, or (c) a typed-
+   confirm prompt or modal-style dialog is mid-interaction — those
+   would otherwise eat operator keystrokes. #}
+<script>
+  (function () {
+    var INTERVAL_MS = 3000;
+    function shouldSkip() {
+      if (document.hidden) return true;
+      var ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return true;
+      // any open <dialog> or confirm prompt — avoid stomping
+      if (document.querySelector('dialog[open]')) return true;
+      return false;
+    }
+    setInterval(function () {
+      if (!shouldSkip()) {
+        window.location.reload();
+      }
+    }, INTERVAL_MS);
+  })();
+</script>
 
 {% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
 
