@@ -177,6 +177,41 @@ def create_rule(
         raise WatchdogValidationError(
             f"probe.kind must be one of {KNOWN_PROBE_KINDS}"
         )
+    # v0.5.9: when probe.kind=='internet' the rule may pin an explicit
+    # outbound-target list. Validate shape so a malformed entry can't
+    # get persisted and silently degrade the runtime to "no targets ⇒
+    # always failure" on the next tick.
+    if probe.get("kind") == "internet" and "targets" in probe:
+        targets = probe.get("targets")
+        if targets is not None:
+            if not isinstance(targets, list):
+                raise WatchdogValidationError(
+                    "probe.targets must be a list of {host, port} objects"
+                )
+            if len(targets) > 8:
+                raise WatchdogValidationError(
+                    "probe.targets accepts at most 8 entries"
+                )
+            for i, t in enumerate(targets):
+                if not isinstance(t, dict):
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}] must be an object with host + port"
+                    )
+                host = str(t.get("host") or "").strip()
+                if not host:
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}].host is required"
+                    )
+                try:
+                    port = int(t.get("port") or 0)
+                except (TypeError, ValueError):
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}].port must be an integer"
+                    )
+                if port < 1 or port > 65535:
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}].port must be between 1 and 65535"
+                    )
     if not isinstance(target, dict) or target.get("kind") not in (
         "device", "group", "tag"
     ):
@@ -303,7 +338,10 @@ def render_rule_sentence(
 def _probe_to_phrase(p: dict) -> str:
     k = p.get("kind", "?")
     if k == "internet":
-        return "outbound internet connectivity"
+        targets = p.get("targets") or []
+        if isinstance(targets, list) and targets:
+            return f"outbound internet connectivity ({len(targets)} target{'s' if len(targets) != 1 else ''})"
+        return "outbound internet connectivity (3 default targets)"
     if k == "ping":
         return f"ping to `{p.get('host','?')}`"
     if k == "tcp":

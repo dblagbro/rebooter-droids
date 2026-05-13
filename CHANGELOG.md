@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-05-13
+
+### Added — Multi-target `internet` watchdog probe
+
+Pre-v0.5.9 the `probe.kind=='internet'` watchdog probe was a
+single hardcoded `_probe_tcp("1.1.1.1", 53)` — a single upstream
+host issue could falsely look like an internet outage and fire a
+power-cycle. Firmware/product side asked for the same multi-target
+model the device-side internet watchdog already uses.
+
+The `internet` probe now walks a list of TCP targets. Defaults
+(applied when the rule does not pin its own list) are:
+
+- `1.1.1.1:53` (Cloudflare)
+- `8.8.8.8:53` (Google)
+- `4.2.2.2:53` (Level 3)
+
+Semantics: rule outcome is **success** if ANY configured target
+responds, **failure** only when ALL fail. Every target is probed
+every tick (not short-circuit) so the event log always reports
+the complete picture — operators can tell "one resolver blip"
+from "real outage" without opening the API.
+
+Event-log `details` payload now carries:
+
+```
+{
+  "targets_succeeded": [{"host": "1.1.1.1", "port": 53}, ...],
+  "targets_failed":    [{"host": "8.8.8.8", "port": 53, "error": "tcp_connect_failed"}, ...],
+  "targets_total":     3,
+  "used_default_targets": true   // only when defaults were substituted
+}
+```
+
+UI: when `probe_kind=='internet'`, the create form now shows a
+repeatable host/port row widget pre-filled with the three
+defaults, with `+ add target` / `remove` buttons (max 8). The
+recent-events log row inline-renders `<N>/<total> ok · failed: …`
+so the multi-target outcome is visible at a glance.
+
+Validation: `probe.targets` must be a list, length 1-8; each
+entry must be `{host: <non-empty str>, port: int 1-65535}`.
+Invalid shapes are rejected at create-time with a clear error.
+
+Backward-compatible: every existing internet rule auto-upgrades
+on the next tick — no migration, no operator action. The
+plain-English rule sentence now reads "outbound internet
+connectivity (3 default targets)" or "(N targets)" so the rule
+list communicates the new scope.
+
+Files: `app/services/watchdog_runtime.py`,
+`app/services/watchdog.py`, `app/blueprints/admin/rules.py`,
+`templates/rules/index.html`,
+`tests/qa/test_v0509_internet_multitarget.py`.
+
 ## [0.5.8] - 2026-05-13
 
 ### Added — Auto-push display_name on restore-after-reflash
