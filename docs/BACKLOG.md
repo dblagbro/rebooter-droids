@@ -565,6 +565,86 @@ Tracked together: `firmware.content_updated` should also surface
 on the unified `/app/history` feed (C1 — already shipped) so
 operators can audit "did anyone secretly swap a firmware on us?"
 
+### B21. Desired-config blob per device + drift detection + push-on-restore — **NEW 2026-05-13**
+
+QA team flagged 2026-05-13 after the v0.5.7 restore-after-reflash
+work: the hub restore preserves device identity (id + display_name
++ groups + schedules) but doesn't push the hub's intended config
+back DOWN to the device. Reflashed Erica's Subwoofer kept local
+`device_name="Rebooter"` even though hub-row display_name was
+"Erica's Subwoofer".
+
+v0.5.8 ships a short-term fix: on restore-success, auto-enqueue
+`apply_config {device_name: <display_name>}`. Solves the
+observed name drift; doesn't solve the broader "hub has no
+desired-config to push" gap.
+
+#### Scope (~6-8h)
+
+Schema (additive nullable, no migration risk):
+- `devices.desired_config` JSON — operator-set intended config
+  matching the locked v0.1 apply_config schema (`device_name`,
+  `relay_restore_behavior`, `monitor_interval_seconds`,
+  `boot_warmup_seconds`, `manual_button_enabled`, `internet`,
+  `device`, `notifications`)
+- `devices.desired_mode` VARCHAR(40) — intended mode (smart_plug
+  / internet_watchdog / device_watchdog)
+- `devices.last_reported_config` JSON — device's most recent
+  self-reported config; populated either by a new field on
+  heartbeat payload OR by parsing apply_config command-result
+  payloads (depends on firmware-team apply_config response shape)
+- `devices.desired_config_updated_at` TIMESTAMPTZ
+- `devices.last_config_pushed_at` TIMESTAMPTZ
+
+Service module `app/services/device_config.py`:
+- `get_desired_config(device_id)` → dict | None
+- `set_desired_config(device_id, payload, by_user_id)` → audited
+- `push_desired_config(device_id, *, source: 'restore'|'manual'|'drift_repair')`
+  enqueues `apply_config` + optional `set_mode` derived from the
+  desired_config; audit-logs
+- `compute_drift(device_id)` → dict listing fields that differ
+  between `desired_config` and `last_reported_config`
+
+UI on `/app/devices/<id>`:
+- New "Desired config" sub-card next to existing relay/status
+  controls
+- Per-field editors covering the locked apply_config schema
+- "Push to device now" button
+- Drift indicator badge ("3 fields out of sync") with details
+- Optional toggle: "Auto-push on heartbeat-detected drift"
+  (default OFF; for now only manual + restore-time auto-push)
+
+Auto-push triggers:
+- restore via `/pending-adoption/restore` (the v0.5.8 short-term
+  short-circuit gets replaced by this richer path)
+- operator clicking "Push to device now"
+- optional drift_repair (gated on per-device opt-in flag)
+
+Feature flag: `desired_config.enabled` runtime_setting, default
+false through v0.6.x, flips on at v1.0.0 after operator
+validation. Devices with no `desired_config` row behave identically
+to today.
+
+Tests (QA's Option C):
+- Each top-level section round-trips: hub edit → push → device
+  apply → device-reported config matches
+- restore-after-reflash pushes display_name + mode + watchdog
+  fields (the full desired blob, not just display_name)
+- decommission-and-adopt-fresh does NOT push prior settings
+  (clean slate by design)
+
+Dependencies:
+- Firmware-team has confirmed apply_config full-schema support;
+  need exact nested-schema for `internet`, `device`,
+  `notifications` (hub docs/API.md only names them as allowed
+  top-level keys — substance is firmware-side).
+- For drift detection: need either a richer heartbeat payload
+  (current state of each apply_config field) OR a documented
+  apply_config response-result shape we can parse.
+
+Slots between Tier C and Tier D in plan v2 (operator-facing UX
+work). Estimated v0.6.0 candidate.
+
 ### B20. MAC-based duplicate detection at adoption — restore-vs-fresh choice — **NEW 2026-05-12 PM**
 
 Firmware team flagged 2026-05-12 PM after a real production incident
