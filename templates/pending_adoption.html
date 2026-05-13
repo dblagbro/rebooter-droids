@@ -61,17 +61,86 @@
       </td>
       <td class="muted" style="font-size:.85rem">{{ a.source_ip or '-' }}</td>
       {% if can_edit %}
-      <td style="white-space:nowrap; min-width:240px">
+      <td style="white-space:nowrap; min-width:320px">
         {% if a.state == 'pending' %}
-          <form method="post" action="{{ url_for('admin_ui.pending_adoption_adopt_submit', announcement_id=a.id) }}" style="display:inline-flex; gap:.3rem; align-items:center">
-            <input type="text" name="display_name" placeholder="display name (optional)" value="{{ a.claimed_display_name_hint or '' }}" style="font-size:.85rem; max-width:140px">
-            <button type="submit" class="btn-secondary">Adopt</button>
-          </form>
-          <br>
-          <form method="post" action="{{ url_for('admin_ui.pending_adoption_reject_submit', announcement_id=a.id) }}" style="display:inline; margin-top:.3rem"
-                data-confirm-message="Reject this device? Future /announce calls from this MAC will get a 1-hour back-off.">
-            <button type="submit" class="btn-danger">Reject</button>
-          </form>
+          {# v0.5.7 (B20): if any existing devices share this MAC,
+             render the dupe-warning card with Restore as the visually
+             dominant default, and de-emphasise + double-confirm the
+             Adopt-Fresh-Anyway path. #}
+          {% if a.existing_devices %}
+            <div class="v3-card" style="border:2px solid var(--amber-fg, #d97706); padding:.5rem; margin-bottom:.4rem; background:rgba(217,119,6,0.05)">
+              <div style="font-size:.85rem; margin-bottom:.3rem">
+                ⚠ <strong>Duplicate MAC detected</strong> — this hardware
+                ({{ a.mac_address }}) is already in the fleet:
+              </div>
+              {% for ex in a.existing_devices %}
+              <div style="border-top:1px solid var(--border, #ddd); padding:.4rem 0; font-size:.85rem">
+                <div><strong>{{ ex.display_name or ex.id }}</strong>
+                  <code style="font-size:.7rem">{{ ex.id }}</code></div>
+                <div class="muted" style="font-size:.75rem">
+                  fw: <code>{{ ex.firmware_version or '?' }}</code>{% if ex.local_ip %} · prior IP: {{ ex.local_ip }}{% endif %}<br>
+                  {% if ex.last_heartbeat_at %}
+                    last heartbeat: {{ ex.last_heartbeat_at }}
+                  {% else %}
+                    <em>never heartbeated</em>
+                  {% endif %}
+                </div>
+                {# Operator ask: Restore is the dominant default when
+                   the prior row is stale/offline. Use btn-danger styling
+                   inverted — bold green-ish to draw the eye. #}
+                <form method="post"
+                      action="{{ url_for('admin_ui.pending_adoption_restore_submit', announcement_id=a.id, existing_device_id=ex.id) }}"
+                      style="display:inline; margin-top:.3rem"
+                      data-confirm-message="Restore reflashed unit to existing device {{ ex.display_name or ex.id }} ({{ ex.id }})? Device id, audit history, group memberships, and scheduled rules will be preserved.">
+                  <button type="submit" class="btn"
+                          style="background:var(--green-fg, #15803d); color:white; font-weight:600; padding:.4rem .8rem">
+                    ✓ Restore to this device
+                  </button>
+                </form>
+                <form method="post"
+                      action="{{ url_for('admin_ui.pending_adoption_decommission_and_adopt_submit', announcement_id=a.id, existing_device_id=ex.id) }}"
+                      style="display:inline; margin-left:.3rem"
+                      data-confirm-message="Decommission {{ ex.display_name or ex.id }} and adopt this as a brand-new device? The old row will be marked decommissioned (kept for audit) and a NEW device id will be issued."
+                      data-confirm-typed-name="decommission">
+                  <button type="submit" class="btn-secondary" style="font-size:.8rem">
+                    Decommission + adopt fresh
+                  </button>
+                </form>
+              </div>
+              {% endfor %}
+              <div style="border-top:1px solid var(--border, #ddd); padding-top:.4rem; margin-top:.3rem">
+                {# De-emphasised: small grey link-styled button + typed
+                   confirm. Operator can still pick "adopt fresh anyway"
+                   but has to mean it. #}
+                <form method="post"
+                      action="{{ url_for('admin_ui.pending_adoption_adopt_submit', announcement_id=a.id) }}"
+                      style="display:inline"
+                      data-confirm-message="Adopt as a brand-NEW device, leaving the existing duplicate-MAC row(s) ACTIVE? This will create a second logical device for the same physical hardware. Audit history will be split. Type 'duplicate' to confirm."
+                      data-confirm-typed-name="duplicate">
+                  <input type="hidden" name="display_name" value="{{ a.claimed_display_name_hint or '' }}">
+                  <button type="submit" class="btn-link"
+                          style="background:none; border:none; color:var(--text-muted, #666); text-decoration:underline; font-size:.75rem; padding:0; cursor:pointer">
+                    or adopt as new (anyway)
+                  </button>
+                </form>
+              </div>
+            </div>
+            <form method="post" action="{{ url_for('admin_ui.pending_adoption_reject_submit', announcement_id=a.id) }}" style="display:inline"
+                  data-confirm-message="Reject this device? Future /announce calls from this MAC will get a 1-hour back-off.">
+              <button type="submit" class="btn-danger" style="font-size:.8rem">Reject</button>
+            </form>
+          {% else %}
+            {# No MAC dupe — original UI unchanged. #}
+            <form method="post" action="{{ url_for('admin_ui.pending_adoption_adopt_submit', announcement_id=a.id) }}" style="display:inline-flex; gap:.3rem; align-items:center">
+              <input type="text" name="display_name" placeholder="display name (optional)" value="{{ a.claimed_display_name_hint or '' }}" style="font-size:.85rem; max-width:140px">
+              <button type="submit" class="btn-secondary">Adopt</button>
+            </form>
+            <br>
+            <form method="post" action="{{ url_for('admin_ui.pending_adoption_reject_submit', announcement_id=a.id) }}" style="display:inline; margin-top:.3rem"
+                  data-confirm-message="Reject this device? Future /announce calls from this MAC will get a 1-hour back-off.">
+              <button type="submit" class="btn-danger">Reject</button>
+            </form>
+          {% endif %}
         {% elif a.state in ('rejected', 'registered') %}
           <form method="post" action="{{ url_for('admin_ui.pending_adoption_delete_submit', announcement_id=a.id) }}" style="display:inline"
                 data-confirm-message="Delete this announcement record?">

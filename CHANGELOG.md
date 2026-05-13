@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-05-12
+
+### Added — B20: MAC-based duplicate detection at adoption + restore-vs-fresh choice
+
+Operator hit a duplicate-device bug 2026-05-12 PM when reflashing
+Erica's Subwoofer (.30): same physical hardware, two device_ids.
+Orphan audit history, group memberships, scheduled rules on the
+old row. Same problem will hit when the other 4 bricked speakers
+get reflashed.
+
+Schema:
+- `enrollment_tokens.target_device_id` — VARCHAR(40) NULL FK → devices(id)
+  ON DELETE SET NULL. When set, `/device/register` REBINDS the
+  existing device row instead of creating a new one. Idempotent
+  `ADD COLUMN IF NOT EXISTS` step in `bootstrap._ensure_columns`.
+
+New `registration_state`: `decommissioned` — set by the
+"Decommission + adopt fresh" flow on the dupe-MAC card. Hidden
+from `find_by_mac` so future reflashes don't surface abandoned
+rows.
+
+Service layer:
+- `app/services/devices.py::find_by_mac(mac)` — case-insensitive
+  MAC lookup, excludes decommissioned rows.
+- `app/services/enrollment.py::mint_enrollment_token(..., target_device_id=)` — pass-through to new column.
+- `app/services/enrollment.py::consume_enrollment_token` — branches
+  on `target_device_id`. Restore path: verifies MAC match
+  defensively, updates existing row in place (firmware_version,
+  local_ip, registration_state='active', last_heartbeat_at=NULL),
+  rotates `device_credentials`, returns EXISTING `device_id`.
+  Fresh path unchanged.
+- `app/services/announcements.py::adopt(..., mode=, target_device_id=)` —
+  new `mode='restore'` parameter; verifies target exists +
+  MAC-matches; mints enrollment token with `target_device_id` set.
+
+UI:
+- `/app/pending-adoption` page now passes `existing_devices` per
+  announcement via `find_by_mac`.
+- Template: when a MAC dupe exists, renders amber-bordered dupe-
+  warning card with each existing device's display_name + id +
+  firmware + prior IP + last-heartbeat-age. Three actions per
+  matched device:
+  - **✓ Restore to this device** — visually dominant green button.
+    Default for stale/offline prior rows.
+  - **Decommission + adopt fresh** — secondary; double-confirm
+    requires typing "decommission". Marks old row decommissioned
+    (preserved for audit), then standard fresh adopt.
+  - **or adopt as new (anyway)** — de-emphasised link-style;
+    double-confirm requires typing "duplicate". Creates a second
+    logical device for the same physical hardware. Should be rare.
+- No-dupe case: pending-adoption UI unchanged.
+
+New routes:
+- `POST /app/pending-adoption/<ann_id>/restore/<existing_device_id>`
+- `POST /app/pending-adoption/<ann_id>/decommission-and-adopt/<existing_device_id>`
+
+Audit events:
+- `device.restored_from_reflash` — restore path
+- `device.decommissioned_for_replacement` — decommission-and-adopt
+- `device.adopted_with_mac_duplicate` — fresh adopt when dupe existed
+
+Back-compat: fresh adoption when no dupe = identical behaviour to
+v0.5.6. All new code paths gated on operator-chosen action.
+
+### Why now
+
+The 4 bricked Erica's speakers (R.L., F.L., F.R., R.R is healthy,
+Subwoofer already partially-dupe'd) will all hit this exact flow
+when physically reflashed. Without B20 each one creates an orphan
+row and split audit history. With B20 the operator picks "Restore"
+on each one's pending-adoption card and identity is preserved
+across the reflash.
+
 ## [0.5.6] - 2026-05-12
 
 ### Added — LAN-bridge command types for remote fleet recovery
