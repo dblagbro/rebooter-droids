@@ -52,6 +52,18 @@ log = logging.getLogger(__name__)
 
 PROBE_TIMEOUT_SECONDS = 3
 
+# v0.5.9: default outbound targets for `probe.kind=='internet'` when the
+# rule does not pin its own `probe.targets` list. Mirror the device-side
+# internet watchdog mental model: three independent root resolvers, ANY
+# success = healthy, ALL fail = real internet outage. Keeps the rule
+# from firing on a single resolver blip.
+DEFAULT_INTERNET_TARGETS: tuple[dict, ...] = (
+    {"host": "1.1.1.1", "port": 53},
+    {"host": "8.8.8.8", "port": 53},
+    {"host": "4.2.2.2", "port": 53},
+)
+MAX_INTERNET_TARGETS = 8
+
 
 # ── public entry point ───────────────────────────────────────────────────
 
@@ -158,8 +170,8 @@ def _run_probe(rule: WatchdogRule) -> tuple[str, dict]:
     kind = probe.get("kind")
     try:
         if kind == "internet":
-            ok = _probe_tcp("1.1.1.1", 53)
-        elif kind == "ping":
+            return _probe_internet(probe)
+        if kind == "ping":
             # No raw ICMP from the container by default — fall back
             # to a TCP-port-80 probe to the host. If the operator
             # really wants ICMP they can set probe.kind='custom'
@@ -194,6 +206,63 @@ def _probe_tcp(host: str, port: int) -> bool:
             return True
     except OSError:
         return False
+
+
+def _probe_internet(probe: dict) -> tuple[str, dict]:
+    """v0.5.9: multi-target outbound connectivity probe.
+
+    Walks `probe.targets` (or DEFAULT_INTERNET_TARGETS when empty) and
+    short-circuits on the first success. The rule is healthy if ANY
+    target succeeds, and only fires `failure` when ALL fail — so a
+    single resolver blip can't trigger a false power-cycle. The details
+    payload always reports `targets_succeeded` and `targets_failed`
+    arrays so the operator can tell `full internet outage` from
+    `one resolver issue` in the event log.
+    """
+    raw_targets = probe.get("targets") or []
+    if not isinstance(raw_targets, list) or not raw_targets:
+        targets = [dict(t) for t in DEFAULT_INTERNET_TARGETS]
+        defaulted = True
+    else:
+        targets = raw_targets[:MAX_INTERNET_TARGETS]
+        defaulted = False
+
+    # Probe every target every tick (not short-circuit) so the event
+    # log always shows the complete picture — operator needs to tell
+    # "1.1.1.1 down, others healthy" from "full outage". Worst-case
+    # latency is targets × PROBE_TIMEOUT_SECONDS; with default 3 × 3s
+    # = 9s it still fits inside the 10s scheduler tick.
+    succeeded: list[dict] = []
+    failed: list[dict] = []
+    for t in targets:
+        if not isinstance(t, dict):
+            failed.append({"host": str(t), "port": None, "error": "bad target shape"})
+            continue
+        try:
+            host = str(t.get("host") or "").strip()
+            port = int(t.get("port") or 0)
+        except (TypeError, ValueError):
+            failed.append({"host": str(t.get("host") or ""), "port": t.get("port"),
+                           "error": "bad target shape"})
+            continue
+        if not host or port <= 0:
+            failed.append({"host": host, "port": port, "error": "bad target shape"})
+            continue
+        if _probe_tcp(host, port):
+            succeeded.append({"host": host, "port": port})
+        else:
+            failed.append({"host": host, "port": port, "error": "tcp_connect_failed"})
+
+    details = {
+        "targets_succeeded": succeeded,
+        "targets_failed": failed,
+        "targets_total": len(targets),
+    }
+    if defaulted:
+        details["used_default_targets"] = True
+    if succeeded:
+        return "success", details
+    return "failure", details
 
 
 def _probe_http(url: str, *, max_redirects: int = 3) -> bool:

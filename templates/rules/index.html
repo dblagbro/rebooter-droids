@@ -17,7 +17,7 @@
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
       <legend>Probe</legend>
       <label>What to check
-        <select name="probe_kind">
+        <select name="probe_kind" id="probe_kind">
           <option value="internet">internet — outbound connectivity</option>
           <option value="ping">ping — host or IP</option>
           <option value="tcp">tcp — host:port reachable</option>
@@ -26,10 +26,62 @@
           <option value="gateway">gateway — ping the device's LAN gateway</option>
         </select>
       </label>
-      <label>Probe target (host / url / hostname / host:port — leave blank for internet/gateway)
+
+      <div id="probe_internet_block">
+        <p class="muted" style="font-size:.85rem; margin:.4rem 0 .2rem">
+          Outbound TCP targets — rule passes if <strong>any</strong> target succeeds; fails only when <strong>all</strong> fail. Defaults to 1.1.1.1:53, 8.8.8.8:53, 4.2.2.2:53. Add or remove rows below.
+        </p>
+        <table id="internet_targets_table" style="width:100%; max-width:32rem">
+          <thead>
+            <tr><th style="text-align:left">host</th><th style="text-align:left; width:6rem">port</th><th style="width:5rem"></th></tr>
+          </thead>
+          <tbody>
+            <tr><td><input type="text" name="internet_target_host[]" value="1.1.1.1" placeholder="host or IP" style="width:100%"></td><td><input type="number" name="internet_target_port[]" value="53" min="1" max="65535" style="width:100%"></td><td><button type="button" class="btn-link" data-remove-row>remove</button></td></tr>
+            <tr><td><input type="text" name="internet_target_host[]" value="8.8.8.8" placeholder="host or IP" style="width:100%"></td><td><input type="number" name="internet_target_port[]" value="53" min="1" max="65535" style="width:100%"></td><td><button type="button" class="btn-link" data-remove-row>remove</button></td></tr>
+            <tr><td><input type="text" name="internet_target_host[]" value="4.2.2.2" placeholder="host or IP" style="width:100%"></td><td><input type="number" name="internet_target_port[]" value="53" min="1" max="65535" style="width:100%"></td><td><button type="button" class="btn-link" data-remove-row>remove</button></td></tr>
+          </tbody>
+        </table>
+        <button type="button" class="btn-secondary" id="internet_add_target" style="margin-top:.3rem">+ add target</button>
+      </div>
+
+      <label id="probe_arg_label">Probe target (host / url / hostname / host:port — leave blank for internet/gateway)
         <input type="text" name="probe_arg" placeholder="e.g. 192.168.1.1 or https://example.com">
       </label>
     </fieldset>
+    <script>
+      (function () {
+        const sel = document.getElementById('probe_kind');
+        const internetBlock = document.getElementById('probe_internet_block');
+        const probeArgLabel = document.getElementById('probe_arg_label');
+        const table = document.getElementById('internet_targets_table');
+        const addBtn = document.getElementById('internet_add_target');
+        function syncVisibility() {
+          const isInternet = sel.value === 'internet';
+          internetBlock.style.display = isInternet ? '' : 'none';
+          probeArgLabel.style.display = isInternet ? 'none' : '';
+        }
+        sel.addEventListener('change', syncVisibility);
+        syncVisibility();
+        addBtn.addEventListener('click', function () {
+          const tbody = table.querySelector('tbody');
+          if (tbody.children.length >= 8) { return; }
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td><input type="text" name="internet_target_host[]" placeholder="host or IP" style="width:100%"></td>' +
+            '<td><input type="number" name="internet_target_port[]" min="1" max="65535" style="width:100%" value="53"></td>' +
+            '<td><button type="button" class="btn-link" data-remove-row>remove</button></td>';
+          tbody.appendChild(tr);
+        });
+        table.addEventListener('click', function (e) {
+          if (e.target && e.target.matches('[data-remove-row]')) {
+            const tbody = table.querySelector('tbody');
+            if (tbody.children.length > 1) {
+              e.target.closest('tr').remove();
+            }
+          }
+        });
+      })();
+    </script>
 
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
       <legend>What to do when it fails</legend>
@@ -169,6 +221,18 @@
               <li style="margin:.2rem 0">
                 <code>{{ e.at }}</code> ·
                 <span class="badge {% if e.outcome in ('success','recovery') %}green{% elif e.outcome in ('action_fired','failure') %}red{% endif %}">{{ e.outcome }}</span>
+                {# v0.5.9: surface multi-target internet probe results so the operator can tell "one resolver blip" from "full outage" without opening the API. #}
+                {% set d = e.details or {} %}
+                {% if d.targets_total is defined %}
+                  <span class="muted" style="font-size:.78rem">
+                    · {{ d.targets_succeeded|length }}/{{ d.targets_total }} ok
+                    {% if d.targets_failed %}
+                      · failed:
+                      {% for f in d.targets_failed %}{{ f.host }}{% if f.port %}:{{ f.port }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% endif %}
+                    {% if d.used_default_targets %}· defaults{% endif %}
+                  </span>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>

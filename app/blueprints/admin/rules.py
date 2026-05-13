@@ -77,7 +77,25 @@ def rules_create_submit():
     # Build the probe JSON shape from the form's two-input pattern.
     probe: dict
     if probe_kind == "internet":
+        # v0.5.9: form posts repeated `internet_target_host[]` +
+        # `internet_target_port[]` pairs. Zip and filter to drop the
+        # empty placeholder row the UI keeps for "add another".
+        hosts = request.form.getlist("internet_target_host[]")
+        ports = request.form.getlist("internet_target_port[]")
+        targets: list[dict] = []
+        for h, p in zip(hosts, ports):
+            host = (h or "").strip()
+            port_s = (p or "").strip()
+            if not host and not port_s:
+                continue
+            try:
+                port_i = int(port_s) if port_s else 0
+            except ValueError:
+                port_i = 0
+            targets.append({"host": host, "port": port_i})
         probe = {"kind": "internet"}
+        if targets:
+            probe["targets"] = targets
     elif probe_kind == "ping":
         probe = {"kind": "ping", "host": probe_arg}
     elif probe_kind == "tcp":
