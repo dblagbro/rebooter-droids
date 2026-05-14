@@ -274,7 +274,7 @@ between notifications and webhooks).
   there's a clear UX need; polling at 10 s is enough for most
   views.
 
-### B18. Inline on/off toggle in the devices list — **NEW 2026-05-11** (regression of redesign plan)
+### B18. Inline on/off toggle in the devices list — **FIXED in v0.5.14** (filed 2026-05-11)
 
 Operator-flagged 2026-05-11 AM: the devices list at `/app/devices`
 has no inline power control. Operator has to drill into the device
