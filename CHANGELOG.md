@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.25] - 2026-05-14
+
+### Fixed — Phase 2A contract normalization for integration probe kinds
+
+The firmware-team alignment review on 2026-05-14 (post-merge) flagged
+a "live product inconsistency": the four external-source probe kinds
+shipped with v0.5.17 (Roku) + v0.5.23 (HA / weather / iCal) are
+runtime-supported in `watchdog_runtime/_probes.py::run_probe`, but the
+model `KNOWN_PROBE_KINDS` validation gate still rejected them.
+
+Concrete consequence pre-v0.5.25: **operators could not create rules
+using any of the four new probe kinds — not via the API, not via the
+JSON editor at /app/rules.** `create_rule()` and `update_rule()` both
+gate on `KNOWN_PROBE_KINDS`, so the only way to get such a rule into
+the DB was direct SQL. The v0.5.17 and v0.5.23 features were
+runtime-complete but operator-inaccessible.
+
+Fix:
+
+- `app/models/watchdog.py` — added four canonical constants
+  (`PROBE_KIND_ROKU_APP_ACTIVE`, `PROBE_KIND_HA_STATE_IS`,
+  `PROBE_KIND_WEATHER_ALERT_ACTIVE`, `PROBE_KIND_ICAL_EVENT_ACTIVE`)
+  and extended `KNOWN_PROBE_KINDS` to include all four. Inline
+  docstring documents the Phase 2A → 2B → 2C plan.
+- `app/services/watchdog.py::_probe_to_phrase()` — extended with
+  per-kind plain-English rendering so the rules list sentence no
+  longer falls through to `"unknown probe '<kind>'"` for the
+  integration probes. Rendering examples:
+  - `roku_app_active` → `Roku source \`ext_…\` showing app matching \`Spectrum TV\``
+  - `ha_state_is` → `Home Assistant source \`ext_…\` entity \`sensor.…\` in state \`on\``
+  - `weather_alert_active` → `weather source \`ext_…\` has alerts matching (event contains \`Storm\`, severity ≥ \`Severe\`)` (or `(any active)` when no filters)
+  - `ical_event_active` → `calendar source \`ext_…\` has event matching \`Jeopardy\` currently airing`
+
+Until **Phase 2B** ships (planned v0.5.28) the rules-create form's
+probe-kind `<select>` still doesn't list the new kinds. Operators
+use the **JSON editor** at `/app/rules` (advanced editor, already
+shipped v0.4.9) as the escape hatch. Phase 2C (v0.5.29) adds richer
+per-probe event-detail rendering + integration-source health cues.
+
+### Tests
+
+- `tests/qa/test_v0525_integration_probe_kinds_canonical.py` —
+  parametrized live test that creates a rule with each of the four
+  integration kinds via the API, asserts `201 Created`, checks the
+  plain-English sentence doesn't render as `"unknown probe"`, and
+  cleans up the rule. Guards the contract.
+
 ## [0.5.24] - 2026-05-14
 
 ### Merge — parallel firmware-team session lands

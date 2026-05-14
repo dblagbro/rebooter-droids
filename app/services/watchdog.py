@@ -481,6 +481,35 @@ def _probe_to_phrase(p: dict) -> str:
         return "ping to the device's LAN gateway"
     if k == "custom":
         return f"custom probe `{p.get('name','?')}`"
+    # v0.5.25 (Phase 2A): external-source probes — render with the
+    # source-id and the per-kind match field so the rules-list plain-
+    # English sentence is informative even before Phase 2B's form
+    # fields ship.
+    if k == "roku_app_active":
+        return f"Roku source `{p.get('source_id','?')}` showing app matching `{p.get('app_name','?')}`"
+    if k == "ha_state_is":
+        return (
+            f"Home Assistant source `{p.get('source_id','?')}` entity "
+            f"`{p.get('entity_id','?')}` in state `{p.get('expected_state','?')}`"
+        )
+    if k == "weather_alert_active":
+        ev = p.get("event_contains")
+        sev = p.get("min_severity")
+        bits: list[str] = []
+        if ev:
+            bits.append(f"event contains `{ev}`")
+        if sev:
+            bits.append(f"severity ≥ `{sev}`")
+        suffix = f" matching ({', '.join(bits)})" if bits else " (any active)"
+        return f"weather source `{p.get('source_id','?')}` has alerts{suffix}"
+    if k == "ical_event_active":
+        summary = p.get("summary_contains")
+        if summary:
+            return (
+                f"calendar source `{p.get('source_id','?')}` has event "
+                f"matching `{summary}` currently airing"
+            )
+        return f"calendar source `{p.get('source_id','?')}` has any event currently airing"
     return f"unknown probe '{k}'"
 
 

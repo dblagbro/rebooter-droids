@@ -32,6 +32,15 @@ from app.models._helpers import new_id, ts_column
 # Documented probe kinds. The advanced editor (P4 iteration 2)
 # accepts JSON with these `kind` values; the plain-English builder
 # is shaped around them.
+#
+# v0.5.25 (Phase 2A): the four external-source probe kinds shipped
+# with v0.5.17 (Roku) + v0.5.23 (HA / weather / iCal) are now
+# canonical — they were already runtime-supported in
+# `watchdog_runtime/_probes.py::run_probe` but the model validation
+# gate rejected them, which made it impossible to create such a rule
+# via the API or the JSON editor. Form-builder fields for these
+# kinds are still Phase 2B (v0.5.28); the JSON editor at
+# `/app/rules` is the escape hatch until then.
 PROBE_KIND_INTERNET = "internet"
 PROBE_KIND_PING = "ping"
 PROBE_KIND_TCP = "tcp"
@@ -39,6 +48,11 @@ PROBE_KIND_HTTP = "http"
 PROBE_KIND_DNS = "dns"
 PROBE_KIND_GATEWAY = "gateway"
 PROBE_KIND_CUSTOM = "custom"
+# External-source probe kinds (B17 — see `services/external_sensors.py`).
+PROBE_KIND_ROKU_APP_ACTIVE = "roku_app_active"
+PROBE_KIND_HA_STATE_IS = "ha_state_is"
+PROBE_KIND_WEATHER_ALERT_ACTIVE = "weather_alert_active"
+PROBE_KIND_ICAL_EVENT_ACTIVE = "ical_event_active"
 
 KNOWN_PROBE_KINDS = (
     PROBE_KIND_INTERNET,
@@ -48,6 +62,10 @@ KNOWN_PROBE_KINDS = (
     PROBE_KIND_DNS,
     PROBE_KIND_GATEWAY,
     PROBE_KIND_CUSTOM,
+    PROBE_KIND_ROKU_APP_ACTIVE,
+    PROBE_KIND_HA_STATE_IS,
+    PROBE_KIND_WEATHER_ALERT_ACTIVE,
+    PROBE_KIND_ICAL_EVENT_ACTIVE,
 )
 
 # Rule status enum — mirrors webui-redesign-plan.md §7.1.
