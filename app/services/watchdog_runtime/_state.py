@@ -1,6 +1,6 @@
 """Scheduling + event-log + state-machine helpers for the watchdog.
 
-`_record_event` and `_rule_is_due` are imported elsewhere
+`record_event` and `_rule_is_due` are imported elsewhere
 (`services/watchdog.py` uses both for the probe-now diagnostic) — they
 remain accessible at the package root via `__init__.py` re-export.
 
@@ -47,7 +47,7 @@ def _in_maintenance_window(rule: WatchdogRule, now: datetime) -> bool:
     return False
 
 
-def _record_event(
+def record_event(
     session, rule: WatchdogRule, outcome: str, details: dict, at: datetime
 ) -> None:
     session.add(
@@ -77,7 +77,7 @@ def _update_state_and_maybe_fire(
                 rule.failure_streak = 0
                 rule.recovery_streak = 0
                 rule.status = RULE_STATUS_ARMED
-                _record_event(
+                record_event(
                     session, rule, "recovery",
                     {"reason": "recovery_threshold reached"}, now,
                 )
@@ -97,7 +97,7 @@ def _update_state_and_maybe_fire(
     # Cooldown gate.
     if rule.last_action_at is not None:
         if (now - rule.last_action_at) < timedelta(seconds=rule.cooldown_seconds):
-            _record_event(
+            record_event(
                 session, rule, "cooldown_skip",
                 {"failure_streak": rule.failure_streak}, now,
             )
@@ -112,5 +112,12 @@ def _update_state_and_maybe_fire(
     fired_details = _fire_action(rule)
     rule.status = RULE_STATUS_FIRING
     rule.last_action_at = now
-    _record_event(session, rule, "action_fired", fired_details, now)
+    record_event(session, rule, "action_fired", fired_details, now)
     return True
+
+
+# v0.5.18 (#3 naming cleanup): the public name is `record_event`. The
+# underscore alias is kept for one release for back-compat with
+# `from app.services.watchdog_runtime import _record_event` callers.
+# Remove after v0.6.x.
+_record_event = record_event

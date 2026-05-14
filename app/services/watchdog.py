@@ -128,19 +128,19 @@ def probe_now(rule_id: str) -> dict | None:
     """v0.4.2: synchronously run a single probe for the rule, log it,
     and return the resulting event (does NOT advance state machine
     or fire actions — operator-facing diagnostic only)."""
-    from app.services.watchdog_runtime import _run_probe, _record_event
+    from app.services.watchdog_runtime import record_event, run_probe
 
     with session_scope() as session:
         rule = session.get(WatchdogRule, rule_id)
         if rule is None:
             return None
         try:
-            outcome, details = _run_probe(rule)
+            outcome, details = run_probe(rule)
         except Exception as e:
             outcome, details = "probe_error", {"error": str(e)}
         details = {**(details or {}), "via": "probe_now"}
         now = datetime.now(timezone.utc)
-        _record_event(session, rule, outcome, details, now)
+        record_event(session, rule, outcome, details, now)
         session.flush()
         return {"outcome": outcome, "details": details, "at": _iso(now)}
 

@@ -18,21 +18,21 @@ exception is recorded as `outcome = 'probe_error'` and the rule keeps
 marching. Operator-stop via `REBOOTER_WATCHDOG_DISABLED=1`.
 
 This package was split out of the original `watchdog_runtime.py`
-single file in v0.5.15:
+single file in v0.5.15. Internal layout:
 
-- `_probes.py`  — probe implementations (`_run_probe` dispatcher +
-  `_probe_internet/_probe_ping/_probe_tcp/_probe_http/_probe_dns`)
-- `_state.py`   — scheduling, event log, state machine
-  (`_rule_is_due`, `_in_maintenance_window`, `_record_event`,
+- `_probes.py`  — probe implementations (`run_probe` dispatcher +
+  `_probe_internet`, `_probe_ping`, `_probe_tcp`, `_probe_http`,
+  `_probe_dns`, `_probe_roku_app_active`)
+- `_state.py`   — scheduling, event log, state machine (`_rule_is_due`,
+  `_in_maintenance_window`, `record_event`,
   `_update_state_and_maybe_fire`)
-- `_actions.py` — action dispatch + target resolution
-  (`_fire_action`, `_fire_cycle`, `_fire_hold_off`,
-  `_resolve_target_devices`)
+- `_actions.py` — action dispatch + target resolution (`_fire_action`,
+  `_fire_cycle`, `_fire_hold_off`, `resolve_target_devices`)
 
-External callers (`services/watchdog.py`, `services/schedule_runtime.py`,
-`jobs/scheduler.py`) import from `app.services.watchdog_runtime`
-directly — every public + cross-module-private symbol is re-exported
-below.
+v0.5.18 (#3 naming cleanup): the cross-module helpers shed their
+underscore prefix. The new public names are `run_probe`,
+`record_event`, `resolve_target_devices`. Old `_underscore` names are
+kept as aliases for one release for callers mid-rollout.
 """
 
 from __future__ import annotations
@@ -49,7 +49,8 @@ from app.services.watchdog_runtime._actions import (
     _fire_action,
     _fire_cycle,
     _fire_hold_off,
-    _resolve_target_devices,
+    _resolve_target_devices,  # deprecated alias, kept for one release
+    resolve_target_devices,
 )
 from app.services.watchdog_runtime._probes import (
     DEFAULT_INTERNET_TARGETS,
@@ -60,13 +61,15 @@ from app.services.watchdog_runtime._probes import (
     _probe_internet,
     _probe_ping,
     _probe_tcp,
-    _run_probe,
+    _run_probe,  # deprecated alias, kept for one release
+    run_probe,
 )
 from app.services.watchdog_runtime._state import (
     _in_maintenance_window,
-    _record_event,
+    _record_event,  # deprecated alias, kept for one release
     _rule_is_due,
     _update_state_and_maybe_fire,
+    record_event,
 )
 
 log = logging.getLogger(__name__)
@@ -107,7 +110,7 @@ def tick() -> dict:
             # as a `maintenance_skip` event so the operator sees the
             # rule was suppressed (not silently dropped).
             if _in_maintenance_window(rule, now):
-                _record_event(
+                record_event(
                     session, rule, "maintenance_skip",
                     {"reason": "rule maintenance window"},
                     now,
@@ -118,13 +121,13 @@ def tick() -> dict:
                 continue
 
             try:
-                outcome, details = _run_probe(rule)
+                outcome, details = run_probe(rule)
                 stats["probed"] += 1
             except Exception as e:
                 outcome, details = "probe_error", {"error": str(e)}
                 stats["errors"] += 1
 
-            _record_event(session, rule, outcome, details, now)
+            record_event(session, rule, outcome, details, now)
             fired = _update_state_and_maybe_fire(session, rule, outcome, details, now)
             if fired:
                 stats["fired"] += 1
@@ -141,21 +144,24 @@ __all__ = [
     "PROBE_TIMEOUT_SECONDS",
     "DEFAULT_INTERNET_TARGETS",
     "MAX_INTERNET_TARGETS",
-    # Probes (used by services/watchdog.py for probe-now diagnostic)
+    # Probes — public names + back-compat underscore aliases (deprecated)
+    "run_probe",
     "_run_probe",
     "_probe_internet",
     "_probe_ping",
     "_probe_tcp",
     "_probe_http",
     "_probe_dns",
-    # State machine (used by services/watchdog.py)
+    # State machine
+    "record_event",
+    "_record_event",
     "_rule_is_due",
     "_in_maintenance_window",
-    "_record_event",
     "_update_state_and_maybe_fire",
-    # Actions (used by services/schedule_runtime.py for shared device-resolution)
+    # Actions
+    "resolve_target_devices",
+    "_resolve_target_devices",
     "_fire_action",
     "_fire_cycle",
     "_fire_hold_off",
-    "_resolve_target_devices",
 ]
