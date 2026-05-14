@@ -9,6 +9,42 @@
   </p>
 </div>
 
+{# v0.5.30: cost-rate setter + CSV export. Self-contained on this
+   page so the operator workflow (look at watts → set $/kWh → see
+   cost) stays one place. #}
+<div class="v3-card" style="margin-top:.5rem; display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end">
+  <form method="post" action="{{ url_for('admin_ui.fleet_power_rate_submit') }}" class="actions" style="margin:0; flex-wrap:wrap; align-items:flex-end">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Rate per kWh</span>
+      <input type="text" name="rate_per_kwh" placeholder="e.g. 0.15"
+             value="{{ summary.rate_per_kwh if summary.rate_per_kwh is not none else '' }}"
+             style="max-width:8rem">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Currency</span>
+      <input type="text" name="currency" maxlength="8"
+             value="{{ summary.currency or 'USD' }}"
+             style="max-width:5rem">
+    </label>
+    <button type="submit" class="btn-secondary" style="font-size:.85rem">
+      {% if summary.rate_per_kwh is not none %}Update rate{% else %}Set rate{% endif %}
+    </button>
+    {% if summary.rate_per_kwh is not none %}
+      <button type="submit" class="btn-link" formaction="{{ url_for('admin_ui.fleet_power_rate_submit') }}"
+              formnovalidate
+              onclick="document.querySelector('input[name=rate_per_kwh]').value='';"
+              style="font-size:.8rem; padding:0; background:none; border:none; color:var(--muted,#888); text-decoration:underline; cursor:pointer">
+        clear
+      </button>
+    {% endif %}
+  </form>
+  <div style="flex:1; min-width:200px"></div>
+  <a class="btn-secondary" href="{{ url_for('admin_ui.fleet_power_export_csv') }}?window={{ window_key }}"
+     style="font-size:.85rem">
+    Export CSV ({{ window_key }})
+  </a>
+</div>
+
 {# ── window selector ─────────────────────────────────────────────── #}
 <nav class="v3-chips" aria-label="Window">
   {% for key, _seconds in window_presets %}
@@ -43,6 +79,18 @@
         <span class="muted">—</span>
       {% endif %}
     </div>
+    {% if summary.fleet_kwh is not none %}
+      <div>
+        <div class="muted" style="font-size:.75rem">Fleet kWh ({{ window_key }})</div>
+        <strong style="font-size:1.6rem">{{ '%.2f'|format(summary.fleet_kwh) }}</strong> <span class="muted">kWh</span>
+      </div>
+    {% endif %}
+    {% if summary.fleet_cost is not none %}
+      <div>
+        <div class="muted" style="font-size:.75rem">Fleet cost ({{ window_key }})</div>
+        <strong style="font-size:1.6rem">{{ '%.2f'|format(summary.fleet_cost) }}</strong> <span class="muted">{{ summary.currency }}</span>
+      </div>
+    {% endif %}
     <div style="font-size:.75rem; color:var(--muted, #888); align-self:flex-end">
       Window from <code>{{ summary.window_started_at }}</code> to <code>{{ summary.now }}</code>
     </div>
@@ -116,6 +164,8 @@
         <th style="text-align:right">Avg W</th>
         <th style="text-align:right">Min W</th>
         <th style="text-align:right">Max W</th>
+        <th style="text-align:right">kWh ({{ window_key }})</th>
+        {% if summary.rate_per_kwh is not none %}<th style="text-align:right">Cost ({{ window_key }})</th>{% endif %}
         <th style="text-align:right">Samples</th>
         <th>First / last sample</th>
       </tr>
@@ -147,6 +197,14 @@
         <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--muted,#888)">
           {% if d.max_w is not none %}{{ '%.1f'|format(d.max_w) }}{% else %}—{% endif %}
         </td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums">
+          {% if d.kwh_window is not none %}{{ '%.2f'|format(d.kwh_window) }}{% else %}—{% endif %}
+        </td>
+        {% if summary.rate_per_kwh is not none %}
+        <td style="text-align:right; font-variant-numeric:tabular-nums">
+          {% if d.cost_window is not none %}{{ '%.2f'|format(d.cost_window) }}{% else %}—{% endif %}
+        </td>
+        {% endif %}
         <td style="text-align:right; font-variant-numeric:tabular-nums">{{ d.sample_count }}</td>
         <td class="muted" style="font-size:.75rem">
           {{ d.first_sample_at }}<br>{{ d.last_sample_at }}

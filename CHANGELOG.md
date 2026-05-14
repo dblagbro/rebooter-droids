@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.30] - 2026-05-14
+
+### Added — B16 cost calc + CSV export, Phase 2C polish, Phase 2B edit reference
+
+Polish bundle wrapping the operator-visible loose ends from the prior
+ships in this push (v0.5.25 → v0.5.29).
+
+#### B16 Phase 1C remainder — cost calc + CSV export
+
+- New runtime settings:
+  - `power.rate_per_kwh` (numeric; 0–10) — operator's electricity
+    rate. Unset → cost rendering hides cleanly.
+  - `power.currency` (default `USD`) — currency label rendered next
+    to costs. Up to 8 chars.
+- New service helper `services.device_power.cost_rate_per_kwh()`
+  returns `(rate, currency)` — `None` rate when unset.
+- `fleet_summary()` now computes per-device + fleet-level `kwh_window`
+  and `cost_window` for the chosen window. kWh comes from
+  `device_power_rollups.kwh` (preferred — direct from the nightly
+  job) plus an `avg_w × window_hours / 1000` approximation when no
+  rollup yet (typical state today since firmware-side sampling not
+  shipped). Cost = `kWh × rate`.
+- New endpoints:
+  - `POST /app/power/rate` — operator-set rate; clears the override
+    when submitted blank.
+  - `GET /app/power/export.csv?window=24h|7d|30d` — per-device
+    aggregates as CSV. Audit-logged as `power.csv_exported`.
+- `/app/power` UI:
+  - Rate-setting form inline at the top of the page.
+  - "Export CSV" button (window-scoped).
+  - Two new headline cards: **Fleet kWh** + **Fleet cost** (only
+    when data exists).
+  - Per-device table gains a `kWh (<window>)` column always, and
+    a `Cost (<window>)` column when a rate is set.
+
+Audit events: `power.rate_per_kwh_set`, `power.rate_per_kwh_cleared`,
+`power.csv_exported`.
+
+#### Phase 2C — per-probe event-detail polish for integration probes
+
+The rules-list event log already rendered details for `ping`,
+`internet`, `roku_app_active`, `cooldown_skip`, `action_fired`,
+and generic `reason` payloads. v0.5.30 fills in the three remaining
+integration probe shapes:
+
+- **`ha_state_is`** — `· entity=… · expected=… · actual=… · changed <ts>`
+- **`weather_alert_active`** — `· N/M alerts match · filter "X" · min Severe · <event[severity]>, …`
+  (renders top 3 matched alerts; "+N more" for the rest)
+- **`ical_event_active`** — `· N/M airing · filter "X" · "summary1", "summary2"`
+  (renders top 2 active events; "+N more" for the rest)
+
+Operators no longer have to expand a probe row's raw details JSON
+to see what the rule actually saw.
+
+#### Phase 2C — integration-source health on `/app/settings/integrations`
+
+- Health column now also renders the truncated `last_error` inline
+  in red below the status chip (was previously only available as a
+  tooltip).
+- Latest-sample column is now per-kind aware:
+  - **roku** → `<active_app>` + screensaver chip (unchanged).
+  - **home_assistant** → `<N entities> cached`.
+  - **weather** → `<N alerts>` badge with the top 2 events listed;
+    "no active alerts" when 0.
+  - **ical** → `<N events> in window` with the next event's summary.
+- Single source-of-truth: the per-kind rendering matches what the
+  matching watchdog probe reads, so operators see the same data the
+  rule engine sees.
+
+#### Phase 2B edit-flow back-port — probe-shape reference card (intermediate)
+
+Full structured per-kind form on `templates/rules/edit.html` is
+deferred to a future ship — it's a non-trivial Jinja extraction.
+v0.5.30 ships a meaningful intermediate: a "Probe shape reference"
+card on the edit page with copy-pasteable JSON snippets for the four
+integration probe kinds (roku_app_active / ha_state_is /
+weather_alert_active / ical_event_active). Each `<details>` opens to
+the canonical probe shape + an optional-field note. Operators editing
+an integration rule no longer need to leave the page to look up
+field names.
+
+### Out of scope (still queued)
+
+- Threshold alerting (power-targeted watchdog rule probe kinds —
+  Phase 1D).
+- Full structured per-kind probe form on `templates/rules/edit.html`
+  (Phase 2B finish-line — would require extracting the create-form
+  blocks into a shared Jinja macro/include with value pre-population).
+- Phase 3 — heartbeat-contract expansion (`central_state`,
+  `recovery_mode`, etc.) — firmware-team-coord-gated.
+
 ## [0.5.29] - 2026-05-14
 
 ### Added — B16 Phase 1C: daily rollups + per-device sparkline + fleet timeseries chart

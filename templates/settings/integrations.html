@@ -41,6 +41,9 @@
         <td><code>{{ s.host }}:{{ s.port }}</code></td>
         <td>{{ s.poll_interval_seconds }}s</td>
         <td>
+          {# v0.5.30 (Phase 2C): explicit health chip — ok / stale /
+             error / never. Sample-age chip is the operator's clearest
+             signal that the poller is producing fresh data. #}
           {% if s.enabled %}
             {% if s.last_error %}
               <span class="badge red" title="{{ s.last_error }}">error</span>
@@ -55,13 +58,42 @@
           {% if s.last_polled_at %}
             <div class="muted" style="font-size:.75rem">last polled: {{ s.last_polled_at }}</div>
           {% endif %}
+          {% if s.last_error %}
+            <div class="muted" style="font-size:.75rem; color:rgba(220,40,40,.85); max-width:18rem" title="{{ s.last_error }}">
+              {{ s.last_error|truncate(80, true, '…') }}
+            </div>
+          {% endif %}
         </td>
         <td>
           {% if s.latest_sample %}
+            {# v0.5.30 (Phase 2C): per-kind sample summary so operators
+               see the same fields the rule engine reads. #}
+            {% set pl = s.latest_sample.payload %}
             <div style="font-size:.85rem">
-              <strong>{{ s.latest_sample.payload.active_app or '—' }}</strong>
-              {% if s.latest_sample.payload.screensaver_active %}
-                <span class="badge" title="device is on the screensaver">screensaver</span>
+              {% if s.kind == 'roku' %}
+                <strong>{{ pl.active_app or '—' }}</strong>
+                {% if pl.screensaver_active %}
+                  <span class="badge" title="device is on the screensaver">screensaver</span>
+                {% endif %}
+              {% elif s.kind == 'home_assistant' %}
+                <strong>{{ pl.entity_count or 0 }} entit{{ 'y' if pl.entity_count == 1 else 'ies' }}</strong> cached
+              {% elif s.kind == 'weather' %}
+                {% if pl.alert_count is defined and pl.alert_count > 0 %}
+                  <strong class="badge amber">{{ pl.alert_count }} alert{{ '' if pl.alert_count == 1 else 's' }}</strong>
+                  {% if pl.alerts %}
+                    {% for a in pl.alerts[:2] %}{{ a.event or '?' }}{% if a.severity %} [{{ a.severity }}]{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% if pl.alerts|length > 2 %}, +{{ pl.alerts|length - 2 }} more{% endif %}
+                  {% endif %}
+                {% else %}
+                  <span class="muted">no active alerts</span>
+                {% endif %}
+              {% elif s.kind == 'ical' %}
+                <strong>{{ pl.event_count or 0 }} event{{ '' if pl.event_count == 1 else 's' }}</strong> in window
+                {% if pl.events and pl.events|length > 0 %}
+                  · next: "{{ pl.events[0].summary|truncate(40, true, '…') }}"
+                {% endif %}
+              {% else %}
+                <span class="muted">sample stored</span>
               {% endif %}
             </div>
             <div class="muted" style="font-size:.75rem">{{ s.latest_sample.sampled_at }}</div>
