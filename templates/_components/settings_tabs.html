@@ -15,6 +15,8 @@
      {% if settings_tab == 'sync' %}aria-current="page"{% endif %}>Sync</a>
   <a href="{{ url_for('admin_ui.settings_notifications_page') }}"
      {% if settings_tab == 'notifications' %}aria-current="page"{% endif %}>Notifications</a>
+  <a href="{{ url_for('admin_ui.settings_integrations_page') }}"
+     {% if settings_tab == 'integrations' %}aria-current="page"{% endif %}>Integrations</a>
   {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
   <a href="{{ url_for('admin_ui.users_page') }}"
      {% if settings_tab == 'users' %}aria-current="page"{% endif %}>Users</a>

@@ -524,16 +524,18 @@ Probably a separate doc — `docs/B17-external-integrations-design.md`
 — once the operator wants to commit. Until then, this backlog
 entry is the durable home for the idea.
 
-#### Quickest demo path (if operator wants a single-evening proof)
+#### Quickest demo path (if operator wants a single-evening proof) — ✅ SHIPPED in v0.5.17
 
-Ship Layer 1 only against a single Roku for the Jeopardy use case:
-1. Add an `external_rokus` table + nightly-cached app-active samples.
-2. Wire `roku_app_active` probe type into watchdog rules.
-3. Operator builds the rule by hand:
-   "rule: ROKU(living-room) = 'Spectrum TV' AND schedule(weekdays 19:00-19:30) → relay_off (subwoofer)".
+Layer 1 shipped as v0.5.17:
+1. ✅ `external_sensor_sources` + `external_sensor_samples` tables
+   (single-source-of-truth model; generalises to HA/MQTT/EPG later).
+2. ✅ `roku_app_active` watchdog probe wired (substring match, stale-
+   sample failure gate at default 120 s).
+3. ✅ Settings → Integrations tab + add/probe/toggle/delete UI.
 
-That's ~4 h of work and delivers 80% of the dream without needing
-EPG, OCR, or Spectrum-specific anything.
+Remaining Layers 2-3 + adjacent integrations (Home Assistant, MQTT,
+Plex, weather, calendar) still open and will land as their own
+ships when prioritised.
 
 ### B19. Firmware scan misses content-changed binaries with same filename — **FIXED in v0.5.13** (filed 2026-05-11 PM)
 

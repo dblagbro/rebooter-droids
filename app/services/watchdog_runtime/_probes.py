@@ -45,6 +45,8 @@ def _run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_internet(probe)
         if kind == "ping":
             return _probe_ping(probe)
+        if kind == "roku_app_active":
+            return _probe_roku_app_active(probe)
         if kind == "tcp":
             ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
         elif kind == "http":
@@ -256,3 +258,65 @@ def _probe_dns(hostname: str) -> bool:
         return False
     finally:
         socket.setdefaulttimeout(None)
+
+
+def _probe_roku_app_active(probe: dict) -> tuple[str, dict]:
+    """v0.5.17 (B17 Layer 1): rule fires when the named Roku is on the
+    named app right now.
+
+    Rule shape:
+        probe = {"kind": "roku_app_active",
+                 "source_id": "ext_…",
+                 "app_name": "Spectrum TV",
+                 "max_sample_age_seconds": 120}
+
+    Reads the latest sample from `services.external_sensors`. Stale
+    samples (older than `max_sample_age_seconds`, default 120 s)
+    return `failure` with `reason='stale_sample'` so a dead poller
+    can never make a rule "stick true" indefinitely.
+
+    Matching is case-insensitive substring against `payload.active_app`
+    so the operator can register "Spectrum TV" or "spectrum" or
+    "Spectrum TV (HD)" depending on what their box reports.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    expected = (probe.get("app_name") or "").strip()
+    if not source_id:
+        return "failure", {"reason": "missing source_id"}
+    if not expected:
+        return "failure", {"reason": "missing app_name"}
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 120)
+    except (TypeError, ValueError):
+        max_age = 120
+
+    # Deferred import keeps watchdog_runtime self-contained when no
+    # roku_app_active rules exist (the external_sensors service pulls
+    # in models + db that we don't need otherwise).
+    from app.services.external_sensors import latest_active_app
+
+    sample = latest_active_app(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    actual = (payload.get("active_app") or "").strip()
+    if not actual:
+        return "failure", {
+            "reason": "no_active_app",
+            "source_id": source_id,
+            "sampled_at": sample.get("sampled_at"),
+            "screensaver_active": payload.get("screensaver_active"),
+        }
+    match = expected.lower() in actual.lower()
+    details = {
+        "source_id": source_id,
+        "expected_app": expected,
+        "actual_app": actual,
+        "sampled_at": sample.get("sampled_at"),
+        "screensaver_active": payload.get("screensaver_active"),
+    }
+    return ("success" if match else "failure"), details
