@@ -47,6 +47,12 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_ping(probe)
         if kind == "roku_app_active":
             return _probe_roku_app_active(probe)
+        if kind == "ha_state_is":
+            return _probe_ha_state_is(probe)
+        if kind == "weather_alert_active":
+            return _probe_weather_alert_active(probe)
+        if kind == "ical_event_active":
+            return _probe_ical_event_active(probe)
         if kind == "tcp":
             ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
         elif kind == "http":
@@ -320,3 +326,191 @@ def _probe_roku_app_active(probe: dict) -> tuple[str, dict]:
         "screensaver_active": payload.get("screensaver_active"),
     }
     return ("success" if match else "failure"), details
+
+
+def _probe_ha_state_is(probe: dict) -> tuple[str, dict]:
+    """v0.5.23 (B17): rule fires when an HA entity is in an expected state.
+
+    Rule shape:
+        probe = {"kind": "ha_state_is",
+                 "source_id": "ext_…",
+                 "entity_id": "sensor.living_room_motion",
+                 "expected_state": "on",
+                 "max_sample_age_seconds": 60}
+
+    Matching is case-insensitive exact-equality against the entity's
+    `state` field. Stale samples → failure (`reason='stale_sample'`).
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    entity_id = (probe.get("entity_id") or "").strip()
+    expected = str(probe.get("expected_state") or "").strip()
+    if not source_id or not entity_id or not expected:
+        return "failure", {"reason": "missing source_id / entity_id / expected_state"}
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 60)
+    except (TypeError, ValueError):
+        max_age = 60
+
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    entities = (payload.get("entities") or {}) if isinstance(payload, dict) else {}
+    entry = entities.get(entity_id) if isinstance(entities, dict) else None
+    if not isinstance(entry, dict):
+        return "failure", {
+            "reason": "entity_not_found",
+            "source_id": source_id,
+            "entity_id": entity_id,
+            "sampled_at": sample.get("sampled_at"),
+        }
+    actual = str(entry.get("state") or "")
+    match = actual.lower() == expected.lower()
+    return ("success" if match else "failure"), {
+        "source_id": source_id,
+        "entity_id": entity_id,
+        "expected_state": expected,
+        "actual_state": actual,
+        "last_changed": entry.get("last_changed"),
+        "sampled_at": sample.get("sampled_at"),
+    }
+
+
+def _probe_weather_alert_active(probe: dict) -> tuple[str, dict]:
+    """v0.5.23 (B17): rule fires when there's an active NWS alert for the
+    configured weather source.
+
+    Rule shape:
+        probe = {"kind": "weather_alert_active",
+                 "source_id": "ext_…",
+                 "event_contains": "storm",     # optional substring filter
+                 "min_severity": "Moderate",    # optional min severity
+                 "max_sample_age_seconds": 600}
+
+    Severity rank: Minor < Moderate < Severe < Extreme < Unknown
+    (Unknown sorted last; treated as "any" if min_severity absent).
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    if not source_id:
+        return "failure", {"reason": "missing source_id"}
+    event_substr = (probe.get("event_contains") or "").strip().lower()
+    min_sev_raw = (probe.get("min_severity") or "").strip()
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 600)
+    except (TypeError, ValueError):
+        max_age = 600
+
+    sev_rank = {"minor": 1, "moderate": 2, "severe": 3, "extreme": 4}
+    min_sev = sev_rank.get(min_sev_raw.lower(), 0)
+
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    alerts = payload.get("alerts") if isinstance(payload, dict) else None
+    if not isinstance(alerts, list):
+        alerts = []
+    matched: list[dict] = []
+    for a in alerts:
+        if not isinstance(a, dict):
+            continue
+        event = str(a.get("event") or "")
+        sev = str(a.get("severity") or "").lower()
+        if event_substr and event_substr not in event.lower():
+            continue
+        if min_sev and sev_rank.get(sev, 0) < min_sev:
+            continue
+        matched.append({
+            "event": event,
+            "severity": a.get("severity"),
+            "headline": a.get("headline"),
+            "ends": a.get("ends"),
+        })
+    return ("success" if matched else "failure"), {
+        "source_id": source_id,
+        "alerts_total": len(alerts),
+        "alerts_matched": matched,
+        "event_filter": event_substr or None,
+        "min_severity": min_sev_raw or None,
+        "sampled_at": sample.get("sampled_at"),
+    }
+
+
+def _probe_ical_event_active(probe: dict) -> tuple[str, dict]:
+    """v0.5.23 (B17): rule fires when an iCal event matching `summary_contains`
+    is currently airing (now ∈ [start, end)).
+
+    Rule shape:
+        probe = {"kind": "ical_event_active",
+                 "source_id": "ext_…",
+                 "summary_contains": "Jeopardy",
+                 "max_sample_age_seconds": 1800}
+
+    `summary_contains` is a case-insensitive substring against the event
+    SUMMARY. If absent, ANY currently-airing event in the feed succeeds.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    if not source_id:
+        return "failure", {"reason": "missing source_id"}
+    needle = (probe.get("summary_contains") or "").strip().lower()
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 1800)
+    except (TypeError, ValueError):
+        max_age = 1800
+
+    from datetime import datetime as _dt, timezone as _tz
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    events = payload.get("events") if isinstance(payload, dict) else None
+    if not isinstance(events, list):
+        events = []
+    now = _dt.now(_tz.utc)
+    active: list[dict] = []
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        summary = str(e.get("summary") or "")
+        if needle and needle not in summary.lower():
+            continue
+        try:
+            start = _dt.fromisoformat(str(e.get("start") or "").replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        end_raw = e.get("end")
+        try:
+            end = _dt.fromisoformat(str(end_raw).replace("Z", "+00:00")) if end_raw else None
+        except (TypeError, ValueError):
+            end = None
+        if end is None:
+            # All-day or open-ended — treat as 24 h after start.
+            from datetime import timedelta as _td
+            end = start + _td(hours=24)
+        if start <= now < end:
+            active.append({"summary": summary, "start": e.get("start"), "end": e.get("end")})
+    return ("success" if active else "failure"), {
+        "source_id": source_id,
+        "events_total": len(events),
+        "events_active": active,
+        "summary_filter": needle or None,
+        "sampled_at": sample.get("sampled_at"),
+    }

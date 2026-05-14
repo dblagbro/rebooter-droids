@@ -42,6 +42,21 @@ def settings_integrations_add_submit():
     host = (request.form.get("host") or "").strip()
     port_raw = (request.form.get("port") or "").strip() or None
     interval_raw = (request.form.get("poll_interval_seconds") or "30").strip()
+    # v0.5.23 (B17 adjacent): per-kind config bag.
+    config: dict = {}
+    if kind == "home_assistant":
+        config["token"] = (request.form.get("ha_token") or "").strip()
+        if (request.form.get("ha_verify_ssl") or "").strip() in ("0", "false", "off"):
+            config["verify_ssl"] = False
+    elif kind == "weather":
+        try:
+            config["lat"] = float(request.form.get("weather_lat") or 0)
+            config["lng"] = float(request.form.get("weather_lng") or 0)
+        except ValueError:
+            flash("Weather lat/lng must be decimal numbers (e.g. 38.9 -77.0).", "error")
+            return redirect(url_for("admin_ui.settings_integrations_page"))
+    elif kind == "ical":
+        config["url"] = (request.form.get("ical_url") or "").strip()
     try:
         out = ext_svc.create_source(
             kind=kind,
@@ -49,6 +64,7 @@ def settings_integrations_add_submit():
             host=host,
             port=int(port_raw) if port_raw else None,
             poll_interval_seconds=int(interval_raw or "30"),
+            config=config,
         )
     except ValueError as e:
         flash(f"Could not add integration: {e}", "error")

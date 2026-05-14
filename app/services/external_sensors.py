@@ -19,6 +19,8 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import re
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -53,8 +55,22 @@ def _serialize(row: ExternalSensorSource, *, latest_sample: dict | None = None) 
         "last_success_at": _iso(row.last_success_at),
         "last_error": row.last_error,
         "created_at": _iso(row.created_at),
+        # v0.5.23: per-kind extras, redacted for HA token before
+        # being exposed via the admin API.
+        "config": _redact_config(row.kind, row.config or {}),
         "latest_sample": latest_sample,
     }
+
+
+def _redact_config(kind: str, config: dict) -> dict:
+    """Strip secret fields (HA bearer tokens, etc.) from the
+    admin-facing source serialization."""
+    if not config:
+        return {}
+    out = dict(config)
+    if "token" in out and out["token"]:
+        out["token"] = "********"
+    return out
 
 
 def list_sources() -> list[dict]:
@@ -91,11 +107,13 @@ def create_source(
     *,
     kind: str,
     display_name: str,
-    host: str,
+    host: str = "",
     port: int | None = None,
     poll_interval_seconds: int = 30,
+    config: dict | None = None,
 ) -> dict:
-    """Register a new source. Raises ValueError for bad shape."""
+    """Register a new source. Per-kind validation lives in
+    `_validate_kind_config()`. Raises ValueError for bad shape."""
     kind = (kind or "").strip().lower()
     if kind not in EXTERNAL_SOURCE_KINDS:
         raise ValueError(
@@ -105,22 +123,35 @@ def create_source(
     if not display_name:
         raise ValueError("display_name is required")
     host = (host or "").strip()
-    if not host:
-        raise ValueError("host is required")
+    # Default ports per kind. Kinds that don't need a host (weather,
+    # ical) skip host/port validation entirely.
+    needs_host = kind in ("roku", "home_assistant")
+    if needs_host and not host:
+        raise ValueError("host is required for this kind")
     if port is None:
-        port = ROKU_DEFAULT_PORT if kind == "roku" else 0
+        if kind == "roku":
+            port = ROKU_DEFAULT_PORT
+        elif kind == "home_assistant":
+            port = 8123
+        else:
+            port = 0
     try:
         port_i = int(port)
     except (TypeError, ValueError):
         raise ValueError("port must be an integer") from None
-    if port_i < 1 or port_i > 65535:
+    if needs_host and (port_i < 1 or port_i > 65535):
         raise ValueError("port must be in 1..65535")
     try:
         interval = int(poll_interval_seconds or 30)
     except (TypeError, ValueError):
         raise ValueError("poll_interval_seconds must be an integer") from None
+    # Default cadence per kind. Weather alerts + EPG don't need fast
+    # polling; HA changes faster than Roku in practice.
     if interval < 5 or interval > 3600:
         raise ValueError("poll_interval_seconds must be in 5..3600")
+
+    config = config or {}
+    config = _validate_kind_config(kind, config)
 
     now = datetime.now(timezone.utc)
     with session_scope() as session:
@@ -131,12 +162,53 @@ def create_source(
             port=port_i,
             enabled=True,
             poll_interval_seconds=interval,
+            config=config or None,
             created_at=now,
             updated_at=now,
         )
         session.add(row)
         session.flush()
         return _serialize(row)
+
+
+def _validate_kind_config(kind: str, config: dict) -> dict:
+    """Per-kind shape validation. Returns a normalized config dict
+    (extra keys stripped). Raises ValueError on missing required keys."""
+    if not isinstance(config, dict):
+        raise ValueError("config must be an object")
+    if kind == "roku":
+        # No extra config required.
+        return {}
+    if kind == "home_assistant":
+        token = str(config.get("token") or "").strip()
+        if not token:
+            raise ValueError("home_assistant config.token is required (HA long-lived access token)")
+        out = {"token": token}
+        if config.get("verify_ssl") is not None:
+            out["verify_ssl"] = bool(config["verify_ssl"])
+        return out
+    if kind == "weather":
+        try:
+            lat = float(config.get("lat"))
+            lng = float(config.get("lng"))
+        except (TypeError, ValueError):
+            raise ValueError(
+                "weather config requires numeric lat + lng (decimal degrees)"
+            ) from None
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise ValueError("weather lat/lng out of range")
+        return {"lat": lat, "lng": lng}
+    if kind == "ical":
+        url = str(config.get("url") or "").strip()
+        if not url:
+            raise ValueError("ical config.url is required (.ics feed URL)")
+        if not (url.startswith("http://") or url.startswith("https://") or url.startswith("webcal://")):
+            raise ValueError("ical url must use http://, https://, or webcal:// scheme")
+        # Normalize webcal://… → https://… for the fetch path.
+        if url.startswith("webcal://"):
+            url = "https://" + url[len("webcal://"):]
+        return {"url": url}
+    return {}
 
 
 def delete_source(source_id: str) -> bool:
@@ -243,6 +315,12 @@ def _poll_kind(src: ExternalSensorSource) -> dict:
     """
     if src.kind == "roku":
         return _poll_roku(src.host, src.port)
+    if src.kind == "home_assistant":
+        return _poll_home_assistant(src.host, src.port, src.config or {})
+    if src.kind == "weather":
+        return _poll_weather(src.config or {})
+    if src.kind == "ical":
+        return _poll_ical(src.config or {})
     raise ValueError(f"unsupported source kind: {src.kind}")
 
 
@@ -308,6 +386,312 @@ def _parse_roku_active_app(xml_body: str) -> dict:
 
 
 # ── consumed by the watchdog probe ──────────────────────────────────────
+
+
+# ── Home Assistant ──────────────────────────────────────────────────────
+
+
+HA_POLL_TIMEOUT_SECONDS = 5
+
+
+def _poll_home_assistant(host: str, port: int, config: dict) -> dict:
+    """v0.5.23: GET <host>:<port>/api/states with bearer token.
+
+    Returns a compact payload — `entities` is a dict keyed by
+    `entity_id` carrying just `state`, `last_changed`, and (if small)
+    `attributes`. Full HA states can be huge; we cap each entity's
+    attribute payload at 1 KiB to keep DB rows small.
+
+    Bearer token comes from `config.token` (long-lived access token
+    minted via Profile → Long-Lived Access Tokens in the HA UI).
+    """
+    token = (config.get("token") or "").strip()
+    if not token:
+        raise RuntimeError("home_assistant config.token is required")
+    verify_ssl = bool(config.get("verify_ssl") if "verify_ssl" in config else True)
+    use_https = port == 443 or port == 8123 and bool(config.get("https"))
+
+    if use_https:
+        conn = http.client.HTTPSConnection(
+            host, port, timeout=HA_POLL_TIMEOUT_SECONDS,
+            context=(None if verify_ssl else _insecure_ssl_context()),
+        )
+    else:
+        conn = http.client.HTTPConnection(host, port, timeout=HA_POLL_TIMEOUT_SECONDS)
+
+    try:
+        conn.request(
+            "GET", "/api/states",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "User-Agent": "rebooter-droids/B17",
+            },
+        )
+        resp = conn.getresponse()
+        body = resp.read()
+        status = resp.status
+    finally:
+        conn.close()
+
+    if status == 401:
+        raise RuntimeError("home_assistant 401 — bad/expired token")
+    if status != 200:
+        raise RuntimeError(f"home_assistant HTTP {status}")
+
+    try:
+        states = json.loads(body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"home_assistant JSON parse failed: {e}") from None
+
+    if not isinstance(states, list):
+        raise RuntimeError("home_assistant /api/states returned non-list")
+
+    entities: dict[str, dict] = {}
+    for s in states[:1000]:  # safety cap
+        if not isinstance(s, dict):
+            continue
+        eid = s.get("entity_id")
+        if not eid:
+            continue
+        attrs = s.get("attributes") or {}
+        # Trim oversized attribute payloads — operator-readable rendering
+        # only needs the headline values, not e.g. base64 thumbnails.
+        attrs_clipped = {
+            k: (v if not isinstance(v, str) or len(v) < 200 else v[:200] + "…")
+            for k, v in (attrs.items() if isinstance(attrs, dict) else [])
+            if not k.startswith("device_") and not k.startswith("entity_picture")
+        }
+        entities[eid] = {
+            "state": s.get("state"),
+            "last_changed": s.get("last_changed"),
+            "attributes": attrs_clipped,
+        }
+    return {
+        "entity_count": len(entities),
+        "entities": entities,
+    }
+
+
+def _insecure_ssl_context():
+    """Lazy import — only used when operator opts into verify_ssl=False."""
+    import ssl
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+# ── Weather (NWS api.weather.gov) ───────────────────────────────────────
+
+
+WEATHER_POLL_TIMEOUT_SECONDS = 8
+
+
+def _poll_weather(config: dict) -> dict:
+    """v0.5.23: NWS api.weather.gov active alerts for a lat/lng point.
+
+    Endpoint: GET https://api.weather.gov/alerts/active?point=lat,lng
+    No auth. NWS asks for a User-Agent identifying the integration.
+    Returns a compact alerts list (event, severity, headline, ends-at).
+    """
+    lat = float(config.get("lat") or 0)
+    lng = float(config.get("lng") or 0)
+    conn = http.client.HTTPSConnection(
+        "api.weather.gov", 443, timeout=WEATHER_POLL_TIMEOUT_SECONDS,
+    )
+    try:
+        conn.request(
+            "GET", f"/alerts/active?point={lat:.4f},{lng:.4f}",
+            headers={
+                "User-Agent": "rebooter-droids/B17 (https://github.com/dblagbro/rebooter-droids)",
+                "Accept": "application/geo+json",
+            },
+        )
+        resp = conn.getresponse()
+        body = resp.read()
+        status = resp.status
+    finally:
+        conn.close()
+    if status == 301 or status == 302:
+        # NWS sometimes redirects on point lookups (e.g. canonical point→zone).
+        loc = resp.getheader("Location") or ""
+        raise RuntimeError(f"weather redirect to {loc!r} not followed")
+    if status != 200:
+        raise RuntimeError(f"weather HTTP {status}")
+    try:
+        data = json.loads(body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"weather JSON parse failed: {e}") from None
+    features = data.get("features") or []
+    alerts: list[dict] = []
+    for f in features:
+        props = (f.get("properties") or {}) if isinstance(f, dict) else {}
+        alerts.append({
+            "event": (props.get("event") or "").strip(),
+            "severity": (props.get("severity") or "").strip(),
+            "headline": (props.get("headline") or "")[:300],
+            "effective": props.get("effective"),
+            "ends": props.get("ends") or props.get("expires"),
+        })
+    return {
+        "lat": lat,
+        "lng": lng,
+        "alerts": alerts,
+        "alert_count": len(alerts),
+    }
+
+
+# ── iCal / WebCal feeds ─────────────────────────────────────────────────
+
+
+ICAL_POLL_TIMEOUT_SECONDS = 10
+_ICAL_EVENT_RE = re.compile(
+    r"BEGIN:VEVENT(.*?)END:VEVENT", re.DOTALL | re.IGNORECASE
+)
+_ICAL_KV_RE = re.compile(r"^([A-Z\-]+)(?:;[^:]*)?:(.*)$")
+
+
+def _poll_ical(config: dict) -> dict:
+    """v0.5.23: fetch + parse an iCal/WebCal .ics feed.
+
+    Minimal VEVENT parser — no external lib. Stores ONLY events that
+    are currently airing or starting within the next 24 h so the
+    payload stays small.
+
+    Robust enough for Google Calendar's `basic.ics` feed and stock
+    macOS calendar exports; not a full RFC 5545 implementation.
+    """
+    url = (config.get("url") or "").strip()
+    if not url:
+        raise RuntimeError("ical config.url is required")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise RuntimeError("ical url must use http:// or https://")
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path += "?" + parsed.query
+
+    if parsed.scheme == "https":
+        conn = http.client.HTTPSConnection(host, port, timeout=ICAL_POLL_TIMEOUT_SECONDS)
+    else:
+        conn = http.client.HTTPConnection(host, port, timeout=ICAL_POLL_TIMEOUT_SECONDS)
+    try:
+        conn.request("GET", path, headers={
+            "User-Agent": "rebooter-droids/B17",
+            "Accept": "text/calendar, text/plain;q=0.9, */*;q=0.5",
+        })
+        resp = conn.getresponse()
+        body = resp.read()
+        status = resp.status
+    finally:
+        conn.close()
+    if status != 200:
+        raise RuntimeError(f"ical HTTP {status}")
+    text = body.decode("utf-8", errors="replace")
+    events = _parse_ical_events(text)
+    return {
+        "event_count": len(events),
+        "events": events[:50],  # cap for storage size
+    }
+
+
+def _parse_ical_events(text: str) -> list[dict]:
+    """Tiny VEVENT extractor. Returns events whose [start, end) window
+    overlaps NOW or is within the next 24 h."""
+    from datetime import timedelta as _td
+
+    now = datetime.now(timezone.utc)
+    horizon = now + _td(hours=24)
+    out: list[dict] = []
+    for m in _ICAL_EVENT_RE.finditer(text):
+        block = m.group(1)
+        ev: dict[str, str] = {}
+        # iCal lines can be folded — RFC 5545 §3.1: a CRLF + leading
+        # SPACE/TAB is a soft-fold. Unfold first.
+        unfolded = re.sub(r"\r?\n[ \t]", "", block)
+        for line in unfolded.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            km = _ICAL_KV_RE.match(line)
+            if not km:
+                continue
+            key = km.group(1).upper()
+            value = km.group(2)
+            ev[key] = value
+        start = _parse_ical_dt(ev.get("DTSTART"))
+        end = _parse_ical_dt(ev.get("DTEND")) or start
+        if start is None:
+            continue
+        # Keep events that are currently airing OR start within the
+        # next 24 h. Skip events fully in the past.
+        if end and end < now:
+            continue
+        if start > horizon:
+            continue
+        out.append({
+            "summary": ev.get("SUMMARY", "")[:300],
+            "start": start.isoformat(),
+            "end": end.isoformat() if end else None,
+            "uid": ev.get("UID", "")[:120],
+        })
+    # Sort by start time for stable rendering.
+    out.sort(key=lambda e: e["start"])
+    return out
+
+
+def _parse_ical_dt(raw: str | None) -> datetime | None:
+    """Parse `20260514T193000Z` or `20260514T193000` or `20260514`."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    # DATE-only form.
+    if len(raw) == 8 and raw.isdigit():
+        try:
+            return datetime.strptime(raw, "%Y%m%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    # DATETIME forms.
+    fmts = ("%Y%m%dT%H%M%SZ", "%Y%m%dT%H%M%S")
+    for f in fmts:
+        try:
+            dt = datetime.strptime(raw, f)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except ValueError:
+            continue
+    return None
+
+
+# ── consumed by the watchdog probes ─────────────────────────────────────
+
+
+def latest_sample(source_id: str, *, max_age_seconds: int = 120) -> dict | None:
+    """v0.5.23: generic latest-sample lookup, used by the HA / weather /
+    iCal probe kinds. Returns None if sample is stale or absent.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    with session_scope() as session:
+        row = session.scalar(
+            select(ExternalSensorSample)
+            .where(
+                ExternalSensorSample.source_id == source_id,
+                ExternalSensorSample.sampled_at >= cutoff,
+            )
+            .order_by(ExternalSensorSample.sampled_at.desc())
+            .limit(1)
+        )
+        if row is None:
+            return None
+        return {
+            "sampled_at": _iso(row.sampled_at),
+            "payload": row.payload or {},
+        }
 
 
 def latest_active_app(source_id: str, *, max_age_seconds: int = 120) -> dict | None:
