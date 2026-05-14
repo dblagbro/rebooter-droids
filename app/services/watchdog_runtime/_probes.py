@@ -1,11 +1,11 @@
 """Probe implementations — pure I/O, no DB writes.
 
 Each `_probe_<kind>` returns either:
-- `bool` (legacy shape used internally by `_run_probe`), or
+- `bool` (legacy shape used internally by `run_probe`), or
 - `tuple[str, dict]` — `(outcome, details)` where outcome ∈
   {'success', 'failure'} and details is the event-log payload.
 
-`_run_probe(rule)` is the top-of-tick dispatcher. Probes use only the
+`run_probe(rule)` is the top-of-tick dispatcher. Probes use only the
 stdlib (socket / urllib / http.client / subprocess) so this module
 adds no new dependency footprint.
 """
@@ -320,10 +320,3 @@ def _probe_roku_app_active(probe: dict) -> tuple[str, dict]:
         "screensaver_active": payload.get("screensaver_active"),
     }
     return ("success" if match else "failure"), details
-
-
-# v0.5.18 (#3 naming cleanup): the public dispatcher is `run_probe`.
-# The underscore-prefixed alias is kept for one release so existing
-# `from app.services.watchdog_runtime import _run_probe` callers don't
-# break mid-rollout. Remove after v0.6.x.
-_run_probe = run_probe
