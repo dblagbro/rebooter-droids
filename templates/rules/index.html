@@ -24,6 +24,10 @@
           <option value="http">http — URL returns 2xx</option>
           <option value="dns">dns — resolve a hostname</option>
           <option value="gateway">gateway — ping the device's LAN gateway</option>
+          <option value="roku_app_active">roku — active app matches</option>
+          <option value="ha_state_is">home assistant — entity state matches</option>
+          <option value="weather_alert_active">weather — active NWS alert</option>
+          <option value="ical_event_active">calendar — iCal event currently airing</option>
         </select>
       </label>
 
@@ -44,9 +48,120 @@
         <button type="button" class="btn-secondary" id="internet_add_target" style="margin-top:.3rem">+ add target</button>
       </div>
 
-      <label id="probe_arg_label">Probe target (host / url / hostname / host:port — leave blank for internet/gateway)
+      <label id="probe_arg_label">Probe target (host / url / hostname / host:port — leave blank for internet/gateway/integration)
         <input type="text" name="probe_arg" placeholder="e.g. 192.168.1.1 or https://example.com">
       </label>
+
+      {# v0.5.28 (Phase 2B): per-kind blocks for the four integration
+         probes. Show/hide by JS based on probe_kind. JSON editor below
+         is still the escape hatch for advanced shapes. #}
+      <div id="probe_roku_app_active_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        {% if sources_by_kind.roku %}
+          <label>Roku source
+            <select name="roku_source_id">
+              {% for s in sources_by_kind.roku %}
+                <option value="{{ s.id }}">{{ s.display_name }} <code>({{ s.host }})</code></option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>App name (substring, case-insensitive)
+            <input type="text" name="roku_app_name" placeholder="e.g. Spectrum TV" required>
+          </label>
+          <label>Max sample age (s; older = failure)
+            <input type="number" name="roku_max_sample_age_seconds" value="120" min="10" max="3600">
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No Roku sources registered yet — add one under
+            <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>
+            then come back.
+          </p>
+        {% endif %}
+      </div>
+
+      <div id="probe_ha_state_is_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        {% if sources_by_kind.home_assistant %}
+          <label>Home Assistant source
+            <select name="ha_source_id">
+              {% for s in sources_by_kind.home_assistant %}
+                <option value="{{ s.id }}">{{ s.display_name }} <code>({{ s.host }})</code></option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Entity ID
+            <input type="text" name="ha_entity_id" placeholder="e.g. sensor.living_room_motion" required>
+          </label>
+          <label>Expected state (case-insensitive exact match)
+            <input type="text" name="ha_expected_state" placeholder="e.g. on" required>
+          </label>
+          <label>Max sample age (s)
+            <input type="number" name="ha_max_sample_age_seconds" value="60" min="10" max="3600">
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No Home Assistant sources registered yet — add one under
+            <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>
+            then come back.
+          </p>
+        {% endif %}
+      </div>
+
+      <div id="probe_weather_alert_active_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        {% if sources_by_kind.weather %}
+          <label>Weather source
+            <select name="weather_source_id">
+              {% for s in sources_by_kind.weather %}
+                <option value="{{ s.id }}">{{ s.display_name }} <code>({{ s.config.lat or '?' }},{{ s.config.lng or '?' }})</code></option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Event substring (optional — empty = any)
+            <input type="text" name="weather_event_contains" placeholder="e.g. Storm">
+          </label>
+          <label>Minimum severity (optional)
+            <select name="weather_min_severity">
+              <option value="">(any)</option>
+              <option value="Minor">Minor</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Severe">Severe</option>
+              <option value="Extreme">Extreme</option>
+            </select>
+          </label>
+          <label>Max sample age (s)
+            <input type="number" name="weather_max_sample_age_seconds" value="600" min="60" max="3600">
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No Weather sources registered yet — add one under
+            <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>
+            then come back.
+          </p>
+        {% endif %}
+      </div>
+
+      <div id="probe_ical_event_active_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        {% if sources_by_kind.ical %}
+          <label>Calendar source
+            <select name="ical_source_id">
+              {% for s in sources_by_kind.ical %}
+                <option value="{{ s.id }}">{{ s.display_name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Summary substring (optional — empty = any active)
+            <input type="text" name="ical_summary_contains" placeholder="e.g. Jeopardy">
+          </label>
+          <label>Max sample age (s)
+            <input type="number" name="ical_max_sample_age_seconds" value="1800" min="60" max="3600">
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No iCal/calendar sources registered yet — add one under
+            <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>
+            then come back.
+          </p>
+        {% endif %}
+      </div>
     </fieldset>
     <script>
       (function () {
@@ -55,10 +170,22 @@
         const probeArgLabel = document.getElementById('probe_arg_label');
         const table = document.getElementById('internet_targets_table');
         const addBtn = document.getElementById('internet_add_target');
+        // v0.5.28: per-kind integration probe blocks.
+        const integrationBlocks = {
+          'roku_app_active': document.getElementById('probe_roku_app_active_block'),
+          'ha_state_is': document.getElementById('probe_ha_state_is_block'),
+          'weather_alert_active': document.getElementById('probe_weather_alert_active_block'),
+          'ical_event_active': document.getElementById('probe_ical_event_active_block'),
+        };
+        const PROBE_ARG_KINDS = new Set(['ping', 'tcp', 'http', 'dns']);
         function syncVisibility() {
-          const isInternet = sel.value === 'internet';
-          internetBlock.style.display = isInternet ? '' : 'none';
-          probeArgLabel.style.display = isInternet ? 'none' : '';
+          const kind = sel.value;
+          internetBlock.style.display = (kind === 'internet') ? '' : 'none';
+          probeArgLabel.style.display = PROBE_ARG_KINDS.has(kind) ? '' : 'none';
+          Object.entries(integrationBlocks).forEach(([k, el]) => {
+            if (!el) return;
+            el.style.display = (k === kind) ? '' : 'none';
+          });
         }
         sel.addEventListener('change', syncVisibility);
         syncVisibility();
