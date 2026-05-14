@@ -54,6 +54,16 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             error_message=payload.get("health_state"),
             reported_at=now,
         )
+        # v0.5.22 (B21): firmware can echo its current config in the
+        # heartbeat under `reported_config`. Stash it on the row so
+        # drift detection has a current snapshot. Today only
+        # `device_name` is reliably populated by the firmware; other
+        # keys land as the firmware-team grows apply_config schema
+        # support per `docs/firmware-apply-config-schema-v01.md`.
+        reported_cfg = payload.get("reported_config")
+        if isinstance(reported_cfg, dict):
+            device.last_reported_config = reported_cfg
+            session.add(device)
         session.flush()
 
     return {"recorded_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}

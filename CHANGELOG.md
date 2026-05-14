@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.22] - 2026-05-14
+
+### Added — B21 desired-config blob + drift detection + push-on-restore
+
+#2 from the priority backlog. The v0.5.8 / v0.5.12 (B24) slice
+pushed *only* `display_name` on restore-after-reflash and on
+ordinary rename. v0.5.22 generalises that to a full
+operator-set-intended-config blob with drift detection.
+
+**Schema** (additive, auto-creates via `_PENDING_COLUMNS`):
+- `devices.desired_config JSONB` — operator's intended config blob
+  matching the locked v0.1 apply_config schema. NULL means no
+  operator intent set; behaviour stays identical to today.
+- `devices.desired_mode VARCHAR(40)` — intended top-level mode
+  (`smart_plug` / `internet_watchdog` / `device_watchdog`).
+- `devices.last_reported_config JSONB` — device's most recent
+  self-reported config. Populated from `heartbeat.reported_config`
+  if present.
+- `devices.desired_config_updated_at TIMESTAMPTZ`
+- `devices.last_config_pushed_at TIMESTAMPTZ`
+
+**New service** — `app/services/device_config.py`:
+- `get_desired_config(device_id)` / `set_desired_config(...)` /
+  `push_desired_config(..., source)` / `compute_drift(device_id)`.
+- Validates top-level keys against `ALLOWED_DESIRED_CONFIG_KEYS`
+  (mirrors `commands.APPLY_CONFIG_ALLOWED_TOP_LEVEL`).
+- `is_feature_enabled()` reads `desired_config.enabled`
+  runtime_setting. Defaults OFF — restore-after-reflash auto-push
+  via the blob is gated; manual operator-initiated push always
+  fires (explicit intent).
+
+**Restore flow integration** — `services/enrollment.py`
+`_push_restore_config()` helper. On restore-after-reflash:
+1. If `desired_config` is set AND feature flag is on → push the
+   full blob.
+2. Otherwise fall back to v0.5.8 short-circuit
+   (`apply_config{device_name}` only) so the QA-flagged name-drift
+   still gets fixed.
+
+**Heartbeat** — when payload carries `reported_config: {...}`,
+`heartbeats.record_heartbeat()` stashes it on the device row for
+drift detection.
+
+**UI** — new "Desired config" sub-card on `/app/devices/<id>`:
+- Drift badge (`in sync` / `drift · N fields · M missing`).
+- Mismatched-fields detail list.
+- `<textarea>` JSON editor + `desired_mode` dropdown.
+- "Save desired config" + "Push to device now" (the push button
+  always fires regardless of the feature flag — explicit intent).
+- Feature-off banner so the operator knows restore auto-push is
+  gated.
+
+**Audit events added**:
+- `device.desired_config_set`
+- `device.desired_config_cleared`
+- `device.desired_config_pushed` (manual + restore both audit-logged)
+- v0.5.8's `device.restore_config_pushed` audit retained but now
+  carries `via: desired_config_blob` when the full path fires, or
+  `via: display_name_only` when it falls back.
+
+**Feature flag rollout**:
+- Today: `desired_config.enabled = (unset)` → ships as OFF.
+  Restore auto-push uses display-name-only fallback. Manual save +
+  push work for any device.
+- Operator opt-in: set
+  `desired_config.enabled = '1'` via `runtime_settings` once the
+  firmware-side schema for the heavier apply_config keys (`internet`,
+  `device`, `notifications`, `power`) is validated end-to-end.
+
+**Tests**: validation surface unit-tested in-container; live
+integration deferred to QA suite next pass.
+
 ## [0.5.21] - 2026-05-14
 
 ### Removed — back-compat underscore aliases from v0.5.18

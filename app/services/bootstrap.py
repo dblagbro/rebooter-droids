@@ -72,6 +72,14 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # v0.5.7 (B20): enrollment-token can target an existing device for
     # restore-after-reflash; null = current "create fresh row" behavior.
     ("enrollment_tokens", "target_device_id", "VARCHAR(40) REFERENCES devices(id) ON DELETE SET NULL"),
+    # v0.5.22 (B21): desired-config blob + drift detection. All five
+    # columns are additive nullable — NULL = no operator intent set,
+    # behaviour stays identical to today.
+    ("devices", "desired_config", "JSONB"),
+    ("devices", "desired_mode", "VARCHAR(40)"),
+    ("devices", "last_reported_config", "JSONB"),
+    ("devices", "desired_config_updated_at", "TIMESTAMPTZ"),
+    ("devices", "last_config_pushed_at", "TIMESTAMPTZ"),
 )
 
 
