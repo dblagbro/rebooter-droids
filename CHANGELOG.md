@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-05-14
+
+### Added — long-poll `/api/v1/device/commands` (RFC 7240 `Prefer: wait`)
+
+#1 from the priority backlog. Closes the firmware-team responsiveness
+ask from the 2026-05-10 message — devices that opt into long-poll get
+sub-second command latency without raising their poll rate.
+
+**Contract:**
+- Missing or `wait=0` Prefer header → legacy no-wait response
+  (back-compat with 0.1.x firmware that doesn't know about long-poll).
+- `Prefer: wait=N` → server holds the request open until either a
+  command is enqueued for the device or `N` seconds elapse. Server
+  caps `wait` at 30 s no matter what the client asks (RFC 7240
+  §4.3 explicitly permits this). On success the response carries
+  `Preference-Applied: wait=N`.
+
+**Implementation:**
+- Hot path unchanged: immediate-return when commands are already
+  pending or `wait=0`. Existing clients see no difference.
+- Slow path: 1-second-cadence poll loop. Each iteration opens its
+  own `session_scope()` so the Postgres connection pool isn't
+  pinned across the wait window. `time.sleep()` releases the GIL so
+  other threads in the worker keep serving requests.
+- Worker model: gunicorn `gthread` (default 8 threads). Each open
+  long-poll consumes one thread; with the fleet at 7 devices today,
+  peak concurrent long-polls fit comfortably with headroom for
+  healthchecks + UI traffic. Bump `REBOOTER_GUNICORN_THREADS` if
+  the fleet grows past ~10 simultaneous long-pollers.
+- Operator-stop: set `REBOOTER_LONG_POLL_DISABLED=1` to force every
+  call back to the legacy no-wait path. Useful as a panic switch
+  without a code change.
+
+**Middleware change:**
+- `app/middleware/response.py::ok()` and `err()` now accept an
+  optional `headers=` dict (additive — every existing caller works
+  unchanged). Used here for `Preference-Applied`.
+
+**Tests:**
+- `tests/qa/test_v0520_long_poll_commands.py` — three contract
+  tests:
+  1. No Prefer header → near-instant return (<2 s round-trip).
+  2. `Prefer: wait=3` with no commands → holds ~3 s then returns
+     empty + `Preference-Applied: wait=3`.
+  3. `Prefer: wait=10` while a peer enqueues a command 2 s in →
+     returns within ~3 s with the command + Preference-Applied.
+
+  The slow tests are marked `@pytest.mark.slow` so the default
+  `pytest -m 'not slow'` run skips them; opt-in with `pytest -m
+  slow` or `pytest -m ""`.
+
+### Firmware-team handoff note
+
+Firmware can adopt long-poll in two steps:
+
+1. **Phase 1 — opportunistic.** Add `Prefer: wait=25` to the existing
+   `/device/commands` request and double the poll interval (current
+   30 s → 60 s effective). Sub-second command latency in the steady
+   state; no other firmware changes.
+2. **Phase 2 — backoff.** When a long-poll returns with a command,
+   immediately re-poll without waiting (drain queue). On empty
+   timeout, sleep a small amount (5-10 s) before the next long-poll
+   to give the server room to breathe under load.
+
+If a future fleet grows past ~10 devices, the operator may want to
+bump `REBOOTER_GUNICORN_THREADS` and/or pick smaller per-device
+`wait` values (e.g. `wait=10`).
+
 ## [0.5.19] - 2026-05-14
 
 ### Added — Rules UX phase (#2 from priority backlog)

@@ -119,9 +119,60 @@ def heartbeat():
     )
 
 
+def _parse_prefer_wait(prefer_header: str | None) -> int:
+    """v0.5.20 (#1): minimal RFC 7240 Prefer-header parser, scoped to
+    `wait=<seconds>`. Returns the requested wait, clamped to
+    [0, LONG_POLL_MAX_WAIT_SECONDS]. Returns 0 for missing/malformed
+    header → caller falls back to legacy no-wait behaviour.
+    """
+    if not prefer_header:
+        return 0
+    # Header value is comma-separated preferences; only `wait=N` matters here.
+    for token in prefer_header.split(","):
+        token = token.strip().lower()
+        if token.startswith("wait="):
+            value = token.split("=", 1)[1].strip().strip('"')
+            try:
+                n = int(value)
+            except ValueError:
+                return 0
+            if n < 0:
+                return 0
+            return min(n, LONG_POLL_MAX_WAIT_SECONDS)
+    return 0
+
+
+LONG_POLL_MAX_WAIT_SECONDS = 30
+LONG_POLL_CHECK_INTERVAL_SECONDS = 1.0
+
+
 @bp.get("/commands")
 @device_auth_required
 def poll_commands():
+    """v0.5.20 (#1, B17 follow-on / firmware-team responsiveness ask):
+    optional long-poll via RFC 7240 `Prefer: wait=<seconds>`.
+
+    Behaviour:
+    - Missing/zero `wait` → legacy no-wait response (back-compat with
+      0.1.x firmware that doesn't know about long-poll).
+    - `wait > 0` → check immediately for pending commands; if any,
+      return them with `Preference-Applied: wait=<n>`. Otherwise hold
+      the request open, re-checking the DB every 1 s until either a
+      command appears or `wait` seconds elapse. Server caps `wait` at
+      30 s regardless of what the client asks.
+    - Each check opens + closes its own session_scope() so the
+      Postgres connection pool isn't held across the wait window.
+      The gunicorn worker is `gthread` (default 8 threads); each
+      open long-poll consumes one thread, so the practical concurrent
+      ceiling is `threads - <reserve for healthchecks + UI traffic>`.
+      Bump via REBOOTER_GUNICORN_THREADS if the fleet grows.
+    - Operator-stop: `REBOOTER_LONG_POLL_DISABLED=1` forces the
+      legacy no-wait path. Useful if a runaway thread storm needs
+      to be defused without a code change.
+    """
+    import os
+    import time
+
     device = g.current_device
     body_id = request.args.get("device_id")
     if body_id and body_id != device.id:
@@ -130,9 +181,16 @@ def poll_commands():
             "device_id in query does not match authenticated device.",
             status=400,
         )
+
+    long_poll_disabled = os.environ.get("REBOOTER_LONG_POLL_DISABLED") == "1"
+    requested_wait = 0 if long_poll_disabled else _parse_prefer_wait(
+        request.headers.get("Prefer")
+    )
+
     cmds = list_pending_for_device(device.id, mark_delivered=True)
-    return ok(
-        {
+
+    def _serialize() -> dict:
+        return {
             "commands": [
                 {
                     "command_id": c.id,
@@ -144,7 +202,32 @@ def poll_commands():
                 for c in cmds
             ]
         }
-    )
+
+    def _maybe_long_poll_headers(applied_wait: int) -> dict | None:
+        if applied_wait <= 0:
+            return None
+        return {"Preference-Applied": f"wait={applied_wait}"}
+
+    # Fast path — commands are already pending OR long-poll not requested.
+    if cmds or requested_wait <= 0:
+        return ok(_serialize(), headers=_maybe_long_poll_headers(requested_wait))
+
+    # Slow path — hold the request open. Each loop iteration opens a
+    # fresh session_scope() so the DB connection isn't pinned for the
+    # whole wait. Sleep releases the GIL so other threads keep
+    # serving requests in this worker.
+    deadline = time.monotonic() + requested_wait
+    while time.monotonic() < deadline:
+        time.sleep(LONG_POLL_CHECK_INTERVAL_SECONDS)
+        cmds = list_pending_for_device(device.id, mark_delivered=True)
+        if cmds:
+            return ok(
+                _serialize(),
+                headers=_maybe_long_poll_headers(requested_wait),
+            )
+    # Timeout — return the empty list. Device's next poll picks up
+    # any commands that arrived between this return and the next call.
+    return ok(_serialize(), headers=_maybe_long_poll_headers(requested_wait))
 
 
 @bp.post("/command-result")
