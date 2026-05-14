@@ -35,6 +35,30 @@ MAX_FRESH_SAMPLE_AGE_SECONDS = 300  # 5 min — beyond this, surface as stale
 RECENT_WINDOW_DEFAULT_SECONDS = 60 * 60  # 1 h — Device-detail recent series
 RECENT_WINDOW_MAX_SECONDS = 24 * 60 * 60  # 24 h — Device-detail upper cap
 
+# v0.5.30: operator-set $/kWh used by the cost-calc widget on /app/power +
+# Device-detail. NULL/unset → cost rendering hidden cleanly.
+RATE_PER_KWH_KEY = "power.rate_per_kwh"
+CURRENCY_KEY = "power.currency"
+DEFAULT_CURRENCY = "USD"
+
+
+def cost_rate_per_kwh() -> tuple[float | None, str]:
+    """Returns (rate, currency_code). `rate` is None when no operator
+    rate has been set, in which case the UI hides cost rendering."""
+    from app.services import runtime_settings
+
+    raw = runtime_settings.get(RATE_PER_KWH_KEY, default=None)
+    if raw is None or str(raw).strip() == "":
+        return None, runtime_settings.get(CURRENCY_KEY, default=DEFAULT_CURRENCY) or DEFAULT_CURRENCY
+    try:
+        rate = float(raw)
+    except (TypeError, ValueError):
+        return None, DEFAULT_CURRENCY
+    if rate < 0:
+        return None, DEFAULT_CURRENCY
+    currency = runtime_settings.get(CURRENCY_KEY, default=DEFAULT_CURRENCY) or DEFAULT_CURRENCY
+    return rate, str(currency)
+
 
 def _iso(dt: datetime | None) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
@@ -258,6 +282,44 @@ def fleet_summary(*, window_seconds: int = 24 * 60 * 60) -> dict:
 
     # Sort biggest-hogs first for the future fleet view.
     per_device.sort(key=lambda d: (d["avg_w"] or 0), reverse=True)
+
+    # v0.5.30: kWh + cost over the window. Derived from
+    # device_power_rollups when available (preferred — direct kWh
+    # column) plus an approximation from avg_w * window_hours when
+    # the window crosses partial days the rollup table doesn't cover
+    # yet. Today both fall through to None when no samples — cost
+    # rendering hides cleanly.
+    rate, currency = cost_rate_per_kwh()
+    with session_scope() as session:
+        rollup_rows = list(
+            session.execute(
+                select(
+                    DevicePowerRollup.device_id.label("device_id"),
+                    func.sum(DevicePowerRollup.kwh).label("kwh_sum"),
+                )
+                .where(DevicePowerRollup.day_bucket >= cutoff)
+                .group_by(DevicePowerRollup.device_id)
+            )
+        )
+    kwh_by_device = {
+        r.device_id: float(r.kwh_sum) if r.kwh_sum is not None else None
+        for r in rollup_rows
+    }
+    fleet_kwh = 0.0
+    fleet_kwh_has_data = False
+    for d in per_device:
+        kwh_window = kwh_by_device.get(d["device_id"])
+        if kwh_window is None and d.get("avg_w") is not None:
+            # Approximation when no rollup yet: avg watts × hours.
+            kwh_window = (d["avg_w"] * win / 3600.0) / 1000.0
+        d["kwh_window"] = kwh_window
+        d["cost_window"] = (
+            kwh_window * rate if (kwh_window is not None and rate is not None) else None
+        )
+        if kwh_window is not None:
+            fleet_kwh += kwh_window
+            fleet_kwh_has_data = True
+
     return {
         "window_seconds": win,
         "window_started_at": _iso(cutoff),
@@ -265,6 +327,12 @@ def fleet_summary(*, window_seconds: int = 24 * 60 * 60) -> dict:
         "device_count": len(per_device),
         "fleet_avg_w": total_avg or None,
         "fleet_peak_w": total_max or None,
+        "fleet_kwh": fleet_kwh if fleet_kwh_has_data else None,
+        "fleet_cost": (
+            fleet_kwh * rate if (fleet_kwh_has_data and rate is not None) else None
+        ),
+        "rate_per_kwh": rate,
+        "currency": currency,
         "per_device": per_device,
     }
 

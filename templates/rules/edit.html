@@ -42,4 +42,75 @@
     </div>
   </form>
 </div>
+
+{# v0.5.30 (Phase 2B back-port — intermediate): per-kind probe-shape
+   reference cards. Full structured-form on the edit page is deferred
+   to a later ship; in the meantime operators editing an integration
+   rule have copy-pasteable JSON examples for each kind here.
+
+   Each `<details>` opens to a JSON snippet of just the `"probe": …`
+   portion. Operator pastes into the textarea above and tweaks. #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3 style="margin-top:0">Probe shape reference</h3>
+  <p class="muted" style="font-size:.85rem">
+    Quick reference for the four integration probe kinds shipped in
+    v0.5.17 + v0.5.23. Use these as a starting point when editing the
+    JSON above; full per-kind structured-form on this page is
+    queued for a future ship.
+  </p>
+
+  <details style="margin-top:.6rem">
+    <summary class="muted" style="cursor:pointer">roku_app_active</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "roku_app_active",
+  "source_id": "ext_…",
+  "app_name": "Spectrum TV",
+  "max_sample_age_seconds": 120
+}</pre>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">ha_state_is</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "ha_state_is",
+  "source_id": "ext_…",
+  "entity_id": "sensor.living_room_motion",
+  "expected_state": "on",
+  "max_sample_age_seconds": 60
+}</pre>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">weather_alert_active</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "weather_alert_active",
+  "source_id": "ext_…",
+  "event_contains": "Storm",
+  "min_severity": "Severe",
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      <code>event_contains</code> + <code>min_severity</code> are both optional. Severity ladder:
+      <code>Minor</code> &lt; <code>Moderate</code> &lt; <code>Severe</code> &lt; <code>Extreme</code>.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">ical_event_active</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "ical_event_active",
+  "source_id": "ext_…",
+  "summary_contains": "Jeopardy",
+  "max_sample_age_seconds": 1800
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      <code>summary_contains</code> is optional — empty matches any currently-airing event.
+    </p>
+  </details>
+
+  <p class="muted" style="font-size:.85rem; margin-top:.6rem">
+    Find your <code>source_id</code>s at
+    <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>.
+  </p>
+</div>
 {% endblock %}

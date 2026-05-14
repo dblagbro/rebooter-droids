@@ -512,6 +512,30 @@
                 {# v0.5.17 (B17): roku_app_active — expected vs actual #}
                 {% elif d.expected_app is defined %}
                   <span class="muted" style="font-size:.78rem">· expected={{ d.expected_app }} · actual={{ d.actual_app or '(none)' }}{% if d.screensaver_active %} · screensaver{% endif %}{% if d.sampled_at %} · sample {{ d.sampled_at }}{% endif %}</span>
+                {# v0.5.30 (Phase 2C): ha_state_is, weather_alert_active, ical_event_active rendering #}
+                {% elif d.expected_state is defined %}
+                  <span class="muted" style="font-size:.78rem">· entity={{ d.entity_id }} · expected={{ d.expected_state }} · actual={{ d.actual_state or '(none)' }}{% if d.last_changed %} · changed {{ d.last_changed }}{% endif %}</span>
+                {% elif d.alerts_total is defined %}
+                  <span class="muted" style="font-size:.78rem">
+                    · {{ d.alerts_matched|length if d.alerts_matched else 0 }}/{{ d.alerts_total }} alerts match
+                    {% if d.event_filter %}· filter `{{ d.event_filter }}`{% endif %}
+                    {% if d.min_severity %}· min {{ d.min_severity }}{% endif %}
+                    {% if d.alerts_matched and d.alerts_matched|length > 0 %}
+                      ·
+                      {% for a in d.alerts_matched[:3] %}{{ a.event or '?' }}{% if a.severity %} [{{ a.severity }}]{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+                      {% if d.alerts_matched|length > 3 %}, +{{ d.alerts_matched|length - 3 }} more{% endif %}
+                    {% endif %}
+                  </span>
+                {% elif d.events_total is defined %}
+                  <span class="muted" style="font-size:.78rem">
+                    · {{ d.events_active|length if d.events_active else 0 }}/{{ d.events_total }} airing
+                    {% if d.summary_filter %}· filter `{{ d.summary_filter }}`{% endif %}
+                    {% if d.events_active and d.events_active|length > 0 %}
+                      ·
+                      {% for e in d.events_active[:2] %}"{{ e.summary|truncate(40, true, '…') }}"{% if not loop.last %}, {% endif %}{% endfor %}
+                      {% if d.events_active|length > 2 %}, +{{ d.events_active|length - 2 }} more{% endif %}
+                    {% endif %}
+                  </span>
                 {% elif d.source_id is defined and d.reason is defined %}
                   <span class="muted" style="font-size:.78rem">· source {{ d.source_id }}: {{ d.reason }}{% if d.max_sample_age_seconds %} (max age {{ d.max_sample_age_seconds }}s){% endif %}</span>
                 {# Cooldown skips — show the streak count that's piling up #}
