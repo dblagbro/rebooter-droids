@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.23] - 2026-05-14
+
+### Added — B17 adjacent integrations: Home Assistant + Weather (NWS) + iCal
+
+#7 from the priority backlog. Extends the v0.5.17 B17 Layer 1 Roku
+shape with three more polling-model-compatible source kinds. MQTT
+pub/sub and Plex/Google-OAuth webhooks defer to a future ship (they
+need different architectural patterns).
+
+**Schema** (additive, auto-creates via `_PENDING_COLUMNS`):
+- `external_sensor_sources.config JSONB` — per-kind extras bag.
+  Existing Roku sources keep NULL + behave exactly as before; new
+  kinds populate it (HA token, weather lat/lng, iCal URL).
+
+**New `kind` values** (`EXTERNAL_SOURCE_KINDS`):
+- `home_assistant` — `GET <host>:<port>/api/states` with long-lived
+  access token (Authorization: Bearer …). Compact entity dict
+  stored: `{entity_id → {state, last_changed, attributes_clipped}}`.
+- `weather` — `GET api.weather.gov/alerts/active?point=lat,lng`
+  (NWS, no auth, US-only). Compact alert list:
+  `{event, severity, headline, effective, ends}`.
+- `ical` — fetch any HTTP(S) / webcal:// .ics feed; tiny VEVENT
+  parser (no `icalendar` lib dep) extracts current-airing-or-
+  next-24h events: `{summary, start, end, uid}`. Capped at 50
+  events per sample.
+
+**Per-kind validation** in `services.external_sensors._validate_kind_config()`:
+- `home_assistant` → requires `token` (non-empty); optional
+  `verify_ssl: bool`.
+- `weather` → requires numeric `lat` + `lng`, range-checked.
+- `ical` → requires `url` with http/https/webcal scheme; webcal://
+  is normalized to https:// for the fetch.
+
+**Three new watchdog probe kinds** in `watchdog_runtime/_probes.py`:
+- `ha_state_is` — match `entities[entity_id].state` against
+  `expected_state` (case-insensitive exact).
+  Stale-sample failure gate at default 60 s.
+- `weather_alert_active` — succeed when at least one active alert
+  passes optional `event_contains` substring filter +
+  `min_severity` rank floor (Minor < Moderate < Severe < Extreme).
+  Stale-sample failure gate at default 600 s.
+- `ical_event_active` — succeed when an event whose SUMMARY
+  contains `summary_contains` is currently airing (start ≤ now <
+  end). Open-ended events treated as 24 h. Stale-sample failure
+  gate at default 1800 s.
+
+**Admin UI** — `/app/settings/integrations` gains three new add
+forms (HA, Weather, iCal) below the existing Roku one. HA token is
+rendered `password` and masked in source-row serialization. Each
+form ships sensible default poll intervals (HA 30 s, weather +
+iCal 600 s).
+
+**Security note**: HA tokens are stored DB-side in plain text — same
+posture as SMTP password in `runtime_settings`. v0.6.x is the
+natural cleanup point for at-rest encryption of these
+operator-supplied secrets.
+
+**Use-case example shipped**: pair the v0.5.17 Roku `roku_app_active`
+probe with `ical_event_active` for the operator's full Jeopardy
+automation — "Roku-A is on Spectrum TV AND a calendar entry titled
+'Jeopardy' is currently airing → relay_off subwoofer". No EPG
+dependency needed (Layer 2 still deferred).
+
 ## [0.5.22] - 2026-05-14
 
 ### Added — B21 desired-config blob + drift detection + push-on-restore
