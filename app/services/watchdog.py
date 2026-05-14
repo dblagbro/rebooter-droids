@@ -276,6 +276,133 @@ def create_rule(
         return serialize_rule(rule, sentence=render_rule_sentence(rule))
 
 
+def update_rule(
+    rule_id: str,
+    *,
+    name: str,
+    probe: dict,
+    target: dict,
+    action: dict,
+    site_id: str | None = None,
+    description: str | None = None,
+    failure_threshold: int = 3,
+    recovery_threshold: int = 2,
+    window_seconds: int = 60,
+    cooldown_seconds: int = 300,
+    max_retries: int = 3,
+    retry_delay_seconds: int = 60,
+    escalation: dict | None = None,
+    maintenance_windows: list | None = None,
+    updated_by_user_id: str | None = None,
+) -> dict | None:
+    """v0.5.19 (Rules UX phase): full-rule update. Same validation
+    surface as create_rule. Resets the runtime state-machine counters
+    (failure_streak / recovery_streak / status='armed') so a rule that
+    was stuck firing comes back clean after a config change.
+
+    Returns None if rule_id doesn't exist; otherwise the freshly-
+    serialized rule dict.
+    """
+    # Reuse create_rule's validation block by raising the same errors.
+    # Pre-validate before opening the session so we don't half-mutate.
+    name = (name or "").strip()
+    if not name:
+        raise WatchdogValidationError("name is required")
+    if len(name) > 120:
+        raise WatchdogValidationError("name must be 120 characters or fewer")
+    if not isinstance(probe, dict) or probe.get("kind") not in KNOWN_PROBE_KINDS:
+        raise WatchdogValidationError(
+            f"probe.kind must be one of {KNOWN_PROBE_KINDS}"
+        )
+    if probe.get("kind") == "internet" and "targets" in probe:
+        targets = probe.get("targets")
+        if targets is not None:
+            if not isinstance(targets, list):
+                raise WatchdogValidationError(
+                    "probe.targets must be a list of {host, port} objects"
+                )
+            if len(targets) > 8:
+                raise WatchdogValidationError(
+                    "probe.targets accepts at most 8 entries"
+                )
+            for i, t in enumerate(targets):
+                if not isinstance(t, dict):
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}] must be an object with host + port"
+                    )
+                host = str(t.get("host") or "").strip()
+                if not host:
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}].host is required"
+                    )
+                try:
+                    port = int(t.get("port") or 0)
+                except (TypeError, ValueError):
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}].port must be an integer"
+                    )
+                if port < 1 or port > 65535:
+                    raise WatchdogValidationError(
+                        f"probe.targets[{i}].port must be between 1 and 65535"
+                    )
+    if not isinstance(target, dict) or target.get("kind") not in (
+        "device", "group", "tag"
+    ):
+        raise WatchdogValidationError(
+            "target.kind must be 'device' | 'group' | 'tag'"
+        )
+    if target["kind"] in ("device", "group") and not (target.get("id") or "").strip():
+        raise WatchdogValidationError(
+            f"target.id is required when target.kind={target['kind']!r}"
+        )
+    if target["kind"] == "tag" and not (target.get("tag") or "").strip():
+        raise WatchdogValidationError("target.tag is required when target.kind='tag'")
+    if not isinstance(action, dict) or action.get("kind") not in (
+        "cycle", "hold_off", "notify_only"
+    ):
+        raise WatchdogValidationError(
+            "action.kind must be 'cycle' | 'hold_off' | 'notify_only'"
+        )
+    if int(failure_threshold) < 1 or int(failure_threshold) > 100:
+        raise WatchdogValidationError("failure_threshold must be between 1 and 100")
+    if int(recovery_threshold) < 1 or int(recovery_threshold) > 100:
+        raise WatchdogValidationError("recovery_threshold must be between 1 and 100")
+    if int(window_seconds) < 5 or int(window_seconds) > 86400:
+        raise WatchdogValidationError("window_seconds must be between 5 and 86400 (1 day)")
+    if int(cooldown_seconds) < 0 or int(cooldown_seconds) > 86400:
+        raise WatchdogValidationError("cooldown_seconds must be between 0 and 86400 (1 day)")
+
+    with session_scope() as session:
+        rule = session.get(WatchdogRule, rule_id)
+        if rule is None:
+            return None
+        rule.name = name
+        rule.description = description or None
+        rule.site_id = site_id
+        rule.probe = probe
+        rule.target = target
+        rule.action = action
+        rule.failure_threshold = int(failure_threshold)
+        rule.recovery_threshold = int(recovery_threshold)
+        rule.window_seconds = int(window_seconds)
+        rule.cooldown_seconds = int(cooldown_seconds)
+        rule.max_retries = int(max_retries)
+        rule.retry_delay_seconds = int(retry_delay_seconds)
+        rule.escalation = escalation or {"kind": "stop"}
+        rule.maintenance_windows = maintenance_windows or []
+        # Reset runtime state so the operator's config change takes
+        # effect cleanly. A rule that was mid-firing comes back armed;
+        # next probe starts the streak counters from zero.
+        rule.failure_streak = 0
+        rule.recovery_streak = 0
+        if rule.enabled and rule.status != RULE_STATUS_DISABLED:
+            rule.status = RULE_STATUS_ARMED
+        rule.updated_at = datetime.now(timezone.utc)
+        session.add(rule)
+        session.flush()
+        return serialize_rule(rule, sentence=render_rule_sentence(rule))
+
+
 def delete_rule(rule_id: str) -> bool:
     with session_scope() as session:
         r = session.get(WatchdogRule, rule_id)

@@ -99,28 +99,118 @@
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
       <legend>Target</legend>
       <label>Kind
-        <select name="target_kind">
+        <select name="target_kind" id="target_kind">
           <option value="device">device</option>
           <option value="group">group</option>
           <option value="tag">tag (free-form)</option>
         </select>
       </label>
+      {# v0.5.19 (Rules UX): inline search filter + state-aware option
+         labels (`online` / `offline` / `never`) so operators can pick the
+         right device without leaving the form. JS below hides options
+         that don't match the kind + filter. #}
+      <label style="margin-top:.4rem">Filter
+        <input type="search" id="target_filter" placeholder="type to filter (name, id, mac)" autocomplete="off">
+      </label>
       <label>Target id / tag
-        <select name="target_id">
+        <select name="target_id" id="target_id">
           <option value="">— pick a device or group —</option>
           {% if devices %}
-          <optgroup label="devices">
-            {% for d in devices %}<option value="{{ d.id }}">device: {{ d.display_name or d.id }}</option>{% endfor %}
+          <optgroup label="devices" data-kind="device">
+            {% for d in devices %}
+            <option value="{{ d.id }}"
+                    data-kind="device"
+                    data-name="{{ (d.display_name or d.id)|lower }}"
+                    data-id="{{ d.id|lower }}"
+                    data-mac="{{ (d.mac_address or '')|lower }}">
+              {{ d.display_name or d.id }}
+              {%- if d.online %} · online
+              {%- elif d.heartbeat_state == 'never' %} · never heartbeated
+              {%- else %} · offline
+              {%- endif -%}
+            </option>
+            {% endfor %}
           </optgroup>
           {% endif %}
           {% if groups %}
-          <optgroup label="groups">
-            {% for g in groups %}<option value="{{ g.id }}">group: {{ g.name }}</option>{% endfor %}
+          <optgroup label="groups" data-kind="group">
+            {% for g in groups %}
+            <option value="{{ g.id }}"
+                    data-kind="group"
+                    data-name="{{ g.name|lower }}"
+                    data-id="{{ g.id|lower }}">
+              {{ g.name }}
+              {%- if g.device_count is defined %} ({{ g.device_count }} device{{ '' if g.device_count == 1 else 's' }}){% endif %}
+            </option>
+            {% endfor %}
           </optgroup>
           {% endif %}
         </select>
       </label>
-      <p class="muted" style="font-size:.85rem">For tag targets, type the tag name in the dropdown after selecting "tag" (browser convention).</p>
+      <p class="muted" style="font-size:.85rem">For tag targets, set kind = <code>tag</code> and type the tag name directly in the Target id box (it becomes a text input).</p>
+
+      <script>
+        (function () {
+          var kindSel = document.getElementById('target_kind');
+          var filter  = document.getElementById('target_filter');
+          var sel     = document.getElementById('target_id');
+          if (!kindSel || !filter || !sel) return;
+
+          var originalSelHtml = sel.innerHTML;
+
+          function rebuild() {
+            var kind = kindSel.value;
+            // tag mode: replace select with a free-form text input
+            // (browsers can't make a <select> typeable; swap nodes).
+            if (kind === 'tag') {
+              if (sel.tagName !== 'INPUT') {
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.name = 'target_id';
+                input.id = 'target_id';
+                input.placeholder = 'tag name';
+                sel.parentNode.replaceChild(input, sel);
+                sel = input;
+                filter.style.display = 'none';
+              }
+              return;
+            }
+            // restore select if we previously swapped to input
+            if (sel.tagName === 'INPUT') {
+              var newSel = document.createElement('select');
+              newSel.name = 'target_id';
+              newSel.id = 'target_id';
+              newSel.innerHTML = originalSelHtml;
+              sel.parentNode.replaceChild(newSel, sel);
+              sel = newSel;
+              filter.style.display = '';
+            }
+            // hide options whose data-kind doesn't match + apply filter text
+            var q = (filter.value || '').toLowerCase().trim();
+            var optgroups = sel.querySelectorAll('optgroup');
+            optgroups.forEach(function (og) {
+              var ogKind = og.getAttribute('data-kind');
+              var keep = (ogKind === kind);
+              og.style.display = keep ? '' : 'none';
+              if (!keep) return;
+              var anyVisible = false;
+              og.querySelectorAll('option').forEach(function (opt) {
+                if (!q) { opt.hidden = false; anyVisible = true; return; }
+                var hay = (opt.getAttribute('data-name') || '') + ' ' +
+                          (opt.getAttribute('data-id') || '') + ' ' +
+                          (opt.getAttribute('data-mac') || '');
+                var hit = hay.indexOf(q) !== -1;
+                opt.hidden = !hit;
+                if (hit) anyVisible = true;
+              });
+              if (!anyVisible) og.style.display = 'none';
+            });
+          }
+          kindSel.addEventListener('change', rebuild);
+          filter.addEventListener('input', rebuild);
+          rebuild();
+        })();
+      </script>
     </fieldset>
 
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
@@ -187,6 +277,59 @@
       <td>
         <strong>{{ r.name }}</strong><br>
         <span class="muted" style="font-size:.85rem">{{ r.sentence }}</span>
+        {# v0.5.19 (Rules UX): structured chips for at-a-glance summary. #}
+        <div style="display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.35rem; font-size:.7rem">
+          {# probe chip #}
+          {% set p = r.probe or {} %}
+          {% if p.kind == 'internet' %}
+            <span class="badge" title="outbound TCP probe">probe: internet ({{ (p.targets or [{},{},{}])|length }} targets)</span>
+          {% elif p.kind == 'ping' %}
+            <span class="badge" title="ICMP ping (B6.1)">probe: ping {{ p.host or '?' }}</span>
+          {% elif p.kind == 'tcp' %}
+            <span class="badge">probe: tcp {{ p.host or '?' }}:{{ p.port or '?' }}</span>
+          {% elif p.kind == 'http' %}
+            <span class="badge" title="{{ p.url }}">probe: http {{ p.url|truncate(40, true, '…') }}</span>
+          {% elif p.kind == 'dns' %}
+            <span class="badge">probe: dns {{ p.hostname or '?' }}</span>
+          {% elif p.kind == 'gateway' %}
+            <span class="badge">probe: gateway</span>
+          {% elif p.kind == 'roku_app_active' %}
+            <span class="badge" title="B17: matches when Roku source's active app contains app_name">probe: roku · {{ p.app_name or '?' }}</span>
+          {% else %}
+            <span class="badge">probe: {{ p.kind or 'unknown' }}</span>
+          {% endif %}
+
+          {# target chip #}
+          {% set t = r.target or {} %}
+          {% if t.kind == 'device' %}
+            <span class="badge" title="device id: {{ t.id }}">target: device</span>
+          {% elif t.kind == 'group' %}
+            <span class="badge" title="group id: {{ t.id }}">target: group</span>
+          {% elif t.kind == 'tag' %}
+            <span class="badge">target: tag “{{ t.tag }}”</span>
+          {% endif %}
+
+          {# action chip #}
+          {% set a = r.action or {} %}
+          <span class="badge" title="what fires on threshold">action: {{ a.kind or 'unknown' }}{% if a.kind == 'cycle' and a.power_off_seconds %} ({{ a.power_off_seconds }}s off){% endif %}</span>
+
+          {# thresholds chip #}
+          <span class="badge" title="failures before fire / successes to re-arm / probe every / cooldown after fire">
+            {{ r.failure_threshold }}f / {{ r.recovery_threshold }}r · every {{ r.window_seconds }}s · cool {{ r.cooldown_seconds }}s
+          </span>
+
+          {# streak chip (only when non-zero — clutter avoidance) #}
+          {% if r.failure_streak and r.failure_streak > 0 %}
+            <span class="badge red" title="consecutive failures so far">streak: {{ r.failure_streak }}/{{ r.failure_threshold }} fail</span>
+          {% elif r.recovery_streak and r.recovery_streak > 0 %}
+            <span class="badge amber" title="consecutive successes after a failure">streak: {{ r.recovery_streak }}/{{ r.recovery_threshold }} recover</span>
+          {% endif %}
+
+          {# maintenance window chip #}
+          {% if r.maintenance_windows %}
+            <span class="badge amber" title="{{ r.maintenance_windows|length }} configured window(s)">maint: {{ r.maintenance_windows|length }}</span>
+          {% endif %}
+        </div>
       </td>
       <td>
         {% if r.enabled %}<span class="badge green">{{ r.status }}</span>
@@ -195,16 +338,17 @@
       <td class="muted" style="font-size:.85rem">{{ r.created_at }}</td>
       {% if can_edit %}
       <td style="white-space:nowrap">
+        <a class="btn-secondary" style="font-size:.8rem" href="{{ url_for('admin_ui.rules_edit_page', rule_id=r.id) }}" title="Edit rule shape">Edit</a>
         <form method="post" action="{{ url_for('admin_ui.rules_probe_now_submit', rule_id=r.id) }}" style="display:inline">
-          <button type="submit" class="btn-secondary" title="Run a single probe now (diagnostic — does NOT advance state or fire actions)">Probe now</button>
+          <button type="submit" class="btn-secondary" style="font-size:.8rem" title="Run a single probe now (diagnostic — does NOT advance state or fire actions)">Probe now</button>
         </form>
         <form method="post" action="{{ url_for('admin_ui.rules_set_enabled_submit', rule_id=r.id) }}" style="display:inline">
           <input type="hidden" name="enabled" value="{{ '0' if r.enabled else '1' }}">
-          <button type="submit" class="btn-secondary">{{ 'Disable' if r.enabled else 'Enable' }}</button>
+          <button type="submit" class="btn-secondary" style="font-size:.8rem">{{ 'Disable' if r.enabled else 'Enable' }}</button>
         </form>
         <form method="post" action="{{ url_for('admin_ui.rules_delete_submit', rule_id=r.id) }}" style="display:inline"
               data-confirm-message="Delete watchdog rule {{ r.name }}?">
-          <button type="submit" class="btn-danger">Delete</button>
+          <button type="submit" class="btn-danger" style="font-size:.8rem">Delete</button>
         </form>
       </td>
       {% endif %}
@@ -220,9 +364,10 @@
             {% for e in r.recent_events %}
               <li style="margin:.2rem 0">
                 <code>{{ e.at }}</code> ·
-                <span class="badge {% if e.outcome in ('success','recovery') %}green{% elif e.outcome in ('action_fired','failure') %}red{% endif %}">{{ e.outcome }}</span>
-                {# v0.5.9: surface multi-target internet probe results so the operator can tell "one resolver blip" from "full outage" without opening the API. #}
+                <span class="badge {% if e.outcome in ('success','recovery') %}green{% elif e.outcome in ('action_fired','failure') %}red{% elif e.outcome in ('maintenance_skip','cooldown_skip','probe_error') %}amber{% endif %}">{{ e.outcome }}</span>
+                {# v0.5.19 (Rules UX): per-probe-kind detail rendering. #}
                 {% set d = e.details or {} %}
+                {# v0.5.9: internet multi-target — N/N ok + failed list #}
                 {% if d.targets_total is defined %}
                   <span class="muted" style="font-size:.78rem">
                     · {{ d.targets_succeeded|length }}/{{ d.targets_total }} ok
@@ -232,6 +377,30 @@
                     {% endif %}
                     {% if d.used_default_targets %}· defaults{% endif %}
                   </span>
+                {# v0.5.13 (B6.1): ping — rtt or stderr_tail #}
+                {% elif d.rtt_ms is defined %}
+                  <span class="muted" style="font-size:.78rem">· {{ d.host }} rtt={{ d.rtt_ms }}ms</span>
+                {% elif d.host is defined and d.reason is defined %}
+                  <span class="muted" style="font-size:.78rem">· {{ d.host }} {{ d.reason }}{% if d.exit_code is defined %} (exit {{ d.exit_code }}){% endif %}{% if d.stderr_tail %} — {{ d.stderr_tail|truncate(60, true, '…') }}{% endif %}</span>
+                {# v0.5.17 (B17): roku_app_active — expected vs actual #}
+                {% elif d.expected_app is defined %}
+                  <span class="muted" style="font-size:.78rem">· expected={{ d.expected_app }} · actual={{ d.actual_app or '(none)' }}{% if d.screensaver_active %} · screensaver{% endif %}{% if d.sampled_at %} · sample {{ d.sampled_at }}{% endif %}</span>
+                {% elif d.source_id is defined and d.reason is defined %}
+                  <span class="muted" style="font-size:.78rem">· source {{ d.source_id }}: {{ d.reason }}{% if d.max_sample_age_seconds %} (max age {{ d.max_sample_age_seconds }}s){% endif %}</span>
+                {# Cooldown skips — show the streak count that's piling up #}
+                {% elif d.failure_streak is defined %}
+                  <span class="muted" style="font-size:.78rem">· streak {{ d.failure_streak }} (rule on cooldown)</span>
+                {# action_fired — show what got enqueued #}
+                {% elif d.action is defined %}
+                  <span class="muted" style="font-size:.78rem">
+                    · {{ d.action }}{% if d.enqueued %} · enqueued: {{ d.enqueued|join(', ')|truncate(60, true, '…') }}{% endif %}{% if d.held %} · held: {{ d.held|join(', ')|truncate(60, true, '…') }}{% endif %}{% if d.skipped and d.skipped|length > 0 %} · skipped: {{ d.skipped|length }}{% endif %}{% if d.error %} · error: {{ d.error|truncate(80, true, '…') }}{% endif %}
+                  </span>
+                {# probe_error / generic reason fallback #}
+                {% elif d.reason is defined %}
+                  <span class="muted" style="font-size:.78rem">· {{ d.reason }}{% if d.error %}: {{ d.error|truncate(80, true, '…') }}{% endif %}</span>
+                {# recovery / maintenance_skip — show the literal reason if any #}
+                {% elif d.skipped is defined %}
+                  <span class="muted" style="font-size:.78rem">· {{ d.skipped }}</span>
                 {% endif %}
               </li>
             {% endfor %}
@@ -252,11 +421,19 @@
 <div class="v3-card" style="margin-top:1.5rem">
   <h2>What's coming next</h2>
   <ul class="muted">
-    <li><strong>Maintenance windows</strong> + <strong>portal-wide maintenance mode</strong> (suspend all rules during planned reboots).</li>
-    <li><strong>Schedules</strong> — recurring power cycles + maintenance-mode windows.</li>
-    <li><strong>Notifications</strong> — fire-on-trigger via SMTP (already wired) / webhook / Web Push.</li>
-    <li><strong>Tag-as-target</strong> dispatch (currently shaped, not enforced).</li>
-    <li><strong>Native ICMP ping</strong> probes (today the runtime falls back to a TCP-port-80 probe).</li>
+    <li><strong>Notifications</strong> — fire-on-trigger via SMTP (already wired for invitations) / webhook / Web Push.</li>
+    <li><strong>Tag-as-target</strong> dispatch (currently shaped, not enforced — needs a <code>device_tags</code> primitive to actually resolve to devices; B6.3 in BACKLOG).</li>
+    <li><strong>EPG (TVMaze / Schedules Direct) probe</strong> — B17 Layer 2: pair with <code>roku_app_active</code> for "what show is on right now" rules.</li>
   </ul>
+  <p class="muted" style="font-size:.85rem; margin-top:.5rem">
+    Recent ships: <strong>v0.4.2</strong> probe runtime (B6) ·
+    <strong>v0.4.7</strong> maintenance windows (B7) ·
+    <strong>v0.4.8</strong> schedules primitive (B8) ·
+    <strong>v0.4.9</strong> JSON editor (B9) ·
+    <strong>v0.5.9</strong> multi-target internet probe ·
+    <strong>v0.5.13</strong> real ICMP ping (B6.1) ·
+    <strong>v0.5.17</strong> Roku ECP integration (B17 Layer 1) ·
+    <strong>v0.5.19</strong> rule Edit flow + chips + richer event details + filterable target picker.
+  </p>
 </div>
 {% endblock %}

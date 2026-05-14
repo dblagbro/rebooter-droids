@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.19] - 2026-05-14
+
+### Added — Rules UX phase (#2 from priority backlog)
+
+Four operator-visible improvements to `/app/rules`:
+
+**1. Real Edit flow.** Pre-v0.5.19, changing any field on a rule meant
+delete-and-recreate (audit history split, runtime state lost). Now
+each rule row carries an **Edit** button → `/app/rules/<id>/edit` →
+JSON editor pre-filled with the rule's current shape (name, probe,
+target, action, thresholds, escalation, maintenance windows). Save
+calls the new `services.watchdog.update_rule()` which runs the same
+validation as `create_rule` and **resets the runtime state machine**
+(`failure_streak` / `recovery_streak` / `status='armed'`) so a rule
+that was stuck firing comes back clean after a config change.
+
+API: `PATCH /api/v1/admin/rules/<id>` mirrors the new endpoint.
+
+Audit event: `watchdog_rule.updated`.
+
+**2. Structured chips under each rule's sentence.** The plain-English
+sentence kept its prominence; a row of small chips beneath now
+surfaces the shape at a glance:
+- probe (kind + target/host/url/app-name; internet shows target
+  count)
+- target (kind + name; tags get the tag literal)
+- action (kind + cycle parameters)
+- thresholds (`Nf / Nr · every Ns · cool Ns`)
+- streak (only when non-zero — shows progress toward firing or
+  recovery)
+- maintenance windows (count, when configured)
+
+**3. Richer event details in the per-rule event log.** Pre-v0.5.19,
+only internet multi-target probes rendered a useful summary; ping
+rtt, http URL, dns hostname, tcp host:port, and the new
+`roku_app_active` (B17) payloads dumped raw or nothing. Now the
+event row renders per-probe-kind details:
+- ping → `rtt=Nms` on success / `host reason (exit N) — stderr_tail` on failure
+- internet → `N/N ok · failed: host:port, …` (unchanged)
+- roku_app_active → `expected=X · actual=Y · screensaver · sample <ts>`
+  on success; `source X: stale_sample (max age Ns)` on stale data
+- cooldown_skip → `streak N (rule on cooldown)`
+- action_fired → `cycle · enqueued: cmd_…, … · skipped: N`
+- generic `reason` / `error` fallback for probe_error and the rest
+
+Outcome badges now color-code amber for `maintenance_skip`,
+`cooldown_skip`, `probe_error` (previously rendered uncolored).
+
+**4. Filterable target picker.** Pre-v0.5.19, picking from a fleet
+of 7+ devices meant scrolling a flat optgroup. Now:
+- Inline search input filters options by name / id / MAC
+- Each device option carries an inline state hint (`· online` /
+  `· offline` / `· never heartbeated`)
+- Group options show `(N devices)` when the count is known
+- Kind dropdown filters which optgroup is visible (no more
+  picking a device while the kind says "group")
+- `kind=tag` swaps the select for a free-form text input so the
+  operator can type the tag name directly
+
+### Backend
+
+- `services/watchdog.update_rule()` (new) — full-rule update with
+  same validation surface as `create_rule`; resets streak counters
+  + status to armed. ~120 LOC.
+- `blueprints/admin/rules.py` — `GET /app/rules/<id>/edit`,
+  `POST /app/rules/<id>/edit`, `PATCH /api/v1/admin/rules/<id>`.
+
+### Templates
+
+- `templates/rules/edit.html` (new).
+- `templates/rules/index.html` — chips + richer event details +
+  filterable target picker + updated "what's coming next".
+
+### Notes
+
+The operator's original Rules UX spec was cut off mid-message
+(during the v0.5.10 firmware-team-side message). The four
+improvements above match the un-cut portion (Edit flow + structured
+chips). If your full spec covered other items (richer escalation
+editor, multi-window maintenance UI, etc.) please resend and I'll
+add them as v0.5.20.
+
 ## [0.5.18] - 2026-05-14
 
 ### Refactor — naming cleanup (drop underscore on cross-module watchdog helpers)

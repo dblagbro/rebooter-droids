@@ -33,10 +33,12 @@ from app.services.watchdog import (
     WatchdogValidationError,
     create_rule as svc_create_rule,
     delete_rule as svc_delete_rule,
+    get_rule as svc_get_rule,
     list_rules as svc_list_rules,
     list_recent_events as svc_list_events,
     probe_now as svc_probe_now,
     set_enabled as svc_set_enabled,
+    update_rule as svc_update_rule,
 )
 
 
@@ -254,6 +256,110 @@ def rules_create_json_submit():
     return redirect(url_for("admin_ui.rules_page"))
 
 
+@admin_ui_bp.get("/rules/<rule_id>/edit")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_edit_page(rule_id: str):
+    """v0.5.19 (Rules UX phase): edit a rule via the JSON editor —
+    pre-fills the textarea with the current rule body so the operator
+    can tweak any field instead of delete-and-recreate.
+    """
+    import json
+
+    rule = svc_get_rule(rule_id)
+    if rule is None:
+        abort(404)
+    # Build the editor body — strip server-side runtime fields the
+    # operator can't and shouldn't override.
+    body = {
+        "name": rule["name"],
+        "description": rule.get("description"),
+        "probe": rule["probe"],
+        "target": rule["target"],
+        "action": rule["action"],
+        "failure_threshold": rule["failure_threshold"],
+        "recovery_threshold": rule["recovery_threshold"],
+        "window_seconds": rule["window_seconds"],
+        "cooldown_seconds": rule["cooldown_seconds"],
+        "max_retries": rule["max_retries"],
+        "retry_delay_seconds": rule["retry_delay_seconds"],
+        "escalation": rule.get("escalation") or {"kind": "stop"},
+        "maintenance_windows": rule.get("maintenance_windows") or [],
+    }
+    return render_template(
+        "rules/edit.html",
+        **_ctx({
+            "active": "rules",
+            "rule": rule,
+            "rule_json": json.dumps(body, indent=2),
+        }),
+    )
+
+
+@admin_ui_bp.post("/rules/<rule_id>/edit")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_edit_submit(rule_id: str):
+    import json
+
+    raw = (request.form.get("rule_json") or "").strip()
+
+    def _err(msg: str):
+        rule = svc_get_rule(rule_id)
+        if rule is None:
+            abort(404)
+        return render_template(
+            "rules/edit.html",
+            **_ctx({
+                "active": "rules",
+                "rule": rule,
+                "rule_json": raw or "",
+                "json_editor_error": msg,
+            }),
+        )
+
+    if not raw:
+        return _err("Paste a JSON body first.")
+    try:
+        body = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return _err(f"JSON parse error: {e}")
+    if not isinstance(body, dict):
+        return _err("Top-level JSON must be an object.")
+
+    try:
+        rule = svc_update_rule(
+            rule_id,
+            name=body.get("name", ""),
+            probe=body.get("probe") or {},
+            target=body.get("target") or {},
+            action=body.get("action") or {},
+            failure_threshold=int(body.get("failure_threshold", 3)),
+            recovery_threshold=int(body.get("recovery_threshold", 2)),
+            window_seconds=int(body.get("window_seconds", 60)),
+            cooldown_seconds=int(body.get("cooldown_seconds", 300)),
+            max_retries=int(body.get("max_retries", 3)),
+            retry_delay_seconds=int(body.get("retry_delay_seconds", 60)),
+            escalation=body.get("escalation"),
+            maintenance_windows=body.get("maintenance_windows"),
+            description=body.get("description"),
+            site_id=body.get("site_id"),
+            updated_by_user_id=g.current_user.id,
+        )
+    except WatchdogValidationError as e:
+        return _err(f"Validation failed: {e}")
+    if rule is None:
+        abort(404)
+    audit_service.record(
+        "watchdog_rule.updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule_id,
+        details={"name": rule["name"], "via": "json_editor"},
+    )
+    flash(f"Rule updated: {rule['sentence']}", "info")
+    return redirect(url_for("admin_ui.rules_page"))
+
+
 @admin_ui_bp.post("/rules/<rule_id>/toggle")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def rules_set_enabled_submit(rule_id: str):
@@ -372,6 +478,46 @@ def probe_now_api(rule_id: str):
         details={"outcome": res["outcome"], "via": "probe_now_api"},
     )
     return ok(res)
+
+
+@admin_api_bp.patch("/rules/<rule_id>")
+@role_required_api(*ADMIN_AND_UP)
+def update_rule_api(rule_id: str):
+    """v0.5.19: full-rule update via JSON. Same shape as POST /rules.
+    Resets runtime state-machine counters server-side."""
+    body = request.get_json(silent=True) or {}
+    try:
+        rule = svc_update_rule(
+            rule_id,
+            name=body.get("name", ""),
+            probe=body.get("probe") or {},
+            target=body.get("target") or {},
+            action=body.get("action") or {},
+            failure_threshold=body.get("failure_threshold", 3),
+            recovery_threshold=body.get("recovery_threshold", 2),
+            window_seconds=body.get("window_seconds", 60),
+            cooldown_seconds=body.get("cooldown_seconds", 300),
+            max_retries=body.get("max_retries", 3),
+            retry_delay_seconds=body.get("retry_delay_seconds", 60),
+            escalation=body.get("escalation"),
+            maintenance_windows=body.get("maintenance_windows"),
+            description=body.get("description"),
+            site_id=body.get("site_id"),
+            updated_by_user_id=g.current_user.id,
+        )
+    except WatchdogValidationError as e:
+        return err("validation_failed", str(e), status=400)
+    if rule is None:
+        return err("rule_unknown", "Watchdog rule not found.", status=404)
+    audit_service.record(
+        "watchdog_rule.updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule_id,
+        details={"name": rule["name"], "via": "api"},
+    )
+    return ok(rule)
 
 
 @admin_api_bp.delete("/rules/<rule_id>")
