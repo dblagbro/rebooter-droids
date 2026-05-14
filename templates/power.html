@@ -49,6 +49,61 @@
   </div>
 </div>
 
+{# ── fleet timeseries chart (Phase 1C — v0.5.29) ────────────────── #}
+{% set fr = fleet_rollups %}
+{% if fr and fr.day_keys %}
+<div class="v3-card" style="margin-top:1rem">
+  <h2 style="margin-top:0">Daily avg watts by device — last {{ fr.days }} days</h2>
+  {% set cw = 720 %}
+  {% set ch = 180 %}
+  {% set day_count = fr.day_keys|length %}
+  {% set bar_step = (cw / day_count) if day_count > 0 else cw %}
+  {# Compute peak across whole dataset for y-scale. #}
+  {% set all_vals = [] %}
+  {% for d in fr.avg_w_by_day %}
+    {% for v in d.values %}
+      {% if v is not none %}{% set _ = all_vals.append(v) %}{% endif %}
+    {% endfor %}
+  {% endfor %}
+  {% set vmax = all_vals|max if all_vals else 1 %}
+  {% set palette = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#a3a3a3','#84cc16'] %}
+  <svg viewBox="0 0 {{ cw }} {{ ch }}" width="100%" style="max-width:{{ cw }}px; height:{{ ch }}px" role="img" aria-label="Fleet daily-average watts by device, stacked-bar chart">
+    {# baseline #}
+    <line x1="0" y1="{{ ch }}" x2="{{ cw }}" y2="{{ ch }}" stroke="rgba(128,128,128,.4)" stroke-width="1"/>
+    {# y-axis marker #}
+    <text x="2" y="14" fill="rgba(128,128,128,.7)" font-size="10">{{ '%.0f'|format(vmax) }} W</text>
+    {% for d in fr.avg_w_by_day %}
+      {% set bx = loop.index0 * bar_step %}
+      {% set running = 0 %}
+      {% for v in d.values %}
+        {% if v is not none and v > 0 %}
+          {% set seg_h = (v / vmax) * (ch - 6) %}
+          {% set seg_y = ch - running - seg_h %}
+          <rect x="{{ '%.1f'|format(bx + 1) }}" y="{{ '%.1f'|format(seg_y) }}"
+                width="{{ '%.1f'|format(bar_step - 2) }}" height="{{ '%.1f'|format(seg_h) }}"
+                fill="{{ palette[loop.index0 % palette|length] }}" opacity="0.85">
+            <title>{{ d.day[:10] }} · {{ fr.device_names.get(fr.device_ids[loop.index0], fr.device_ids[loop.index0]) }} · {{ '%.1f'|format(v) }} W avg</title>
+          </rect>
+          {% set running = running + seg_h %}
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  </svg>
+  <div style="display:flex; flex-wrap:wrap; gap:.7rem; margin-top:.5rem; font-size:.75rem">
+    {% for did in fr.device_ids %}
+      <span style="display:inline-flex; align-items:center; gap:.3rem">
+        <span style="display:inline-block; width:.8rem; height:.8rem; background:{{ palette[loop.index0 % palette|length] }}; border-radius:2px"></span>
+        {{ fr.device_names.get(did, did) }}
+      </span>
+    {% endfor %}
+  </div>
+  <div class="muted" style="font-size:.7rem; display:flex; justify-content:space-between; margin-top:.3rem">
+    <span>{{ fr.day_keys[0][:10] }}</span>
+    <span>{{ fr.day_keys[-1][:10] }}</span>
+  </div>
+</div>
+{% endif %}
+
 {# ── per-device table ────────────────────────────────────────────── #}
 {% if summary.per_device %}
 <div class="v3-card" style="margin-top:1rem">

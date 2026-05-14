@@ -200,6 +200,44 @@
       {% if lps.rssi_dbm is not none %}<div class="muted" style="font-size:.85rem">rssi {{ lps.rssi_dbm }} dBm</div>{% endif %}
     </div>
   </div>
+
+  {# v0.5.29 (B16 Phase 1C): 14-day avg-watts sparkline from
+     device_power_rollups. Inline SVG — no JS dep. Empty array means
+     the rollup job hasn't run yet (or no samples to aggregate); we
+     show a discrete empty-state line. #}
+  {% set rollups = device.power_rollups_daily or [] %}
+  {% if rollups %}
+    {% set vals = [] %}
+    {% for r in rollups|reverse %}
+      {% set _ = vals.append(r.avg_w or 0) %}
+    {% endfor %}
+    {% set vmax = vals|max if vals else 1 %}
+    {% set vmin = 0 %}
+    {% set vrange = (vmax - vmin) if (vmax - vmin) > 0 else 1 %}
+    {% set w = 280 %}
+    {% set h = 60 %}
+    {% set step = (w / (vals|length - 1)) if vals|length > 1 else w %}
+    <div class="v3-card" style="margin-bottom:1rem; padding:.6rem .8rem">
+      <div class="muted" style="font-size:.75rem; margin-bottom:.3rem">
+        Daily avg watts — last {{ rollups|length }} day{{ '' if rollups|length == 1 else 's' }}
+      </div>
+      <svg viewBox="0 0 {{ w }} {{ h }}" width="100%" style="max-width:{{ w }}px; height:{{ h }}px" role="img" aria-label="Per-device daily-average watts sparkline">
+        {# baseline #}
+        <line x1="0" y1="{{ h }}" x2="{{ w }}" y2="{{ h }}" stroke="rgba(128,128,128,.3)" stroke-width="1"/>
+        {# polyline (oldest left, newest right) #}
+        <polyline fill="none" stroke="var(--accent-fg,#3b82f6)" stroke-width="2"
+                  points="{% for v in vals %}{{ '%.1f'|format(loop.index0 * step) }},{{ '%.1f'|format(h - (v - vmin) / vrange * (h - 6) - 3) }} {% endfor %}"/>
+        {# dots at each day #}
+        {% for v in vals %}
+        <circle cx="{{ '%.1f'|format(loop.index0 * step) }}" cy="{{ '%.1f'|format(h - (v - vmin) / vrange * (h - 6) - 3) }}" r="2.5" fill="var(--accent-fg,#3b82f6)"/>
+        {% endfor %}
+      </svg>
+      <div class="muted" style="font-size:.7rem; display:flex; justify-content:space-between">
+        <span>{{ rollups[-1].day_bucket[:10] if rollups|length else '' }}</span>
+        <span style="text-align:right">peak {{ '%.0f'|format(vmax) }} W · {{ rollups[0].day_bucket[:10] }}</span>
+      </div>
+    </div>
+  {% endif %}
   {% else %}
   <p class="muted" style="font-size:.85rem; margin-bottom:1rem">
     No power samples received from this device yet. When the firmware

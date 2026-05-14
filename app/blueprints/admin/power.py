@@ -41,6 +41,10 @@ def fleet_power_page():
             break
 
     summary = device_power.fleet_summary(window_seconds=chosen_seconds)
+    # v0.5.29 (B16 Phase 1C): daily rollups for the fleet timeseries
+    # chart. 30 days so the chart shows a meaningful month-over-month
+    # trend regardless of the window-selector choice above.
+    fleet_rollups = device_power.fleet_daily_rollups(days=30)
     return render_template(
         "power.html",
         **_ctx({
@@ -48,5 +52,6 @@ def fleet_power_page():
             "summary": summary,
             "window_key": chosen_key,
             "window_presets": WINDOW_PRESETS,
+            "fleet_rollups": fleet_rollups,
         }),
     )
