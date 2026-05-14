@@ -157,7 +157,18 @@ Index("ix_enrollment_tokens_target_device", EnrollmentToken.target_device_id)
 class DeviceHeartbeat(Base):
     __tablename__ = "device_heartbeats"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # `BigInteger().with_variant(Integer, 'sqlite')`: Postgres uses BIGINT
+    # with a sequence (the production target); SQLite test paths get a
+    # plain INTEGER PK so the ROWID-alias autoincrement actually fires.
+    # Without the variant, SQLite emits `id BIGINT PRIMARY KEY` which is
+    # NOT a ROWID alias and refuses NULL inserts (causing
+    # `IntegrityError: NOT NULL constraint failed: device_heartbeats.id`
+    # in test_v0514_*).
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     device_id: Mapped[str] = mapped_column(
         String(40),
         ForeignKey("devices.id", ondelete="CASCADE"),
