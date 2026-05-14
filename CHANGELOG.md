@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.32] - 2026-05-14
+
+### Added — B16 Phase 1D: power-targeted watchdog probe kinds
+
+Closes the B16 power-monitoring track. Three new probe kinds read
+recent `device_power_samples` for a designated device and compare
+against operator-set thresholds.
+
+**New `KNOWN_PROBE_KINDS`** (`app/models/watchdog.py`):
+- `power_above` — fails when `avg_w(window) > threshold_w`. Use
+  case: "heater shouldn't draw > 1500 W for 5 min — fire notify".
+- `power_below` — fails when `avg_w(window) < threshold_w`. Use
+  case: "subwoofer should idle at 15 W; if < 5 W for 10 min,
+  appliance probably stuck off — fire relay_cycle".
+- `power_zero_while_on` — phantom-failure detector. Fails when the
+  device's latest heartbeat says `relay_on=true` AND avg watts over
+  the window is under `near_zero_threshold_w` (default 0.5 W).
+  Catches appliances that died while the smart-plug relay is still
+  energized.
+
+**Probe shape** (rules JSON):
+```json
+{"kind": "power_above",
+ "device_id": "dev_…",
+ "threshold_w": 1500,
+ "window_seconds": 300,
+ "max_sample_age_seconds": 600}
+```
+
+`power_zero_while_on` swaps `threshold_w` for
+`near_zero_threshold_w` (defaults to 0.5).
+
+**Stale-sample failure gate** — if the most-recent sample is older
+than `max_sample_age_seconds` (default 600 s = 10 min), the probe
+returns failure with `reason='stale_sample'`. A dead device-side
+sampler can never pin a power_below rule to a misleading "success".
+
+**Empty-window failure gate** — if there are no samples in the
+window OR no `p_w` readings (firmware reports rssi but not real
+power), the probe returns failure with an explanatory `reason`.
+This is the inverse of stale-sample protection: we'd rather fire
+than pretend nothing's wrong.
+
+**Plain-English sentence** — rules-list renders:
+- `device 'dev_x' averaging > 1500 W over 300 s`
+- `device 'dev_y' averaging < 5 W over 600 s`
+- `device 'dev_z' drawing near-zero (< 0.5 W) while relay is on`
+
+**Rules-create form** — new probe-kind options + a shared
+`#probe_power_block` with a device picker, threshold/near-zero
+field (swaps by kind via JS), window-seconds + max-sample-age
+inputs.
+
+**Rules-edit JSON reference** — three new `<details>` snippets on
+`/app/rules/<id>/edit` for the three power probe kinds, matching
+the format already established for the integration probes.
+
+**Rules-list chips** — per-kind chip in the existing chip-cluster
+under each rule's sentence:
+- `probe: power > 1500 W`
+- `probe: power < 5 W`
+- `probe: phantom failure`
+
+**Event-log details** — per-probe rendering carries `avg N.N W vs
+threshold X W · N samples / Ns · relay on/off`.
+
+### Closes the B16 track
+
+| Phase | Status |
+|---|---|
+| 1A live last-sample + watts chip | ✅ v0.5.26 |
+| 1B `/app/power` fleet page | ✅ v0.5.27 |
+| 1C rollups + sparkline + fleet timeseries chart | ✅ v0.5.29 |
+| 1C cost calc + CSV export | ✅ v0.5.30 |
+| **1D power-targeted probe kinds** | ✅ v0.5.32 |
+
+The remaining B16 items in the original spec (threshold alerting
+via notifications, retention tuning) are addressable via the
+existing rule + notification machinery — no further dedicated B16
+work owed.
+
 ## [0.5.31] - 2026-05-14
 
 ### Added — Phase 4A: desired-config drift visibility
