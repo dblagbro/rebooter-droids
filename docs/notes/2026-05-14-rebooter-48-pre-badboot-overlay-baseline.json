@@ -1,0 +1,90 @@
+﻿{
+    "captured_at":  "2026-05-14T15:01:49.0097764-04:00",
+    "status":  {
+                   "device_name":  "Rebooter - renamed test",
+                   "firmware_version":  "0.1.17-dev-central",
+                   "mode":  "smart_plug",
+                   "relay_on":  true,
+                   "wifi_connected":  true,
+                   "in_captive_portal":  false,
+                   "recovery_mode":  false,
+                   "auto_recovery_triggered":  false,
+                   "last_known_good_restored":  false,
+                   "consecutive_unhealthy_boots":  0,
+                   "setup_ap_name":  "Rebooter-Setup-0D0246",
+                   "health_state":  "healthy",
+                   "uptime_seconds":  41,
+                   "free_heap":  20928,
+                   "incident_cycles":  0,
+                   "hour_cycles":  0,
+                   "holdoff_remaining_seconds":  0,
+                   "cooldown_remaining_seconds":  0,
+                   "central_enabled":  true,
+                   "central_registered":  false,
+                   "central_state":  "registered_no_token",
+                   "central_device_id":  "",
+                   "central_last_heartbeat_seconds":  0,
+                   "central_last_heartbeat_uptime_seconds":  0,
+                   "central_heartbeat_age_seconds":  0,
+                   "power_analytics_enabled":  false,
+                   "power_chip_type":  "CSE7766",
+                   "power_sample_rate_hz":  1,
+                   "power_batch_seconds":  15
+               },
+    "config":  {
+                   "schema_version":  3,
+                   "device_name":  "Rebooter - renamed test",
+                   "admin_username":  "admin",
+                   "current_mode":  "smart_plug",
+                   "relay_restore_behavior":  "restore_previous",
+                   "last_relay_on":  true,
+                   "monitor_interval_seconds":  5,
+                   "boot_warmup_seconds":  30,
+                   "manual_button_enabled":  true,
+                   "internet":  {
+                                    "targets":  [
+                                                    "1.1.1.1",
+                                                    "8.8.8.8",
+                                                    "time.nist.gov"
+                                                ],
+                                    "failure_threshold_seconds":  180,
+                                    "power_off_seconds":  5,
+                                    "post_reboot_holdoff_seconds":  180,
+                                    "max_cycles_per_incident":  3,
+                                    "max_cycles_per_hour":  6,
+                                    "cooldown_seconds":  3600,
+                                    "dns_refresh_seconds":  300,
+                                    "recovery_stability_seconds":  15
+                                },
+                   "device":  {
+                                  "target":  "",
+                                  "failure_threshold_seconds":  60,
+                                  "power_off_seconds":  5,
+                                  "post_reboot_holdoff_seconds":  300,
+                                  "max_cycles_per_incident":  3,
+                                  "max_cycles_per_hour":  6,
+                                  "cooldown_seconds":  3600,
+                                  "recovery_stability_seconds":  30
+                              },
+                   "central":  {
+                                   "enabled":  true,
+                                   "base_urls":  [
+                                                     "https://www.voipguru.org/rebooter",
+                                                     "https://www2.voipguru.org/rebooter"
+                                                 ],
+                                   "enrollment_token":  "",
+                                   "device_alias":  "",
+                                   "site_id":  "",
+                                   "device_id":  "",
+                                   "poll_interval_seconds":  30,
+                                   "heartbeat_interval_seconds":  60
+                               },
+                   "power":  {
+                                 "enabled":  false,
+                                 "sample_rate_hz":  1,
+                                 "batch_seconds":  15,
+                                 "include_wifi_stats":  true,
+                                 "include_frequency":  true
+                             }
+               }
+}

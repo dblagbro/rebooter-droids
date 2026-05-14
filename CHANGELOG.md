@@ -7,6 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.24] - 2026-05-14
+
+### Merge — parallel firmware-team session lands
+
+This release commits work-in-progress from a parallel Claude session
+that coordinated with the firmware team on safe-fallback firmware
+rollout + a hub-side auto-rebind feature. The hub-side ships shipped
+here today (v0.5.15 → v0.5.23) and this parallel work proceeded
+independently; they meet here cleanly.
+
+### Added — hub auto-rebind for devices that lost their local token
+
+Previously, a known device that wiped its local enrollment token
+(power loss during /register, manual factory-reset, firmware OTA
+that nuked the config partition) had no path back into the fleet
+without operator intervention — the device's next `/api/v1/device/announce`
+returned `registered_no_token` and the operator had to manually
+restore via the pending-adoption UI.
+
+New behaviour in `services.announcements.upsert_announcement()`:
+after the usual lifecycle update, call
+`_maybe_prepare_auto_rebind()` which silently self-heals if **all
+three** guardrails pass:
+
+1. Announcement row was previously consumed (the device had
+   registered before — never auto-rebind a fresh device).
+2. An active, central-managed Device row exists with the same MAC.
+3. The announcing IP still matches the hub's last-known
+   `local_ip` for that device (either claimed_local_ip or
+   source_ip).
+
+When all three pass:
+- Mint a restore-style enrollment token targeted at the existing
+  device id (`target_device_id` set; same path as v0.5.7 B20 restore-
+  vs-fresh adoption).
+- Reset the announcement lifecycle (`adopted_at` set, `consumed_at`
+  cleared, `enrollment_token_id` set) so the device's next announce
+  picks up the new token and the regular `/register` rebind path
+  takes over.
+- No operator action required; audit history is preserved via the
+  re-mint (note carries `Auto-rebind after device-side token loss`).
+
+Devices that fail any guardrail still get the normal manual-
+adoption flow — auto-rebind only adds a path, doesn't remove one.
+Live verified on `192.168.1.48` (the "Rebooter — renamed test"
+unit); the rollout + verification snapshots are captured under
+`docs/notes/fleet-rollout-2026-05-14/` and
+`docs/notes/protected-backups-2026-05-14/`.
+
+### Tests
+
+`tests/qa/test_v0420_announce_adopt.py::test_known_device_missing_token_auto_rebinds`
+— full end-to-end: announce → adopt → register → announce-again-with-
+no-token → auto-rebind → register-again returns the same `device_id`.
+
+### Firmware-team coordination notes captured
+
+Parallel-session work product committed alongside the code so future
+resumers have the full picture without scrolling Slack/coordinator-hub
+history:
+
+- `2026-05-14-safe-fallback-firmware-progress.md` — the safe-fallback
+  firmware progression that produced `bootstrap-0.2.5-dev-safe` +
+  `rebooter-0.1.17`+`0.1.18-dev-central-safe`.
+- `2026-05-14-safe-fallback-bad-firmware-test-plan.md` — the bad-
+  firmware fault-injection plan the firmware team is using on bench
+  devices `.225` + `.69`.
+- `2026-05-14-safe-fallback-closeout-items-1-4.md` — closeout
+  inventory for the bench-testing rollout.
+- `2026-05-14-rollout-and-live-rebind-results.md` — fleet-wide
+  rollout to `0.1.18-dev-central-safe` (6 devices) + live auto-
+  rebind verification on `.48`.
+- `2026-05-14-hub-power-recovery-alignment-plan.md` — design doc
+  on aligning safe-fallback recovery semantics between firmware
+  and hub layers.
+- `2026-05-14-to-rebooter-droids-status-sync-and-b16-alignment.md` —
+  status sync + B16 (power-monitoring) ingestion contract alignment.
+- `2026-05-14-backlog-items-4-5-progress.md` — running progress on
+  closeout items 4 and 5.
+- `2026-05-14-next-steps-after-hub-power-recovery-plan.md` — the
+  follow-on backlog after the power-recovery alignment plan.
+- `2026-05-14-live-hub-vs-device-audit.md` — live audit comparing
+  hub state vs device-reported state.
+- `2026-05-14-hub-auto-rebind-local-verification.json` — single-
+  device local verification capture used to validate the auto-
+  rebind code path.
+- `2026-05-14-rebooter-48-{live-rebind-backup,pre-badboot-overlay-baseline,protected-config-backup}.json`
+  — per-device protected-config + baseline captures around the
+  bench testing window.
+- `fleet-rollout-2026-05-14/` — per-device config + status JSON
+  snapshots (before/after pairs for all 7 devices + a
+  `rollout-summary.json`).
+- `protected-backups-2026-05-14/` — per-device protected-config
+  backup snapshots (1 per device + a `summary.json`).
+
+### Skipped (empty stubs from the parallel-session tree)
+
+- `docs/notes/2026-05-13-webui-audit-and-redesign-plan.md` — 0 bytes
+- `docs/notes/2026-05-14-b16-kickoff-and-project-boundary.md` — 0 bytes
+- `docs/notes/codex-write-test.txt` — 0-byte stray test file
+
+These three stay untracked. If the parallel session intended them
+to land they'll get filled in and committed later.
+
 ## [0.5.23] - 2026-05-14
 
 ### Added — B17 adjacent integrations: Home Assistant + Weather (NWS) + iCal

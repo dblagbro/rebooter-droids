@@ -1,0 +1,56 @@
+[
+    {
+        "ip":  "192.168.1.48",
+        "backup_status":  "200-with-known-password",
+        "password_set":  false,
+        "note":  "",
+        "central_device_id":  "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+        "has_device_token":  true,
+        "device_name":  "Rebooter - renamed test"
+    },
+    {
+        "ip":  "192.168.1.30",
+        "backup_status":  "200-after-password",
+        "password_set":  true,
+        "note":  "",
+        "central_device_id":  "dev_01KR8127W5XMP6MDF34J0TXQP9",
+        "has_device_token":  true,
+        "device_name":  "Rebooter"
+    },
+    {
+        "ip":  "192.168.1.67",
+        "backup_status":  "200-after-password",
+        "password_set":  true,
+        "note":  "",
+        "central_device_id":  "dev_01KR82K0W2WTA2968QEDG0Y42K",
+        "has_device_token":  true,
+        "device_name":  "Erica\u0027s F.L Speaker"
+    },
+    {
+        "ip":  "192.168.1.207",
+        "backup_status":  "200-after-password",
+        "password_set":  true,
+        "note":  "",
+        "central_device_id":  "dev_01KR8126MTTZW22E8F2QVFWT68",
+        "has_device_token":  true,
+        "device_name":  "Erica\u0027s ?.?. Speaker"
+    },
+    {
+        "ip":  "192.168.1.225",
+        "backup_status":  "200-after-password",
+        "password_set":  true,
+        "note":  "",
+        "central_device_id":  "dev_01KR812687CEGS7CHXJQ7QAW4H",
+        "has_device_token":  true,
+        "device_name":  "Rebooter"
+    },
+    {
+        "ip":  "192.168.1.69",
+        "backup_status":  "200-after-password",
+        "password_set":  true,
+        "note":  "",
+        "central_device_id":  "",
+        "has_device_token":  false,
+        "device_name":  "Erica\u0027s R.L. Speaker"
+    }
+]
