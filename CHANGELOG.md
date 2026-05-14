@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.21] - 2026-05-14
+
+### Removed — back-compat underscore aliases from v0.5.18
+
+The v0.5.18 naming-cleanup ship promoted `_run_probe` →
+`run_probe`, `_record_event` → `record_event`,
+`_resolve_target_devices` → `resolve_target_devices` and kept the
+underscore names as deprecated module-level aliases for one release
+so any mid-rollout caller wouldn't break.
+
+Three releases later (v0.5.19, v0.5.20, this one) confirmed no
+caller in the tree references the underscore forms. Deleted:
+
+- alias definitions in `_probes.py`, `_state.py`, `_actions.py`
+- `_run_probe` / `_record_event` / `_resolve_target_devices` entries
+  in `watchdog_runtime/__init__.py` imports + `__all__`
+
+Anything that still tries `from app.services.watchdog_runtime
+import _run_probe` will now get `ImportError`. Migration: replace
+with the underscore-less name.
+
 ## [0.5.20] - 2026-05-14
 
 ### Added — long-poll `/api/v1/device/commands` (RFC 7240 `Prefer: wait`)

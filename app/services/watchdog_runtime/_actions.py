@@ -140,11 +140,3 @@ def resolve_target_devices(target: dict) -> list[str]:
             # target meanwhile.
             return []
         return []
-
-
-# v0.5.18 (#3 naming cleanup): the public name is
-# `resolve_target_devices`. The underscore alias is kept for one
-# release for back-compat with
-# `from app.services.watchdog_runtime import _resolve_target_devices`.
-# Remove after v0.6.x.
-_resolve_target_devices = resolve_target_devices
