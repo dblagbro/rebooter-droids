@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.17] - 2026-05-14
+
+### Added — B17 Layer 1: Roku ECP integration + `roku_app_active` watchdog probe
+
+First slice of B17 (external integrations). The remaining layers
+(EPG lookup, Home-Assistant bridge, MQTT, Plex, weather, calendar)
+reuse the same `external_sensor_sources` + `external_sensor_samples`
+shape — only `services.external_sensors._poll_kind` needs new
+branches.
+
+**Schema** (auto-creates via `ensure_schema()` on next container start):
+- `external_sensor_sources` — operator-registered sources (kind, host,
+  port, enabled, poll_interval_seconds, last_polled_at, last_error).
+- `external_sensor_samples` — append-only poll history with JSON
+  payload; index on `(source_id, sampled_at desc)`.
+
+**Polling** — new APScheduler tick at 30 s (`_external_sensors_job`
+in `app/jobs/scheduler.py`) calls `services.external_sensors.
+poll_all_due()`. Per-source `poll_interval_seconds` is honored so a
+source with `interval=300` only gets polled every 5 min even though
+the tick runs every 30 s.
+
+**Roku ECP poller** — HTTP GET against `http://<host>:8060/query/active-app`
+(LAN-local, unauth) → tiny regex parser → payload
+`{active_app, active_app_id, screensaver_active, raw_xml}`. 3 s
+timeout. Per-source errors recorded in `last_error` without
+crashing the tick.
+
+**Watchdog probe** — new kind `roku_app_active`:
+```json
+{"kind": "roku_app_active",
+ "source_id": "ext_…",
+ "app_name": "Spectrum TV",
+ "max_sample_age_seconds": 120}
+```
+Reads the latest sample from the source. Match is case-insensitive
+substring against `payload.active_app`. **Stale samples
+(>`max_sample_age_seconds`) always return `failure`** so a dead
+poller can never make a rule "stick true" indefinitely.
+
+**Admin UI** — new Settings → Integrations tab
+(`/app/settings/integrations`). Register Rokus by friendly name +
+LAN IP; per-source actions: probe-now (manual test), enable/disable,
+delete. Latest-sample chip renders inline. Tab strip in
+`templates/_components/settings_tabs.html` extended to include
+"Integrations".
+
+**Use case shipped by this slice**: the Jeopardy automation
+(operator-described in B17 Layer 1): "if Roku-A is on Spectrum TV
+right now, do X" — paired with the existing `schedules` primitive
+(B8) for the time-window half (weekdays 19:00-19:30) gets you ~80 %
+of the dream without EPG, OCR, or any Spectrum-specific anything.
+
+### Audit events added
+
+- `external_sensor.source_created` / `source_deleted`
+- `external_sensor.probed` (manual test)
+- `external_sensor.toggled`
+
 ## [0.5.16] - 2026-05-14
 
 ### Added — B15: Settings → Sync tab content

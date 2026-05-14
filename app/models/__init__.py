@@ -38,3 +38,7 @@ from app.models.attention_acks import AttentionAck  # noqa: E402,F401
 from app.models.runtime_settings import RuntimeSetting  # noqa: E402,F401
 from app.models.role_bindings import RoleBinding  # noqa: E402,F401
 from app.models.power_analytics import DevicePowerSample  # noqa: E402,F401
+from app.models.external_sensors import (  # noqa: E402,F401
+    ExternalSensorSample,
+    ExternalSensorSource,
+)
