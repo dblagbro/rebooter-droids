@@ -1,7 +1,14 @@
+"""Read-only queries over the device aggregate.
+
+Everything in this module opens its own `session_scope()` and returns
+dicts (not ORM rows). The two `_*_by_device` helpers take an already-
+open session because they are reused inside `list_devices` /
+`get_device_detail`.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import logging
 from typing import Iterable
 
 from sqlalchemy import select
@@ -17,80 +24,22 @@ from app.models import (
     Group,
     GroupMembership,
 )
-
-log = logging.getLogger(__name__)
-
-
-def serialize_device(d: Device, include_secret_status: bool = True) -> dict:
-    result = {
-        "id": d.id,
-        "display_name": d.display_name,
-        "hardware_model": d.hardware_model,
-        "hardware_revision": d.hardware_revision,
-        "firmware_version": d.firmware_version,
-        "mac_address": d.mac_address,
-        "serial_number": d.serial_number,
-        "local_ip": d.local_ip,
-        "site_id": d.site_id,
-        "registration_state": d.registration_state,
-        "central_management_enabled": d.central_management_enabled,
-        "capabilities": d.capabilities or {},
-        "notes": d.notes,
-        "last_heartbeat_at": _iso(d.last_heartbeat_at),
-        "is_qa_fixture": bool(d.is_qa_fixture),
-        "is_protected": bool(d.is_protected),
-        "is_held_off": bool(d.is_held_off),
-        "created_at": _iso(d.created_at),
-        "updated_at": _iso(d.updated_at),
-    }
-    if include_secret_status:
-        result["device_secret_status"] = "issued"
-    return result
-
-
-def _iso(dt) -> str | None:
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
-
-
-def _heartbeat_state_for(
-    last_heartbeat_at: datetime | None,
-    *,
-    now: datetime,
-    offline_threshold_seconds: int,
-) -> str:
-    if last_heartbeat_at is None:
-        return "never"
-    if (now - last_heartbeat_at).total_seconds() < offline_threshold_seconds:
-        return "online"
-    return "offline"
-
-
-def _serialize_assignment(
-    a: DeploymentAssignment, release: FirmwareRelease | None
-) -> dict:
-    return {
-        "assignment_id": a.id,
-        "deployment_id": a.deployment_id,
-        "state": a.state,
-        "target_version": release.version if release else None,
-        "last_reported_version": a.last_reported_version,
-        "error_message": a.error_message,
-        "updated_at": _iso(a.updated_at),
-    }
+from app.services._versions import _version_sort_key
+from app.services.devices._serialize import (
+    _derive_central_status,
+    _heartbeat_state_for,
+    _iso,
+    _serialize_assignment,
+    serialize_device,
+)
 
 
 def _latest_heartbeat_by_device(
     session, device_ids: Iterable[str]
 ) -> dict[str, DeviceHeartbeat]:
-    """v0.5.14 (B18): fetch the most-recent DeviceHeartbeat row for
-    each device in `device_ids`. Used by the devices list view to
-    surface `relay_on` / `mode` inline so operators can toggle power
-    without drilling into the detail page.
-
-    One query per scan (`MAX(received_at)` per device); empty input
-    short-circuits. Devices with no heartbeats are absent from the
-    returned dict.
-    """
+    """v0.5.14 (B18): fetch the most-recent DeviceHeartbeat row for each
+    device. Returned dict is keyed by device_id; devices with no
+    heartbeats are absent. One query per call (not per device)."""
     ids = [d for d in device_ids if d]
     if not ids:
         return {}
@@ -112,6 +61,8 @@ def _latest_heartbeat_by_device(
 
 
 def _active_assignments_by_device(session, device_ids: Iterable[str]) -> dict[str, dict]:
+    """Latest pending|delivered firmware assignment per device, serialized
+    to the dict shape `_derive_central_status` consumes."""
     ids = [d for d in device_ids if d]
     if not ids:
         return {}
@@ -145,95 +96,12 @@ def _active_assignments_by_device(session, device_ids: Iterable[str]) -> dict[st
     }
 
 
-def _derive_central_status(
-    d: Device,
-    *,
-    heartbeat_state: str,
-    latest_health_state: str | None = None,
-    active_assignment: dict | None = None,
-) -> dict:
-    if not d.central_management_enabled:
-        return {
-            "code": "local_only",
-            "label": "local-only",
-            "reason": "Device opts out of central management.",
-        }
-
-    current_version = (d.firmware_version or "").strip() or None
-    target_version = (
-        (active_assignment or {}).get("target_version") or ""
-    ).strip() or None
-    assignment_state = (active_assignment or {}).get("state")
-
-    if target_version and current_version != target_version:
-        if heartbeat_state == "offline":
-            return {
-                "code": "transport_stale",
-                "label": "transport stale",
-                "reason": (
-                    f"Device is assigned {target_version} but last reported "
-                    f"{current_version or 'unknown'} and is no longer heartbeating."
-                ),
-            }
-        return {
-            "code": "upgrade_pending",
-            "label": "upgrade pending",
-            "reason": (
-                f"Device is assigned {target_version} but still reports "
-                f"{current_version or 'unknown'}."
-            ),
-        }
-
-    if heartbeat_state == "never":
-        return {
-            "code": "awaiting_first_heartbeat",
-            "label": "awaiting first heartbeat",
-            "reason": "Device is enrolled for central management but has not heartbeated yet.",
-        }
-
-    if heartbeat_state == "offline":
-        return {
-            "code": "central_stale",
-            "label": "stale",
-            "reason": "Central has not heard from this device within the heartbeat window.",
-        }
-
-    if latest_health_state and latest_health_state not in ("healthy", "ok"):
-        return {
-            "code": "attention",
-            "label": "attention",
-            "reason": f"Latest heartbeat reported health_state={latest_health_state}.",
-        }
-
-    if assignment_state in ("pending", "delivered") and target_version:
-        return {
-            "code": "upgrade_pending",
-            "label": "upgrade pending",
-            "reason": f"Waiting for device to report target firmware {target_version}.",
-        }
-
-    return {
-        "code": "central_ok",
-        "label": "central",
-        "reason": "Central management is enabled and the device is reporting normally.",
-    }
-
-
-# v0.5.4: version-comparison helpers moved to app/services/_versions.py
-# so unit tests can import them without booting the full Flask app.
-# Re-exported here for back-compat with existing callers (templates'
-# `is_upgrade=` Jinja global, blueprint imports).
-from app.services._versions import _version_sort_key, is_upgrade  # noqa: F401
-
-
 def find_by_mac(mac_address: str | None) -> list[dict]:
     """v0.5.7 (B20): lookup existing devices by MAC. Used by
-    pending-adoption to surface "this hardware is already in the
-    fleet" matches so the operator can pick rebind vs fresh-adopt
-    explicitly. Normalised to uppercase + stripped. Excludes rows
-    in registration_state='decommissioned' (the dead-row marker
-    we use post-replacement).
-    """
+    pending-adoption to surface "this hardware is already in the fleet"
+    matches so the operator can pick rebind vs fresh-adopt explicitly.
+    Excludes rows in registration_state='decommissioned' (post-replacement
+    marker)."""
     if not mac_address:
         return []
     mac = mac_address.strip().upper()
@@ -241,11 +109,7 @@ def find_by_mac(mac_address: str | None) -> list[dict]:
         return []
     with session_scope() as session:
         rows = list(session.scalars(
-            select(Device).where(
-                # Postgres case-insensitive compare via UPPER() works
-                # whether the existing rows are upper, lower, or mixed.
-                Device.mac_address.is_not(None),
-            )
+            select(Device).where(Device.mac_address.is_not(None))
         ))
         out = []
         for d in rows:
@@ -258,17 +122,12 @@ def find_by_mac(mac_address: str | None) -> list[dict]:
 
 
 def latest_stable_release_dict() -> dict | None:
-    """v0.4.29: helper for the devices page to know what version
-    a device "should" be on. Returns the **highest-version**
-    release in the `stable` channel, or None if there isn't one.
+    """v0.4.29: highest-version release in the `stable` channel (or None).
 
-    Before v0.4.29 this returned the most-recently-*uploaded*
-    release, which created the operator-visible "upgrade" button
-    that actually pointed at a downgrade when an older release was
-    re-uploaded after a newer one (e.g. 0.1.2 re-pushed while the
-    fleet was already on 0.1.5).
+    Pre-v0.4.29 this returned the most-recently-*uploaded* release, which
+    surfaced a "Upgrade" button that was sometimes a downgrade when an
+    older release got re-uploaded after a newer one.
     """
-    from app.models import FirmwareRelease
     with session_scope() as session:
         rows = list(
             session.scalars(
@@ -289,18 +148,10 @@ def latest_stable_release_dict() -> dict | None:
 
 
 def firmware_version_breakdown(*, include_qa_fixtures: bool = False) -> list[dict]:
-    """v0.4.19 (B14 follow-up / Tier-1 A): group the fleet by
-    `firmware_version`. Surfaces "which devices on which version"
-    so the operator can spot upgrade outliers at a glance.
-
-    Returns a list of {version, count, devices: [{id,display_name}],
-    is_majority} sorted by count descending; the largest cohort is
-    flagged `is_majority=true` so the UI can mark outliers.
-
-    Devices with no firmware_version (just enrolled, never reported)
-    are bucketed under the literal string "(unknown)" so they don't
-    silently vanish.
-    """
+    """v0.4.19 (Tier-1 A): group the fleet by `firmware_version`. Surfaces
+    "which devices on which version" so the operator can spot upgrade
+    outliers at a glance. Largest cohort gets `is_majority=true` so the
+    UI can mark outliers."""
     with session_scope() as session:
         stmt = select(Device)
         if not include_qa_fixtures:
@@ -342,8 +193,8 @@ def list_devices(
     include_qa_fixtures: bool = True,
     chips: tuple[str, ...] | list[str] | None = None,
 ) -> list[dict]:
-    """v0.3.1 (P2): saved-filter `chips` arg accepts a list of named
-    filter shortcuts that are AND-composed with the other filters.
+    """v0.3.1 (P2) saved-filter `chips` AND-compose with the other args.
+
     Recognised chips:
       - "offline_24h"   — last_heartbeat_at older than 24 h (had history)
       - "never"         — last_heartbeat_at IS NULL
@@ -351,8 +202,7 @@ def list_devices(
       - "qa_fixtures"   — only QA-fixture-tagged rows (overrides
                           include_qa_fixtures=False to *show* them)
 
-    Unrecognised chip names are silently ignored so a stale URL
-    doesn't 500.
+    Unrecognised chip names are silently ignored so a stale URL doesn't 500.
     """
     now = datetime.now(timezone.utc)
     chips = tuple(c for c in (chips or ()) if c)
@@ -365,11 +215,9 @@ def list_devices(
         if status == "disabled":
             stmt = stmt.where(Device.registration_state == "disabled")
 
-        # Saved-filter chips (R-DEV-4).
         from datetime import timedelta as _td
 
         if "qa_fixtures" in chips:
-            # Show ONLY QA fixtures — overrides the include flag.
             stmt = stmt.where(Device.is_qa_fixture.is_(True))
         elif not include_qa_fixtures:
             stmt = stmt.where(Device.is_qa_fixture.is_(False))
@@ -426,10 +274,7 @@ def list_devices(
             )
             obj["heartbeat_state"] = hb_state
             obj["online"] = hb_state == "online"
-            # v0.5.14 (B18): surface relay_on + mode from the latest
-            # heartbeat so the list-row inline toggle can render
-            # without a per-row query. None when the device has
-            # never heartbeated.
+            # v0.5.14 (B18): surface relay_on + mode for the inline toggle.
             latest_hb = heartbeats_by_device.get(d.id)
             obj["latest_relay_on"] = bool(latest_hb.relay_on) if latest_hb else None
             obj["latest_mode"] = latest_hb.mode if latest_hb else None
@@ -449,6 +294,11 @@ def list_devices(
 
 
 def get_device_detail(device_id: str) -> dict | None:
+    """Single-device detail with latest heartbeat, group memberships,
+    recent events, pending commands, audit slice, and failsafe history.
+
+    Audit + failsafe services are imported lazily to keep this module's
+    import graph shallow (matches the original devices.py behavior)."""
     with session_scope() as session:
         d = session.get(Device, device_id)
         if d is None:
@@ -548,153 +398,17 @@ def get_device_detail(device_id: str) -> dict | None:
             for c in pending_cmds
         ]
 
-        # v0.2.9: per-record audit slice. Last 25 audit events that target
-        # this device. Composite index ix_audit_target makes this cheap.
+        # v0.2.9: per-record audit slice (composite index ix_audit_target).
         from app.services import audit as audit_service
 
         out["audit_history"] = audit_service.query(
             target_type="device", target_id=device_id, limit=25
         )
 
-        # v0.3.8 (RFC-005 P1): per-device failsafe history. Last 25
-        # B → C fallback events from the device.
+        # v0.3.8 (RFC-005 P1): per-device failsafe history.
         from app.services import failsafe as failsafe_service
 
         out["failsafe_events"] = failsafe_service.list_for_device(
             device_id, limit=25
         )
         return out
-
-
-_PATCHABLE = {
-    "display_name",
-    "site_id",
-    "notes",
-    "central_management_enabled",
-    "is_protected",  # v0.3.2 (P3)
-}
-
-
-def delete_device(device_id: str) -> bool:
-    """Hard-delete a device + cascade (credentials, heartbeats, events,
-    commands, deployment_assignments, group memberships).
-
-    Note: the device's enrollment_token row is preserved (consumed_by_device_id
-    becomes NULL via the SET NULL FK rule), so audit history is intact.
-    """
-    with session_scope() as session:
-        d = session.get(Device, device_id)
-        if d is None:
-            return False
-        session.delete(d)
-        session.flush()
-        return True
-
-
-def delete_devices_bulk(
-    device_ids: list[str], override_lockout: bool = False
-) -> dict:
-    """v0.3.4 (P3): bulk-delete a list of devices.
-
-    Mirrors the single-device delete contract per row but:
-    - Skips protected devices unless override_lockout=True; the
-      skipped IDs are returned to the caller for surfacing.
-    - Skips IDs that don't exist (silently — returned as `unknown`).
-    - Applies the cascade per device (same as delete_device).
-
-    Returns: {"deleted": [...ids...], "skipped_protected": [...],
-              "skipped_unknown": [...]}.
-    """
-    deleted: list[str] = []
-    skipped_protected: list[str] = []
-    skipped_unknown: list[str] = []
-    with session_scope() as session:
-        for did in device_ids:
-            d = session.get(Device, did)
-            if d is None:
-                skipped_unknown.append(did)
-                continue
-            if d.is_protected and not override_lockout:
-                skipped_protected.append(did)
-                continue
-            session.delete(d)
-            deleted.append(did)
-        session.flush()
-    return {
-        "deleted": deleted,
-        "skipped_protected": skipped_protected,
-        "skipped_unknown": skipped_unknown,
-    }
-
-
-class UnknownPatchFieldError(ValueError):
-    def __init__(self, fields: set[str]):
-        super().__init__(
-            f"unsupported PATCH fields: {sorted(fields)}. Allowed: {sorted(_PATCHABLE)}"
-        )
-        self.fields = fields
-
-
-def update_device(device_id: str, patch: dict) -> dict | None:
-    unknown = set(patch.keys()) - _PATCHABLE
-    if unknown:
-        raise UnknownPatchFieldError(unknown)
-
-    with session_scope() as session:
-        d = session.get(Device, device_id)
-        if d is None:
-            return None
-        # Only bump updated_at when a real change occurs (BUG-011).
-        changed = False
-        for k, v in patch.items():
-            if getattr(d, k) != v:
-                setattr(d, k, v)
-                changed = True
-        if changed:
-            d.updated_at = datetime.now(timezone.utc)
-            session.add(d)
-        session.flush()
-        return serialize_device(d)
-
-
-def enqueue_display_name_sync(
-    device_id: str,
-    *,
-    display_name: str | None,
-    issued_by_user_id: str | None,
-    reason: str,
-) -> bool:
-    """Best-effort hub->device name sync for centrally managed units.
-
-    Today the hub's device row display_name and the device's local
-    `device_name` are separate truths unless we explicitly enqueue an
-    `apply_config` command. Restore-after-reflash already does this.
-    Ordinary operator renames must do it too, or the local web UI keeps
-    the stale name indefinitely.
-    """
-    if not device_id or not display_name:
-        return False
-
-    with session_scope() as session:
-        d = session.get(Device, device_id)
-        if d is None:
-            return False
-        if not d.central_management_enabled:
-            return False
-
-    try:
-        from app.services.commands import enqueue_for_device
-        enqueue_for_device(
-            device_id=device_id,
-            cmd_type="apply_config",
-            payload={"device_name": display_name},
-            issued_by_user_id=issued_by_user_id,
-            ttl_seconds=600,
-        )
-        return True
-    except Exception as e:
-        log.warning(
-            "display-name sync enqueue failed for %s (%s): %s",
-            device_id, reason, e,
-        )
-        return False
