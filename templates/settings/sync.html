@@ -7,78 +7,112 @@
 {% include "_components/settings_tabs.html" %}
 
 <div class="v3-card">
-  <h2>Hub sync</h2>
-
+  <h2>Hub identity + sync</h2>
   <p class="muted" style="margin-top:0">
-    Current hub role: <strong>{{ hub_role }}</strong>
+    What this hub is, where it ships data, and how multi-hub sync
+    will work when it lands.
   </p>
+</div>
 
-  {% if hub_role == 'single' %}
-  <div class="v3-card" style="margin-top:1rem">
-    <h3>Single-hub deployment</h3>
-    <p>
-      <code>www.voipguru.org/rebooter</code> and
-      <code>www2.voipguru.org/rebooter</code> both serve from this
-      one backend. There's nothing to sync today, because there's
-      only one logical hub.
-    </p>
-    <p class="muted">
-      The <code>www2</code> URL nginx-proxies cross-host into this
-      same container. So the "multi-URL fallback" the firmware uses
-      gives you nginx-level resilience (if one nginx is down the
-      other carries traffic) but not a true second hub. Both URLs
-      share fate at the application layer.
-    </p>
-  </div>
+{# ── This hub right now ──────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>This hub right now</h3>
+  <table style="width:auto; min-width:0; border-collapse:collapse">
+    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Configured role:</td>
+        <td><code>{{ hub_role }}</code></td></tr>
+    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Container hostname:</td>
+        <td><code>{{ hub_hostname }}</code></td></tr>
+    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Public base URL:</td>
+        <td><code>{{ public_base }}</code></td></tr>
+    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Active devices:</td>
+        <td>{{ fleet_count }}</td></tr>
+    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Most recent heartbeat:</td>
+        <td>
+          {% if latest_hb_at %}
+            <code>{{ latest_hb_at }}</code>
+            {% if seconds_since_latest_hb is not none %}
+              <span class="muted">({{ seconds_since_latest_hb }} s ago)</span>
+            {% endif %}
+          {% else %}
+            <span class="muted">none yet</span>
+          {% endif %}
+        </td></tr>
+  </table>
+</div>
 
-  <div class="v3-card" style="margin-top:1rem">
-    <h3>What "real sync" would mean</h3>
-    <p>
-      Each URL gets its own backend + Postgres, and the two cross-
-      sync. Audit, devices, deployments, and settings replicate
-      between them. If <code>tmrwww01</code> dies, devices that
-      know the secondary URL keep working against
-      <code>tmrwww02</code>.
-    </p>
-    <p>
-      Designed in
-      <a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/RFC-004-multi-hub-sync.md">
-        <code>docs/RFC-004-multi-hub-sync.md</code></a>.
-      Recommendation: Postgres logical replication (active-passive)
-      for v1, with a clean migration path to active-active later.
-      <strong>Awaiting operator redline before implementation.</strong>
-    </p>
-  </div>
+{# ── Today: single-hub reality ───────────────────────────────────── #}
+{% if hub_role == 'single' %}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Today: single-hub deployment</h3>
+  <p>
+    <code>www.voipguru.org/rebooter</code> and
+    <code>www2.voipguru.org/rebooter</code> are both nginx aliases
+    that proxy into <strong>this one container</strong>. There is
+    nothing to sync, because there is only one logical hub.
+  </p>
+  <p class="muted">
+    The dual-URL setup gives you nginx-level failover (if one nginx
+    is down the other still serves), but not a true second hub. Both
+    URLs share fate at the application + Postgres layer.
+  </p>
+</div>
+{% else %}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Multi-hub mode is configured but the implementation isn't shipped yet</h3>
+  <p>
+    <code>REBOOTER_HUB_ROLE={{ hub_role }}</code> was set, but the
+    RFC-004 runtime that honours it hasn't shipped. Today this hub
+    still behaves as a single-hub deployment regardless of role.
+  </p>
+</div>
+{% endif %}
 
-  <div class="v3-card" style="margin-top:1rem">
-    <h3>What ships when the operator picks an option</h3>
-    <ul>
-      <li>Hub role configurable via <code>REBOOTER_HUB_ROLE</code>
-        env var (<code>primary</code> / <code>secondary</code> /
-        <code>single</code>).</li>
-      <li>Live status on this page: peer reachability, last-
-        successful-sync time, replication lag, forward-queue depth
-        (secondary), last conflict (if any).</li>
-      <li>Operator actions: probe peer, promote-to-primary
-        (super-admin only), enable/disable sync.</li>
-      <li>Failover runbook at
-        <code>docs/runbooks/multi-hub-failover.md</code>.</li>
-    </ul>
-  </div>
+{# ── Locked design: RFC-004 Option C (active-active) ─────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Multi-hub sync — locked design (not yet implemented)</h3>
+  <p>
+    The operator picked <strong>Option C</strong> on 2026-05-10:
+    application-level event-log sync, active-active. See
+    <a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/RFC-004-multi-hub-sync.md">
+      <code>docs/RFC-004-multi-hub-sync.md</code></a>
+    §10b for the full design. Quick summary of how the sync will work
+    when it ships:
+  </p>
+  <ul>
+    <li>Each hub gets a per-instance append-only
+      <code>outbox_events</code> table that mirrors our existing
+      audit pattern.</li>
+    <li>A replicator daemon polls peers'
+      <code>/api/v1/sync/since?seq=&lt;n&gt;</code> over HTTPS, using
+      the coordinator HMAC bearer pattern for auth.</li>
+    <li>Receiver-side apply is idempotent on UUID-keyed rows;
+      conflicts use last-write-wins on <code>event.at</code> and the
+      audit log retains both versions.</li>
+    <li>Deletes ship as tombstones in <code>outbox_events</code>;
+      receivers write a <code>tombstones</code> row and refuse to
+      recreate the UUID.</li>
+    <li>Steady-state latency target: <strong>1–3 s</strong>. Peers
+      are symmetric — no failover procedure.</li>
+  </ul>
+</div>
 
-  {% else %}
-  <div class="v3-card" style="margin-top:1rem">
-    <h3>Multi-hub mode is configured but the implementation isn't shipped yet</h3>
-    <p>
-      <code>REBOOTER_HUB_ROLE={{ hub_role }}</code> was set, but
-      the Phase-2+ runtime that honours it hasn't shipped. Today
-      this hub still behaves as a single-hub deployment regardless
-      of role. See
-      <a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/RFC-004-multi-hub-sync.md">
-        <code>docs/RFC-004-multi-hub-sync.md</code></a> §8 for the
-      phased plan.
-    </p>
-  </div>
-  {% endif %}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>What will appear on this tab once sync ships</h3>
+  <ul>
+    <li><strong>Peer status</strong> — name, URL, last contact, drift seconds.</li>
+    <li><strong>Replication health</strong> — outbox depth, last successful pull, lag windows.</li>
+    <li><strong>Operator actions</strong> — probe a peer, pause sync,
+      force a reconciliation (super-admin only).</li>
+    <li><strong>Conflict log</strong> — last N LWW resolutions with
+      both pre-images preserved.</li>
+  </ul>
+  <p class="muted">
+    Implementation lands after the B1 RBAC slice (RFC-003) ships,
+    because outbox events must carry the new
+    <code>site_id</code>/<code>group_id</code>/<code>device_id</code>
+    scope claims for receiver-side enforcement. Cross-tracked in
+    <code>docs/BACKLOG.md</code> entries <strong>B1</strong>,
+    <strong>B11</strong>, <strong>B15</strong>.
+  </p>
 </div>
 {% endblock %}

@@ -247,15 +247,45 @@ def settings_auth_page():
 @admin_ui_bp.get("/settings/sync")
 @admin_required_ui
 def settings_sync_page():
-    """v0.3.6 (P0 of RFC-004): stub Sync tab.
+    """v0.5.16 (B15): Sync tab content.
 
     Today's deployment is single-hub (one rebooter-droids container,
-    one Postgres, two URLs proxying to it). True multi-hub sync is
-    designed in `docs/RFC-004-multi-hub-sync.md` and not yet
-    implemented. This page exists so the operator's mental model
-    has a UI surface to land on.
+    one Postgres, two URLs proxying to it). RFC-004 §10b is locked
+    on Option C (application-level event-log sync, active-active),
+    implementation lands after B1 RBAC ships the scope claims that
+    outbox events need to carry. This page surfaces the actual
+    runtime state today + the locked design path.
     """
     import os
+    from datetime import datetime, timezone
+
+    from app.db import session_scope
+    from app.models import Device
+
+    hub_role = os.environ.get("REBOOTER_HUB_ROLE", "single")
+    hub_hostname = os.environ.get("HOSTNAME") or os.environ.get("REBOOTER_NODE_NAME", "—")
+    public_base = os.environ.get("REBOOTER_PUBLIC_BASE_URL", "—")
+
+    # Surface the things an operator might actually want to check on a
+    # Sync tab today: fleet size, recent heartbeat liveness, hub uptime
+    # signal. When B11 (RFC-004 implementation) lands, this is where
+    # peer reachability / replication lag / last-sync-time will appear.
+    with session_scope() as session:
+        from sqlalchemy import func, select
+
+        fleet_count = session.scalar(
+            select(func.count()).select_from(Device).where(
+                Device.registration_state == "active"
+            )
+        ) or 0
+        latest_hb_at = session.scalar(
+            select(func.max(Device.last_heartbeat_at))
+        )
+
+    now = datetime.now(timezone.utc)
+    seconds_since_latest_hb = None
+    if latest_hb_at is not None:
+        seconds_since_latest_hb = int((now - latest_hb_at).total_seconds())
 
     return render_template(
         "settings/sync.html",
@@ -263,7 +293,12 @@ def settings_sync_page():
             {
                 "active": "settings",
                 "settings_tab": "sync",
-                "hub_role": os.environ.get("REBOOTER_HUB_ROLE", "single"),
+                "hub_role": hub_role,
+                "hub_hostname": hub_hostname,
+                "public_base": public_base,
+                "fleet_count": fleet_count,
+                "latest_hb_at": latest_hb_at,
+                "seconds_since_latest_hb": seconds_since_latest_hb,
             }
         ),
     )
