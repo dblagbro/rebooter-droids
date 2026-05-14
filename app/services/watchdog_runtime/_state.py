@@ -114,10 +114,3 @@ def _update_state_and_maybe_fire(
     rule.last_action_at = now
     record_event(session, rule, "action_fired", fired_details, now)
     return True
-
-
-# v0.5.18 (#3 naming cleanup): the public name is `record_event`. The
-# underscore alias is kept for one release for back-compat with
-# `from app.services.watchdog_runtime import _record_event` callers.
-# Remove after v0.6.x.
-_record_event = record_event

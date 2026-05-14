@@ -49,7 +49,6 @@ from app.services.watchdog_runtime._actions import (
     _fire_action,
     _fire_cycle,
     _fire_hold_off,
-    _resolve_target_devices,  # deprecated alias, kept for one release
     resolve_target_devices,
 )
 from app.services.watchdog_runtime._probes import (
@@ -61,12 +60,10 @@ from app.services.watchdog_runtime._probes import (
     _probe_internet,
     _probe_ping,
     _probe_tcp,
-    _run_probe,  # deprecated alias, kept for one release
     run_probe,
 )
 from app.services.watchdog_runtime._state import (
     _in_maintenance_window,
-    _record_event,  # deprecated alias, kept for one release
     _rule_is_due,
     _update_state_and_maybe_fire,
     record_event,
@@ -144,9 +141,8 @@ __all__ = [
     "PROBE_TIMEOUT_SECONDS",
     "DEFAULT_INTERNET_TARGETS",
     "MAX_INTERNET_TARGETS",
-    # Probes — public names + back-compat underscore aliases (deprecated)
+    # Probes
     "run_probe",
-    "_run_probe",
     "_probe_internet",
     "_probe_ping",
     "_probe_tcp",
@@ -154,13 +150,11 @@ __all__ = [
     "_probe_dns",
     # State machine
     "record_event",
-    "_record_event",
     "_rule_is_due",
     "_in_maintenance_window",
     "_update_state_and_maybe_fire",
     # Actions
     "resolve_target_devices",
-    "_resolve_target_devices",
     "_fire_action",
     "_fire_cycle",
     "_fire_hold_off",
