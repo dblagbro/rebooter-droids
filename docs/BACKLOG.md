@@ -56,14 +56,18 @@ Notifications tab editor lets the operator rotate creds without a
 container recreate. Audit hook `smtp.config_updated`. Test:
 `tests/qa/test_v0425_runtime_smtp.py`.
 
-### B5. Get devices online (firmware-team coordination)
+### B5. Get devices online (firmware-team coordination) — ✅ CLOSED 2026-05-14
 
-- Operator handed off comms via
-  `docs/notes/2026-05-09-to-firmware-team-get-devices-online.md`.
-- Status: **awaiting firmware team reply**. No code work blocked
-  yet — this is purely a comms/handoff item.
-- When the firmware team replies, they may produce work for us
-  (e.g., new claim-token shape, custom heartbeat fields, etc.).
+Firmware team has been actively delivering on this since the original
+handoff: 0.1.3 → 0.1.6 → 0.1.9 → 0.1.12 → 0.1.15 → 0.1.16 → 0.1.17,
+each cut surfaced bugs we then closed on the hub side (B19 firmware
+scan SHA refresh, B20 MAC-dupe restore-vs-fresh, B22 scanned-release
+URL fix, B23 status-truth chips, B24 desired-name push). Live fleet
+at the v0.5.15 checkpoint: 7 active devices, all heartbeating, most
+on 0.1.16 / 0.1.17-dev-central. No remaining hub-side work is gated
+on the firmware team for the "get devices online" goal — this is
+now a steady-state cycle. New device-side requests get filed as
+their own backlog items.
 
 ---
 
@@ -170,13 +174,11 @@ LittleFS JSON not NVS, Python CLI flash tool first, hosting in
 force with publish-integrity discipline.
 
 Full reply: `docs/notes/2026-05-10-from-firmware-team-rfc005-redlines.md`.
-RFC-005 §9 now records the final answers.
-
-
-
-- Trial-window seconds, "main firmware healthy enough to promote"
-  definition, fallback-fetch source under safe-bootstrap, etc.
-- Blocks: any device-side OTA work; doesn't block the hub.
+RFC-005 §9 now records the final answers. Remaining open knobs
+(trial-window seconds, "main firmware healthy enough to promote"
+definition, fallback-fetch source under safe-bootstrap, etc.) are
+**device-side OTA work owned by the firmware team** — no hub work
+is blocked on or owed for this item.
 
 ---
 
@@ -197,9 +199,24 @@ meta-row still emits; these are *additional* per-device rows so
 `/app/audit?target_id=<dev>` answers "what did this bulk action
 actually do to this device?".
 
-### B15. Settings → Sync tab content
+### B15. Settings → Sync tab content — ✅ CLOSED in v0.5.16
 
-- Replace the stub with real content once B11 is decided.
+Replaced the pre-decision stub with a structured page reflecting the
+locked Option-C design (RFC-004 §10b):
+
+- **This hub right now** — runtime identity (role, hostname, public
+  base URL, fleet size, latest heartbeat age).
+- **Single-hub today** — explanation of the dual-URL nginx reality
+  (both URLs share fate at the Postgres layer).
+- **Locked design (not yet implemented)** — summarised Option-C
+  shape with link to RFC-004.
+- **What will appear on this tab once sync ships** — explicit
+  forward-looking inventory (peer status, replication health,
+  operator actions, conflict log) so resumers know what to add when
+  B11 implementation lands.
+
+Implementation of the actual sync still gated on B1 RBAC scope
+claims; this tab is the operator-facing UI surface for that work.
 
 ### B16. Power-usage monitoring + analytics — **NEW 2026-05-10 PM**
 
@@ -763,31 +780,21 @@ Tests:
 - API endpoint `/device/register` rejects mismatched MAC against
   `target_device_id` (defensive)
 
-#### Cleanup for the CURRENT production dupe (.30 / `C4:D8:D5:0C:F7:A5`)
+#### Cleanup for the live production dupe (.30 / `C4:D8:D5:0C:F7:A5`) — ✅ RESOLVED 2026-05-14
 
-Before B20 ships, the existing dupe needs operator-decision
-handling. Options:
-
-a) **Wait for B20 to ship, then run a one-shot reconciliation**:
-   update `dev_01KRH81ASVCMHZ7SXC72J0RHPH` rows to use the old
-   `dev_01KR8127W5XMP6MDF34J0TXQP9` id (rebind credentials,
-   delete the new row). Requires brief device downtime for token
-   re-issue.
-
-b) **Manual SQL merge now** (no B20 dependency): copy
-   `display_name + notes + central_management_enabled + site_id`
-   from old row to new row; rename new row to "Erica's
-   Subwoofer (reflashed 2026-05-12)"; mark old row
-   `registration_state='decommissioned'`. Audit history stays
-   split.
-
-c) **Leave as-is** for now and clean up when B20 ships.
+Schema + UI both shipped in **v0.5.7**. The live DB at v0.5.15 has
+exactly one row for MAC `C4:D8:D5:0C:F7:A5`:
+`dev_01KR8127W5XMP6MDF34J0TXQP9` ("Erica's Subwoofer", 0.1.17-dev-central,
+active, heartbeating). The duplicate `dev_01KRH81ASVCMHZ7SXC72J0RHPH`
+was cleaned up at some point between the original incident
+(2026-05-12 PM) and v0.5.15 — no orphan, no decommissioned remnant.
+Nothing left to do here.
 
 #### Sequencing
 
-B20 lands BEFORE the 4 bricked Erica's speakers get reflashed and
-re-adopted, otherwise we'll have 4 more dupes. Probably the next
-ship after the immediate refactor/B18 sprint.
+✅ B20 shipped before any further reflashes. Future reflashes go
+through the restore-vs-fresh-vs-decommission UI added in v0.5.7,
+so dupes are now prevented at adoption time.
 
 ---
 
