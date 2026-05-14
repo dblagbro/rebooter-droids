@@ -298,6 +298,39 @@ def list_devices(
             # v0.5.26: latest_power_sample is None when the device has
             # never reported, present (with is_stale flag) otherwise.
             obj["latest_power_sample"] = power_samples_by_device.get(d.id)
+            # v0.5.31 (Phase 4A): desired-config drift summary for the
+            # devices-list chip. Cheap to compute inline since the JSON
+            # blobs are already loaded on the Device row.
+            obj["desired_config_set"] = bool(d.desired_config)
+            obj["desired_config_drift_summary"] = None
+            if d.central_management_enabled and d.desired_config:
+                reported = d.last_reported_config or {}
+                if not isinstance(reported, dict) or not reported:
+                    obj["desired_config_drift_summary"] = {
+                        "state": "unconfirmed",
+                        "missing": list(d.desired_config.keys()),
+                        "mismatched": [],
+                    }
+                else:
+                    missing: list[str] = []
+                    mismatched: list[str] = []
+                    for field, want in d.desired_config.items():
+                        if field not in reported:
+                            missing.append(field)
+                        elif reported.get(field) != want:
+                            mismatched.append(field)
+                    if missing or mismatched:
+                        obj["desired_config_drift_summary"] = {
+                            "state": "drifted",
+                            "missing": missing,
+                            "mismatched": mismatched,
+                        }
+                    else:
+                        obj["desired_config_drift_summary"] = {
+                            "state": "in_sync",
+                            "missing": [],
+                            "mismatched": [],
+                        }
             out.append(obj)
         return out
 

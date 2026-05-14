@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.31] - 2026-05-14
+
+### Added — Phase 4A: desired-config drift visibility
+
+Promotes the v0.5.22 B21 desired-config plumbing from a per-device
+editor into a **fleet-level** triage signal. Operators no longer have
+to open each device's detail page to find which units are drifted
+from the operator-intended config.
+
+**Devices list** (`/app/devices`):
+- New drift chip per row, rendered in the Central column beneath the
+  central-status chip:
+  - `drift · N · M missing` (amber) when `desired_config` and
+    `last_reported_config` disagree on N mismatched and/or M missing
+    fields.
+  - `config: unconfirmed` (grey) when `desired_config` is set but
+    the device has never echoed `reported_config` in a heartbeat.
+  - **No chip when in-sync** — clean rows stay clean.
+- Each chip is a link to `/app/devices/<id>#desired-config` so a
+  click goes straight to the per-device card where the operator can
+  push.
+
+**Status page attention items** (`/app/`):
+- New `desired_config_drifted` attention (severity `warn`, rank 70,
+  between offline-short and watchdog-firing). Title carries the
+  mismatched + missing field counts; hint tells the operator to
+  push from the device-detail Desired Config card. Surfaces on the
+  Status feed every fleet that has at least one drifted device.
+- New `desired_config_unconfirmed` attention (severity `info`, rank
+  35). Fires when desired_config is set but
+  `last_reported_config` has never landed — typically a firmware
+  version that doesn't echo `reported_config` in heartbeats.
+
+Both kinds default-link to the device-detail page via the existing
+status-template fallback path (no template change needed).
+
+**Backend** — `services.devices.list_devices` now serializes
+`desired_config_drift_summary` per row:
+
+```json
+{
+  "state": "drifted" | "in_sync" | "unconfirmed",
+  "missing": ["field", ...],
+  "mismatched": ["field", ...]
+}
+```
+
+Computed inline from the row's `desired_config` + `last_reported_config`
+JSON columns — no extra queries.
+
+`services.inbox._compute()` reuses the same logic for the
+attention-feed items.
+
+### Out of scope (still queued)
+
+- **Phase 4B** — recovery-aware drift actions (post-rebind /
+  post-recovery surfacing of "push desired config now" guided
+  action). Depends on Phase 3 heartbeat-contract expansion which is
+  firmware-coord-gated.
+- **Phase 4C** — desired-config schema alignment with firmware
+  schema doc + version-gating hints. Firmware-coord-gated.
+- **last-pushed-age cue** on devices list and **freshness cue** on
+  `last_reported_config` — both pending Phase 3 heartbeat-contract
+  fields that surface those timestamps reliably.
+
 ## [0.5.30] - 2026-05-14
 
 ### Added — B16 cost calc + CSV export, Phase 2C polish, Phase 2B edit reference
