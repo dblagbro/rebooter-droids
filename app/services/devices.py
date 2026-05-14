@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from typing import Iterable
 
 from sqlalchemy import select
@@ -11,9 +12,13 @@ from app.models import (
     Device,
     DeviceEvent,
     DeviceHeartbeat,
+    DeploymentAssignment,
+    FirmwareRelease,
     Group,
     GroupMembership,
 )
+
+log = logging.getLogger(__name__)
 
 
 def serialize_device(d: Device, include_secret_status: bool = True) -> dict:
@@ -45,6 +50,141 @@ def serialize_device(d: Device, include_secret_status: bool = True) -> dict:
 
 def _iso(dt) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
+
+
+def _heartbeat_state_for(
+    last_heartbeat_at: datetime | None,
+    *,
+    now: datetime,
+    offline_threshold_seconds: int,
+) -> str:
+    if last_heartbeat_at is None:
+        return "never"
+    if (now - last_heartbeat_at).total_seconds() < offline_threshold_seconds:
+        return "online"
+    return "offline"
+
+
+def _serialize_assignment(
+    a: DeploymentAssignment, release: FirmwareRelease | None
+) -> dict:
+    return {
+        "assignment_id": a.id,
+        "deployment_id": a.deployment_id,
+        "state": a.state,
+        "target_version": release.version if release else None,
+        "last_reported_version": a.last_reported_version,
+        "error_message": a.error_message,
+        "updated_at": _iso(a.updated_at),
+    }
+
+
+def _active_assignments_by_device(session, device_ids: Iterable[str]) -> dict[str, dict]:
+    ids = [d for d in device_ids if d]
+    if not ids:
+        return {}
+    rows = list(
+        session.scalars(
+            select(DeploymentAssignment)
+            .where(
+                DeploymentAssignment.device_id.in_(ids),
+                DeploymentAssignment.state.in_(("pending", "delivered")),
+            )
+            .order_by(
+                DeploymentAssignment.device_id.asc(),
+                DeploymentAssignment.created_at.desc(),
+            )
+        )
+    )
+    latest_by_device: dict[str, DeploymentAssignment] = {}
+    for row in rows:
+        latest_by_device.setdefault(row.device_id, row)
+
+    release_ids = {row.release_id for row in latest_by_device.values()}
+    releases = {
+        r.id: r
+        for r in session.scalars(
+            select(FirmwareRelease).where(FirmwareRelease.id.in_(release_ids))
+        )
+    } if release_ids else {}
+    return {
+        device_id: _serialize_assignment(row, releases.get(row.release_id))
+        for device_id, row in latest_by_device.items()
+    }
+
+
+def _derive_central_status(
+    d: Device,
+    *,
+    heartbeat_state: str,
+    latest_health_state: str | None = None,
+    active_assignment: dict | None = None,
+) -> dict:
+    if not d.central_management_enabled:
+        return {
+            "code": "local_only",
+            "label": "local-only",
+            "reason": "Device opts out of central management.",
+        }
+
+    current_version = (d.firmware_version or "").strip() or None
+    target_version = (
+        (active_assignment or {}).get("target_version") or ""
+    ).strip() or None
+    assignment_state = (active_assignment or {}).get("state")
+
+    if target_version and current_version != target_version:
+        if heartbeat_state == "offline":
+            return {
+                "code": "transport_stale",
+                "label": "transport stale",
+                "reason": (
+                    f"Device is assigned {target_version} but last reported "
+                    f"{current_version or 'unknown'} and is no longer heartbeating."
+                ),
+            }
+        return {
+            "code": "upgrade_pending",
+            "label": "upgrade pending",
+            "reason": (
+                f"Device is assigned {target_version} but still reports "
+                f"{current_version or 'unknown'}."
+            ),
+        }
+
+    if heartbeat_state == "never":
+        return {
+            "code": "awaiting_first_heartbeat",
+            "label": "awaiting first heartbeat",
+            "reason": "Device is enrolled for central management but has not heartbeated yet.",
+        }
+
+    if heartbeat_state == "offline":
+        return {
+            "code": "central_stale",
+            "label": "stale",
+            "reason": "Central has not heard from this device within the heartbeat window.",
+        }
+
+    if latest_health_state and latest_health_state not in ("healthy", "ok"):
+        return {
+            "code": "attention",
+            "label": "attention",
+            "reason": f"Latest heartbeat reported health_state={latest_health_state}.",
+        }
+
+    if assignment_state in ("pending", "delivered") and target_version:
+        return {
+            "code": "upgrade_pending",
+            "label": "upgrade pending",
+            "reason": f"Waiting for device to report target firmware {target_version}.",
+        }
+
+    return {
+        "code": "central_ok",
+        "label": "central",
+        "reason": "Central management is enabled and the device is reporting normally.",
+    }
 
 
 # v0.5.4: version-comparison helpers moved to app/services/_versions.py
@@ -241,23 +381,30 @@ def list_devices(
 
         stmt = stmt.order_by(Device.created_at.desc())
         rows = list(session.scalars(stmt))
+        assignments_by_device = _active_assignments_by_device(
+            session, [d.id for d in rows]
+        )
         out = []
         for d in rows:
             obj = serialize_device(d)
-            # Three-state heartbeat health (v0.2.7):
-            #   never   — device row exists but has never sent a heartbeat
-            #   online  — heartbeat received within `offline_threshold_seconds`
-            #   offline — has heartbeated in the past, but not recently
-            # `online: bool` is preserved for backwards compatibility with any
-            # API consumer; it is True only for the `online` state.
-            if d.last_heartbeat_at is None:
-                hb_state = "never"
-            elif (now - d.last_heartbeat_at).total_seconds() < offline_threshold_seconds:
-                hb_state = "online"
-            else:
-                hb_state = "offline"
+            hb_state = _heartbeat_state_for(
+                d.last_heartbeat_at,
+                now=now,
+                offline_threshold_seconds=offline_threshold_seconds,
+            )
             obj["heartbeat_state"] = hb_state
             obj["online"] = hb_state == "online"
+            assignment = assignments_by_device.get(d.id)
+            if assignment:
+                obj["active_firmware_assignment"] = assignment
+            central_status = _derive_central_status(
+                d,
+                heartbeat_state=hb_state,
+                active_assignment=assignment,
+            )
+            obj["central_status"] = central_status["code"]
+            obj["central_status_label"] = central_status["label"]
+            obj["central_status_reason"] = central_status["reason"]
             out.append(obj)
         return out
 
@@ -268,6 +415,14 @@ def get_device_detail(device_id: str) -> dict | None:
         if d is None:
             return None
         out = serialize_device(d)
+        now = datetime.now(timezone.utc)
+        hb_state = _heartbeat_state_for(
+            d.last_heartbeat_at,
+            now=now,
+            offline_threshold_seconds=180,
+        )
+        out["heartbeat_state"] = hb_state
+        out["online"] = hb_state == "online"
 
         latest_hb = session.scalar(
             select(DeviceHeartbeat)
@@ -291,6 +446,18 @@ def get_device_detail(device_id: str) -> dict | None:
             if latest_hb
             else None
         )
+        assignment = _active_assignments_by_device(session, [device_id]).get(device_id)
+        if assignment:
+            out["active_firmware_assignment"] = assignment
+        central_status = _derive_central_status(
+            d,
+            heartbeat_state=hb_state,
+            latest_health_state=(latest_hb.health_state if latest_hb else None),
+            active_assignment=assignment,
+        )
+        out["central_status"] = central_status["code"]
+        out["central_status_label"] = central_status["label"]
+        out["central_status_reason"] = central_status["reason"]
 
         group_rows = list(
             session.execute(
@@ -449,3 +616,46 @@ def update_device(device_id: str, patch: dict) -> dict | None:
             session.add(d)
         session.flush()
         return serialize_device(d)
+
+
+def enqueue_display_name_sync(
+    device_id: str,
+    *,
+    display_name: str | None,
+    issued_by_user_id: str | None,
+    reason: str,
+) -> bool:
+    """Best-effort hub->device name sync for centrally managed units.
+
+    Today the hub's device row display_name and the device's local
+    `device_name` are separate truths unless we explicitly enqueue an
+    `apply_config` command. Restore-after-reflash already does this.
+    Ordinary operator renames must do it too, or the local web UI keeps
+    the stale name indefinitely.
+    """
+    if not device_id or not display_name:
+        return False
+
+    with session_scope() as session:
+        d = session.get(Device, device_id)
+        if d is None:
+            return False
+        if not d.central_management_enabled:
+            return False
+
+    try:
+        from app.services.commands import enqueue_for_device
+        enqueue_for_device(
+            device_id=device_id,
+            cmd_type="apply_config",
+            payload={"device_name": display_name},
+            issued_by_user_id=issued_by_user_id,
+            ttl_seconds=600,
+        )
+        return True
+    except Exception as e:
+        log.warning(
+            "display-name sync enqueue failed for %s (%s): %s",
+            device_id, reason, e,
+        )
+        return False

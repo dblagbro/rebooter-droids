@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import Device, DeviceHeartbeat
+from app.services.deployments import reconcile_assignment_reported_version
 
 
 def record_heartbeat(device_id: str, payload: dict) -> dict:
@@ -46,6 +47,13 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             last_event_at=last_event_dt,
         )
         session.add(hb)
+        reconcile_assignment_reported_version(
+            session,
+            device_id,
+            payload.get("firmware_version"),
+            error_message=payload.get("health_state"),
+            reported_at=now,
+        )
         session.flush()
 
     return {"recorded_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}

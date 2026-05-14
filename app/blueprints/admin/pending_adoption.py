@@ -48,12 +48,20 @@ def pending_adoption_page():
     # decommissioned rows.
     for a in announcements:
         a["existing_devices"] = find_by_mac(a.get("mac_address"))
+    state_counts = {
+        "pending": sum(1 for a in announcements if a.get("state") == "pending"),
+        "awaiting_pickup": sum(1 for a in announcements if a.get("state") == "awaiting_pickup"),
+        "awaiting_register": sum(1 for a in announcements if a.get("state") == "awaiting_register"),
+        "registered": sum(1 for a in announcements if a.get("state") == "registered"),
+        "rejected": sum(1 for a in announcements if a.get("state") == "rejected"),
+    }
     return render_template(
         "pending_adoption.html",
         **_ctx({
             "active": "devices",
             "announcements": announcements,
             "show_all": show_all,
+            "state_counts": state_counts,
         }),
     )
 
@@ -102,7 +110,7 @@ def pending_adoption_adopt_submit(announcement_id: str):
     flash(
         f"Adopted MAC {result['mac_address']}. "
         f"Enrolment token will be delivered on the device's next announce poll "
-        f"(within ~30 s). Then the device will register itself.",
+        f"(within ~5 s while pending). Then the device will register itself.",
         "info",
     )
     return redirect(url_for("admin_ui.pending_adoption_page"))
@@ -138,7 +146,7 @@ def pending_adoption_restore_submit(announcement_id: str, existing_device_id: st
     flash(
         f"Restoring MAC {result['mac_address']} to existing device "
         f"{existing_device_id}. Token will be delivered on the device's "
-        f"next announce poll (~30 s); on /register the existing device "
+        f"next announce poll (~5 s while pending); on /register the existing device "
         f"row will be rebound (id + audit history + group memberships "
         f"preserved).",
         "info",
@@ -203,7 +211,7 @@ def pending_adoption_decommission_and_adopt_submit(
     flash(
         f"Decommissioned {existing_device_id}. Adopting MAC "
         f"{result['mac_address']} fresh; token will be delivered "
-        f"on the device's next announce poll (~30 s).",
+        f"on the device's next announce poll (~5 s while pending).",
         "info",
     )
     return redirect(url_for("admin_ui.pending_adoption_page"))

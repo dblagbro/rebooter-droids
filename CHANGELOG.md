@@ -7,6 +7,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.12] - 2026-05-14
+
+Bundle ship — parallel-session work landed:
+
+### Added — B23: split "offline" into operator-meaningful states
+
+Devices list + device detail used to collapse three distinct states
+under "offline":
+- truly unreachable device
+- central heartbeat stale / transport failure
+- device on old firmware but otherwise healthy
+
+The parallel-session work adds `_derive_central_status()` in
+`app/services/devices.py` and surfaces a structured
+`{code, label, reason}` tuple on every device list/detail payload:
+
+| Code | When |
+|---|---|
+| `local_only` | `central_management_enabled=False` |
+| `awaiting_first_heartbeat` | central on, no heartbeat yet |
+| `central_stale` | central on, heartbeat older than threshold |
+| `transport_stale` | active assignment + stale heartbeat + version mismatch |
+| `upgrade_pending` | active assignment + reported version != target |
+| `attention` | latest heartbeat carried non-healthy `health_state` |
+| `central_ok` | central on, recent heartbeat, on target version |
+
+Templates (`templates/devices_list.html`, `templates/device_detail.html`)
+render these as colored chips with hover tooltips carrying the
+operator-readable `reason`. A device like `.225` (central enabled but
+transport failing) no longer presents identically to a truly dead
+device like `.69`.
+
+### Added — B24: device rename pushes `apply_config.device_name`
+
+Restore-after-reflash (v0.5.8) already auto-enqueued an
+`apply_config{device_name}` push, but ordinary operator renames
+through `/api/v1/admin/devices/<id>` (PATCH) and the UI form did
+not — so renames stayed hub-local until a future reflash propagated
+them.
+
+Both API and UI rename handlers now call `enqueue_display_name_sync()`
+(promoted from the v0.5.8 helper) when the new display name differs
+from the old. Audit details now include
+`display_name_sync_enqueued: true/false` for traceability. No-op for
+units with `central_management_enabled=False`.
+
+### Added — B16 (kickoff): power-sample ingestion endpoint + model
+
+First slice of the B16 power-monitoring track. Lands the receiving
+side only — no UI surfaces yet — so firmware can start emitting
+samples against a stable contract.
+
+- `app/models/power_analytics.py` — `DevicePowerSample` table with
+  voltage / current / real-power / apparent-power / power-factor /
+  frequency / cumulative-energy fields, plus Wi-Fi telemetry
+  (rssi/retry/beacon-miss/CRC) and `chip_type` discriminator.
+  Indexed on `(device_id, channel_id, sampled_at desc)` and
+  `(received_at desc)` for the two expected query patterns.
+- `app/services/events.py::ingest_power_samples()` — batch ingestion
+  with per-field type validation, max 3600 samples/batch
+  (1 hour at 1s cadence), `source ∈ {steady, burst, synthetic}`.
+- `POST /api/v1/device/power-samples` — device-auth endpoint
+  documented in `docs/API.md`.
+- `apply_config` allows the new top-level `power` key so future
+  device-side sample-cadence config can be pushed back.
+
+Storage schema bootstraps via `Base.metadata.create_all()` on next
+container start — no migration script needed.
+
+### Fixed — Deployment assignment never advanced past `delivered`
+
+Live soak surfaced a gap where deployments moved
+`pending → delivered` when the device fetched `/device/firmware`, but
+never advanced to `completed` after the device came back on the
+target version. The .185 ship report (2026-05-14) noted the
+auto-flip happened anyway, but only because the heartbeat path
+indirectly bumped state — a brittle dependency.
+
+`app/services/deployments.py::reconcile_assignment_reported_version()`
+is now called explicitly from `record_heartbeat()` and:
+- updates `last_reported_version` on every heartbeat
+- if `reported == target`, flips state → `completed` and clears
+  `error_message`
+- copies `health_state` into `error_message` when present so
+  operators see device-reported errors in the deployment row
+
+### Changed — Pending-adoption page state-counts card
+
+When operator clicks "Show all" on `/app/pending-adoption`, the
+new state-counts card surfaces per-state announcement counts at a
+glance (pending / awaiting_pickup / awaiting_register / registered /
+rejected) so the history view stops feeling like a wall of rows.
+
+Also updated the "How adoption works" copy from "~30s" → "~5s while
+pending" to match the v0.5.10 retry_after change.
+
+### Tests
+
+- `tests/qa/test_v0514_deployment_completion_and_status_truth.py` —
+  3 unit tests covering heartbeat-completes-assignment,
+  upgrade_pending, and transport_stale codepaths. **Known issue:**
+  uses SQLite for isolation, but `BigInteger` PK columns don't
+  autoincrement under SQLite (Postgres-specific behavior). Tests
+  pass against Postgres, fail on local SQLite. Track as a follow-up.
+- `tests/qa/test_admin_api.py` — `test_patch_device_rename_enqueues_apply_config_command`
+  exercises the B24 wiring against the live hub.
+- `tests/qa/test_device_api.py` — power-samples happy-path + batch-
+  overflow rejection tests.
+
+### Docs
+
+- `docs/API.md` — `POST /device/power-samples` request shape, `power`
+  allowed in `apply_config`.
+- `docs/BACKLOG.md` — B23 + B24 entries (formally captured).
+- `docs/qa-notes.md`, `docs/bug-log.md`, `docs/PROJECT-STATE-…md` —
+  accumulated QA findings + bug entries + full project state
+  handover snapshot (2026-05-09 PM full-sync) committed for resume
+  reference.
+- `docs/notes/2026-05-12-substitute-firmware-team.md` —
+  substitute-firmware-team coordination notes.
+- `docs/notes/2026-05-14-live-hub-vs-device-audit.md` — live
+  hub-vs-device drift findings on 2026-05-14 (the .225 case that
+  motivated B23).
+
 ## [0.5.11] - 2026-05-13
 
 ### Fixed — B22: scanned releases handed devices the wrong OTA URL

@@ -241,6 +241,45 @@ Request:
 
 Up to 200 events per batch.
 
+### `POST /device/power-samples`
+
+Headers: `Authorization: Bearer <device_token>`.
+
+Request:
+
+```json
+{
+  "device_id": "dev_…",
+  "samples": [
+    {
+      "sampled_at": "2026-05-14T00:00:00Z",
+      "channel_id": 0,
+      "source": "steady",
+      "source_flags": 0,
+      "sampled_uptime_seconds": 120,
+      "v_v": 120.4,
+      "i_ma": 1450,
+      "p_w": 175.3,
+      "s_va": 178.2,
+      "pf": 0.945,
+      "hz": 60.01,
+      "energy_wh": 1234,
+      "rssi_dbm": -61,
+      "tx_retry_count": 0,
+      "beacon_miss_count": 0,
+      "crc_fail_count": 0,
+      "chip_type": "CSE7766"
+    }
+  ]
+}
+```
+
+`sampled_at` is optional in the first B16 transport slice. If it is
+omitted, the hub uses receive-time. `source` must be one of
+`steady`, `burst`, or `synthetic`.
+
+Up to 3600 samples per batch.
+
 ### `POST /device/failsafe`
 
 Single failsafe ingestion endpoint (v0.3.8). Devices send a compact
@@ -304,7 +343,7 @@ to fetch the main image (RFC-005).
   - `apply_config`: partial-update object whose top-level keys are a
     subset of `device_name, relay_restore_behavior,
     monitor_interval_seconds, boot_warmup_seconds, manual_button_enabled,
-    internet, device, notifications`. Any other top-level key is
+    internet, device, notifications, power`. Any other top-level key is
     rejected with `validation_failed`.
   - `relay_cycle`: optional integer `power_off_seconds` and
     `post_reboot_holdoff_seconds`.
