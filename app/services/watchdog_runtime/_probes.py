@@ -53,6 +53,8 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_weather_alert_active(probe)
         if kind == "ical_event_active":
             return _probe_ical_event_active(probe)
+        if kind in ("power_above", "power_below", "power_zero_while_on"):
+            return _probe_power(probe, kind)
         if kind == "tcp":
             ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
         elif kind == "http":
@@ -514,3 +516,147 @@ def _probe_ical_event_active(probe: dict) -> tuple[str, dict]:
         "summary_filter": needle or None,
         "sampled_at": sample.get("sampled_at"),
     }
+
+
+def _probe_power(probe: dict, kind: str) -> tuple[str, dict]:
+    """v0.5.32 (B16 Phase 1D): power-telemetry probe.
+
+    Rule shape:
+        probe = {"kind": "power_above" | "power_below" | "power_zero_while_on",
+                 "device_id": "dev_…",
+                 "threshold_w": 1500,              # power_above / power_below
+                 "near_zero_threshold_w": 0.5,    # power_zero_while_on
+                 "window_seconds": 300}           # avg over window
+
+    Semantics — "fails" (and thus eventually fires the rule's action)
+    when the unhealthy condition is detected:
+    - power_above       → fails when avg_w(window) > threshold_w
+    - power_below       → fails when avg_w(window) < threshold_w
+                          (requires sample_count > 0 — empty window
+                          returns success so a dead poller doesn't
+                          trigger a power-cycle)
+    - power_zero_while_on → fails when relay_on=True (latest heartbeat)
+                          AND avg_w(window) < near_zero_threshold_w
+                          (catches "appliance died but relay still
+                          energized" — the operator's classic phantom-
+                          failure case)
+
+    Stale-sample failure gate: same as the external-sensor probes —
+    if the most-recent sample is older than `max_sample_age_seconds`
+    (default 600s = 10 min), the probe returns failure with
+    `reason='stale_sample'` so a dead device-side sampler can never
+    pin a rule to a misleading "success" state.
+    """
+    device_id = (probe.get("device_id") or "").strip()
+    if not device_id:
+        return "failure", {"reason": "missing device_id"}
+    try:
+        window = int(probe.get("window_seconds") or 300)
+    except (TypeError, ValueError):
+        window = 300
+    if window < 30:
+        window = 30
+    if window > 86400:
+        window = 86400
+
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 600)
+    except (TypeError, ValueError):
+        max_age = 600
+
+    # Deferred import — keeps watchdog runtime self-contained for
+    # callers that don't use power probes.
+    from app.services import device_power
+
+    latest = device_power.latest_sample(device_id)
+    if latest is None:
+        return "failure", {
+            "reason": "no_samples",
+            "device_id": device_id,
+        }
+    if (latest.get("age_seconds") or 0) > max_age:
+        return "failure", {
+            "reason": "stale_sample",
+            "device_id": device_id,
+            "sample_age_seconds": latest.get("age_seconds"),
+            "max_sample_age_seconds": max_age,
+        }
+
+    # Compute window aggregate. Cheap — RECENT_WINDOW_DEFAULT_SECONDS
+    # already supports up-to-24h windows; we use that path.
+    recent = device_power.recent_samples(device_id, window_seconds=window)
+    if not recent:
+        return "failure", {
+            "reason": "no_samples_in_window",
+            "device_id": device_id,
+            "window_seconds": window,
+        }
+    vals = [r["p_w"] for r in recent if r.get("p_w") is not None]
+    if not vals:
+        # Samples exist but no p_w reading — device reports rssi but
+        # not real-power (e.g. firmware without CSE7766 wiring).
+        return "failure", {
+            "reason": "no_real_power_readings",
+            "device_id": device_id,
+            "sample_count": len(recent),
+        }
+    avg_w = sum(vals) / len(vals)
+
+    details = {
+        "device_id": device_id,
+        "window_seconds": window,
+        "sample_count": len(recent),
+        "avg_w": round(avg_w, 3),
+        "min_w": round(min(vals), 3),
+        "max_w": round(max(vals), 3),
+        "latest_sample_age_seconds": latest.get("age_seconds"),
+    }
+
+    if kind == "power_above":
+        try:
+            threshold = float(probe.get("threshold_w"))
+        except (TypeError, ValueError):
+            return "failure", {**details, "reason": "missing threshold_w"}
+        details["threshold_w"] = threshold
+        # "success" means the rule is healthy (i.e. NOT above).
+        # "failure" means we crossed the threshold and the rule should
+        # build toward firing.
+        return ("failure" if avg_w > threshold else "success"), details
+
+    if kind == "power_below":
+        try:
+            threshold = float(probe.get("threshold_w"))
+        except (TypeError, ValueError):
+            return "failure", {**details, "reason": "missing threshold_w"}
+        details["threshold_w"] = threshold
+        return ("failure" if avg_w < threshold else "success"), details
+
+    if kind == "power_zero_while_on":
+        try:
+            near_zero = float(probe.get("near_zero_threshold_w") or 0.5)
+        except (TypeError, ValueError):
+            near_zero = 0.5
+        details["near_zero_threshold_w"] = near_zero
+        relay_on = bool(latest.get("p_w") is not None and (
+            latest.get("p_w") or 0
+        ) > near_zero or latest.get("relay_on"))
+        # The truer signal: device_heartbeat's relay_on. Pull it
+        # directly to avoid mis-attributing failure to a transient.
+        from app.db import session_scope as _ss
+        from sqlalchemy import select as _select
+        from app.models import DeviceHeartbeat as _DH
+
+        with _ss() as session:
+            hb = session.scalar(
+                _select(_DH)
+                .where(_DH.device_id == device_id)
+                .order_by(_DH.received_at.desc())
+                .limit(1)
+            )
+            relay_on_heartbeat = bool(hb.relay_on) if hb else False
+        details["relay_on"] = relay_on_heartbeat
+        if relay_on_heartbeat and avg_w < near_zero:
+            return "failure", details
+        return "success", details
+
+    return "failure", {"reason": f"unknown power probe kind: {kind}", **details}

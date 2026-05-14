@@ -510,6 +510,22 @@ def _probe_to_phrase(p: dict) -> str:
                 f"matching `{summary}` currently airing"
             )
         return f"calendar source `{p.get('source_id','?')}` has any event currently airing"
+    # v0.5.32 (B16 Phase 1D): power-targeted probes.
+    if k == "power_above":
+        return (
+            f"device `{p.get('device_id','?')}` averaging > {p.get('threshold_w','?')} W "
+            f"over {p.get('window_seconds', 300)} s"
+        )
+    if k == "power_below":
+        return (
+            f"device `{p.get('device_id','?')}` averaging < {p.get('threshold_w','?')} W "
+            f"over {p.get('window_seconds', 300)} s"
+        )
+    if k == "power_zero_while_on":
+        return (
+            f"device `{p.get('device_id','?')}` drawing near-zero "
+            f"(< {p.get('near_zero_threshold_w', 0.5)} W) while relay is on"
+        )
     return f"unknown probe '{k}'"
 
 

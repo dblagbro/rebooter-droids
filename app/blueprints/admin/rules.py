@@ -178,6 +178,46 @@ def rules_create_submit():
             probe["max_sample_age_seconds"] = max_age
         except ValueError:
             pass
+    # v0.5.32 (B16 Phase 1D): power-targeted probes.
+    elif probe_kind in ("power_above", "power_below"):
+        probe = {
+            "kind": probe_kind,
+            "device_id": (request.form.get("power_device_id") or "").strip(),
+        }
+        try:
+            probe["threshold_w"] = float(request.form.get("power_threshold_w") or 0)
+        except ValueError:
+            flash("threshold_w must be a number (e.g. 1500 for 1500W).", "error")
+            return redirect(url_for("admin_ui.rules_page"))
+        try:
+            probe["window_seconds"] = int(request.form.get("power_window_seconds") or 300)
+        except ValueError:
+            probe["window_seconds"] = 300
+        try:
+            mage = int(request.form.get("power_max_sample_age_seconds") or 600)
+            probe["max_sample_age_seconds"] = mage
+        except ValueError:
+            pass
+    elif probe_kind == "power_zero_while_on":
+        probe = {
+            "kind": "power_zero_while_on",
+            "device_id": (request.form.get("power_device_id") or "").strip(),
+        }
+        try:
+            probe["near_zero_threshold_w"] = float(
+                request.form.get("power_near_zero_threshold_w") or 0.5
+            )
+        except ValueError:
+            probe["near_zero_threshold_w"] = 0.5
+        try:
+            probe["window_seconds"] = int(request.form.get("power_window_seconds") or 300)
+        except ValueError:
+            probe["window_seconds"] = 300
+        try:
+            mage = int(request.form.get("power_max_sample_age_seconds") or 600)
+            probe["max_sample_age_seconds"] = mage
+        except ValueError:
+            pass
     else:
         flash("Unsupported probe kind.", "error")
         return redirect(url_for("admin_ui.rules_page"))

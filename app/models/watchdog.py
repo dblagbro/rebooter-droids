@@ -53,6 +53,12 @@ PROBE_KIND_ROKU_APP_ACTIVE = "roku_app_active"
 PROBE_KIND_HA_STATE_IS = "ha_state_is"
 PROBE_KIND_WEATHER_ALERT_ACTIVE = "weather_alert_active"
 PROBE_KIND_ICAL_EVENT_ACTIVE = "ical_event_active"
+# Power-targeted probe kinds (B16 Phase 1D — v0.5.32).
+# Read recent device_power_samples for `probe.device_id` over
+# `probe.window_seconds` and compare against `probe.threshold_w`.
+PROBE_KIND_POWER_ABOVE = "power_above"
+PROBE_KIND_POWER_BELOW = "power_below"
+PROBE_KIND_POWER_ZERO_WHILE_ON = "power_zero_while_on"
 
 KNOWN_PROBE_KINDS = (
     PROBE_KIND_INTERNET,
@@ -66,6 +72,9 @@ KNOWN_PROBE_KINDS = (
     PROBE_KIND_HA_STATE_IS,
     PROBE_KIND_WEATHER_ALERT_ACTIVE,
     PROBE_KIND_ICAL_EVENT_ACTIVE,
+    PROBE_KIND_POWER_ABOVE,
+    PROBE_KIND_POWER_BELOW,
+    PROBE_KIND_POWER_ZERO_WHILE_ON,
 )
 
 # Rule status enum — mirrors webui-redesign-plan.md §7.1.
