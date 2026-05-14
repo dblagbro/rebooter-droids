@@ -35,6 +35,8 @@
          {% if active == 'rules' %}aria-current="page"{% endif %}>Rules</a>
       <a href="{{ url_for('admin_ui.history_page') }}"
          {% if active == 'history' %}aria-current="page"{% endif %}>History</a>
+      <a href="{{ url_for('admin_ui.fleet_power_page') }}"
+         {% if active == 'power' %}aria-current="page"{% endif %}>Power</a>
       <a href="{{ url_for('admin_ui.settings_page') }}"
          {% if active == 'settings' %}aria-current="page"{% endif %}>Settings</a>
     </nav>
@@ -85,6 +87,11 @@
        {% if active == 'history' %}aria-current="page"{% endif %}>
       <span class="ico" aria-hidden="true">≡</span>
       <span>History</span>
+    </a>
+    <a href="{{ url_for('admin_ui.fleet_power_page') }}"
+       {% if active == 'power' %}aria-current="page"{% endif %}>
+      <span class="ico" aria-hidden="true">⚡</span>
+      <span>Power</span>
     </a>
     <a href="{{ url_for('admin_ui.settings_page') }}"
        {% if active == 'settings' %}aria-current="page"{% endif %}>
