@@ -197,6 +197,18 @@
           {% else %}
             <span class="badge {% if d.latest_relay_on %}green{% endif %}">{{ 'ON' if d.latest_relay_on else 'OFF' }}</span>
           {% endif %}
+          {# v0.5.26 (B16 Phase 1A): compact latest-watts chip next to
+             the toggle. Renders only when there's a sample; absent
+             when the device has never reported telemetry (most devices
+             today — firmware-side sampling lands later). Amber when
+             stale. #}
+          {% set lps = d.latest_power_sample %}
+          {% if lps and lps.p_w is not none %}
+            <span class="badge{% if lps.is_stale %} amber{% endif %}" style="margin-left:.3rem; font-variant-numeric:tabular-nums"
+                  title="{% if lps.is_stale %}stale — last sample {{ lps.age_seconds }} s ago (≥ 5 min){% else %}live telemetry — {{ lps.age_seconds }} s old{% endif %}">
+              {{ '%.0f'|format(lps.p_w) }} W
+            </span>
+          {% endif %}
         </td>
         <td>
           {% if d.central_status == 'transport_stale' %}
