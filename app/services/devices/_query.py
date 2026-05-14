@@ -411,4 +411,19 @@ def get_device_detail(device_id: str) -> dict | None:
         out["failsafe_events"] = failsafe_service.list_for_device(
             device_id, limit=25
         )
+
+        # v0.5.22 (B21): desired-config blob + drift snapshot. Imported
+        # lazily so the package's load-time graph isn't enlarged for
+        # callers that don't render a device-detail view.
+        from app.services import device_config
+
+        out["desired_config"] = dict(d.desired_config) if d.desired_config else {}
+        out["desired_mode"] = d.desired_mode
+        out["last_reported_config"] = (
+            dict(d.last_reported_config) if d.last_reported_config else {}
+        )
+        out["desired_config_updated_at"] = _iso(d.desired_config_updated_at)
+        out["last_config_pushed_at"] = _iso(d.last_config_pushed_at)
+        out["desired_config_drift"] = device_config.compute_drift(device_id)
+        out["desired_config_feature_enabled"] = device_config.is_feature_enabled()
         return out

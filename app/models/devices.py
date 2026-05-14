@@ -87,6 +87,28 @@ class Device(Base):
         Boolean, nullable=False, default=False
     )
 
+    # v0.5.22 (B21): operator-set intended config for centrally managed
+    # units. `desired_config` shape matches the locked v0.1 apply_config
+    # schema (device_name, relay_restore_behavior, monitor_interval_seconds,
+    # boot_warmup_seconds, manual_button_enabled, internet, device,
+    # notifications, power — see docs/firmware-apply-config-schema-v01.md).
+    # `desired_mode` is the intended top-level mode (smart_plug /
+    # internet_watchdog / device_watchdog). `last_reported_config` is the
+    # device's most-recent self-reported config (populated from heartbeat
+    # payload if present, or from apply_config command-result echoes).
+    # All four are additive nullable JSON columns — Base.metadata.create_all()
+    # picks them up on next container start. NULL = no operator intent set;
+    # behaviour stays identical to today.
+    desired_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    desired_mode: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_reported_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    desired_config_updated_at: Mapped[datetime | None] = ts_column(
+        default_now=False, nullable=True
+    )
+    last_config_pushed_at: Mapped[datetime | None] = ts_column(
+        default_now=False, nullable=True
+    )
+
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()
 

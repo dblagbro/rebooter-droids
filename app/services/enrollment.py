@@ -18,6 +18,47 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _mint_enrollment_token_in_session(
+    session,
+    *,
+    settings: Settings,
+    issued_by_user_id: str | None,
+    site_id: str | None = None,
+    display_name_hint: str | None = None,
+    note: str | None = None,
+    ttl_seconds: int | None = None,
+    target_device_id: str | None = None,
+) -> tuple[EnrollmentToken, str]:
+    if ttl_seconds is None or ttl_seconds <= 0:
+        try:
+            from app.services import runtime_settings as _rs
+            v = _rs.get(
+                "system.enrollment_token_ttl_seconds",
+                env_var="REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS",
+                default=None,
+            )
+            ttl = int(v) if v is not None else settings.enrollment_token_ttl_seconds
+        except Exception:
+            ttl = settings.enrollment_token_ttl_seconds
+    else:
+        ttl = min(int(ttl_seconds), 60 * 60 * 24 * 30)
+
+    secret = "et_" + secrets.token_urlsafe(24)
+    record = EnrollmentToken(
+        token_hash=_hash(secret),
+        issued_by_user_id=issued_by_user_id,
+        site_id=site_id,
+        display_name_hint=display_name_hint,
+        note=note,
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
+        target_device_id=target_device_id,
+    )
+    session.add(record)
+    session.flush()
+    session.expunge(record)
+    return record, secret
+
+
 def mint_enrollment_token(
     settings: Settings,
     issued_by_user_id: str | None,
@@ -36,42 +77,17 @@ def mint_enrollment_token(
     Now: optional override, capped at 30 days so we don't end up
     with effectively-immortal tokens lying around.
     """
-    if ttl_seconds is None or ttl_seconds <= 0:
-        # v0.4.26: prefer runtime_settings DB override over env-var
-        # so an operator-set "default TTL" from /app/settings/system
-        # takes effect without container recreate.
-        try:
-            from app.services import runtime_settings as _rs
-            v = _rs.get(
-                "system.enrollment_token_ttl_seconds",
-                env_var="REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS",
-                default=None,
-            )
-            ttl = int(v) if v is not None else settings.enrollment_token_ttl_seconds
-        except Exception:
-            ttl = settings.enrollment_token_ttl_seconds
-    else:
-        # Cap at 30 days so the operator can't accidentally mint a
-        # year-long token by typo.
-        ttl = min(int(ttl_seconds), 60 * 60 * 24 * 30)
-    secret = "et_" + secrets.token_urlsafe(24)
-    record = EnrollmentToken(
-        token_hash=_hash(secret),
-        issued_by_user_id=issued_by_user_id,
-        site_id=site_id,
-        display_name_hint=display_name_hint,
-        note=note,
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
-        # v0.5.7 (B20): when set, /device/register rebinds this
-        # device row instead of creating a new one (restore-after-
-        # reflash flow).
-        target_device_id=target_device_id,
-    )
     with session_scope() as session:
-        session.add(record)
-        session.flush()
-        session.expunge(record)
-    return record, secret
+        return _mint_enrollment_token_in_session(
+            session,
+            settings=settings,
+            issued_by_user_id=issued_by_user_id,
+            site_id=site_id,
+            display_name_hint=display_name_hint,
+            note=note,
+            ttl_seconds=ttl_seconds,
+            target_device_id=target_device_id,
+        )
 
 
 def list_enrollment_tokens() -> list[EnrollmentToken]:
@@ -311,48 +327,103 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
     except Exception:
         pass
 
-    # v0.5.8 (B20 follow-up): on RESTORE-after-reflash, push the
-    # hub's display_name down to the device via apply_config so the
-    # reflashed unit doesn't keep its temporary local device_name
-    # (e.g. "Rebooter"). QA finding 2026-05-13 caught Erica's
-    # Subwoofer restored hub-side but the device still reporting
-    # local device_name="Rebooter". Short-term fix per firmware-team
-    # collab: at restore-success, enqueue ONE apply_config command
-    # carrying just the display_name (the only hub-side metadata
-    # field we know is correct and apply_config-supported today).
-    # Best-effort — never raises out of /register. Medium-term
-    # (desired_config blob) covers full config rebind; tracked in
-    # B21.
-    if rebind_target_id and device.display_name:
-        try:
-            from app.services.commands import enqueue_for_device
-            from app.services import audit as audit_service
-            enqueue_for_device(
-                device_id=device.id,
-                cmd_type="apply_config",
-                payload={"device_name": device.display_name},
-                issued_by_user_id=rebind_issuer_id,
-                ttl_seconds=600,
-            )
-            audit_service.record(
-                "device.restore_config_pushed",
-                actor_user_id=rebind_issuer_id,
-                actor_email_snapshot=None,
-                target_type="device",
-                target_id=device.id,
-                details={
-                    "trigger": "restore_after_reflash",
-                    "pushed_fields": ["device_name"],
-                    "device_name": device.display_name,
-                },
-            )
-        except Exception as e:
-            log.warning(
-                "v0.5.8 restore-config-push failed for %s: %s",
-                device.id, e,
-            )
+    # v0.5.22 (B21): on RESTORE-after-reflash, push the full
+    # desired_config blob to the device via apply_config so the
+    # reflashed unit converges to the operator's stored intent. If no
+    # desired_config is set, fall back to the v0.5.8 device_name-only
+    # short-circuit so the QA finding (Erica's Subwoofer restored but
+    # device still reporting local device_name="Rebooter") still gets
+    # fixed. Best-effort — never raises out of /register.
+    if rebind_target_id:
+        _push_restore_config(
+            device_id=device.id,
+            display_name=device.display_name,
+            issued_by_user_id=rebind_issuer_id,
+        )
 
     return device, raw_secret
+
+
+def _push_restore_config(
+    *,
+    device_id: str,
+    display_name: str | None,
+    issued_by_user_id: str | None,
+) -> None:
+    """v0.5.22 (B21): post-restore config push.
+
+    Preference order:
+    1. If `devices.desired_config` is set AND the desired_config feature
+       flag is enabled → push the full blob via the B21 service path.
+    2. Otherwise fall back to the v0.5.8 short-circuit
+       (`apply_config{device_name}` only) so the QA-flagged name-drift
+       still gets fixed even when no operator has set desired_config
+       on this device.
+
+    Best-effort. Logs + returns on any error so /register doesn't fail.
+    """
+    try:
+        from app.services import audit as audit_service
+        from app.services import device_config
+
+        desired = device_config.get_desired_config(device_id) or {}
+        feature_on = device_config.is_feature_enabled()
+
+        if desired and feature_on:
+            result = device_config.push_desired_config(
+                device_id,
+                source="restore",
+                issued_by_user_id=issued_by_user_id,
+            )
+            if result.get("enqueued"):
+                audit_service.record(
+                    "device.restore_config_pushed",
+                    actor_user_id=issued_by_user_id,
+                    actor_email_snapshot=None,
+                    target_type="device",
+                    target_id=device_id,
+                    details={
+                        "trigger": "restore_after_reflash",
+                        "via": "desired_config_blob",
+                        "command_id": result.get("command_id"),
+                        "pushed_keys": sorted(desired.keys()),
+                    },
+                )
+                return
+            # If push failed, fall through to the short-circuit path
+            # so the operator at least gets the name pushed.
+            log.warning(
+                "v0.5.22 desired_config push failed for %s: %s",
+                device_id, result.get("reason"),
+            )
+
+        if not display_name:
+            return
+        # Short-circuit fallback (v0.5.8 path).
+        from app.services.commands import enqueue_for_device
+
+        enqueue_for_device(
+            device_id=device_id,
+            cmd_type="apply_config",
+            payload={"device_name": display_name},
+            issued_by_user_id=issued_by_user_id,
+            ttl_seconds=600,
+        )
+        audit_service.record(
+            "device.restore_config_pushed",
+            actor_user_id=issued_by_user_id,
+            actor_email_snapshot=None,
+            target_type="device",
+            target_id=device_id,
+            details={
+                "trigger": "restore_after_reflash",
+                "via": "display_name_only",
+                "pushed_fields": ["device_name"],
+                "device_name": display_name,
+            },
+        )
+    except Exception as e:
+        log.warning("restore-config-push failed for %s: %s", device_id, e)
 
 
 class EnrollmentError(Exception):
