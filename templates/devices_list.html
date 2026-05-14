@@ -220,6 +220,27 @@
           {% else %}
             <span class="badge" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
           {% endif %}
+          {# v0.5.31 (Phase 4A): desired-config drift chip per row.
+             Only renders when a desired_config is set; in-sync hides
+             entirely (no clutter when everything's clean). #}
+          {% set drift = d.desired_config_drift_summary %}
+          {% if drift %}
+            {% if drift.state == 'drifted' %}
+              <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}#desired-config"
+                 class="badge amber"
+                 style="margin-left:.3rem; text-decoration:none"
+                 title="{% if drift.mismatched %}{{ drift.mismatched|length }} mismatched: {{ drift.mismatched|join(', ') }}. {% endif %}{% if drift.missing %}{{ drift.missing|length }} missing: {{ drift.missing|join(', ') }}.{% endif %}">
+                drift{% if drift.mismatched %} · {{ drift.mismatched|length }}{% endif %}{% if drift.missing %} · {{ drift.missing|length }} missing{% endif %}
+              </a>
+            {% elif drift.state == 'unconfirmed' %}
+              <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}#desired-config"
+                 class="badge"
+                 style="margin-left:.3rem; text-decoration:none"
+                 title="desired_config is set but the device hasn't echoed reported_config in any heartbeat yet">
+                config: unconfirmed
+              </a>
+            {% endif %}
+          {% endif %}
         </td>
         <td>
           {{ d.firmware_version or '—' }}

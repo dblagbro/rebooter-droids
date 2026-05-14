@@ -215,6 +215,74 @@ def _compute(limit: int = 50) -> dict:
             else:
                 devices_online += 1
 
+            # v0.5.31 (Phase 4A): desired-config drift visibility.
+            # Only fires for centrally-managed devices that have a
+            # desired_config set. Two attention kinds:
+            #   - desired_config_drifted — has reported_config AND
+            #     fields differ (operator's intent isn't being applied).
+            #   - desired_config_unconfirmed — has desired but no
+            #     reported_config has ever arrived (device firmware
+            #     may not echo apply_config yet, OR device hasn't
+            #     received the apply yet).
+            if (
+                d.central_management_enabled
+                and d.desired_config
+                and isinstance(d.desired_config, dict)
+                and d.desired_config  # non-empty
+            ):
+                reported = d.last_reported_config or {}
+                if not isinstance(reported, dict) or not reported:
+                    attention.append({
+                        "kind": "desired_config_unconfirmed",
+                        "id": f"desired_config_unconfirmed:{d.id}",
+                        "severity": "info",
+                        "title": "Desired config set but never reported back",
+                        "device_id": d.id,
+                        "device_name": d.display_name or d.id,
+                        "since": _iso(d.desired_config_updated_at),
+                        "hint": (
+                            "Device hasn't echoed its config in a heartbeat "
+                            "yet. Older firmware may not include "
+                            "reported_config — check the firmware version."
+                        ),
+                        "rank": 35,
+                    })
+                else:
+                    # Compute drift inline (cheap: small dicts).
+                    missing: list[str] = []
+                    mismatched: list[str] = []
+                    for field, want in d.desired_config.items():
+                        if field not in reported:
+                            missing.append(field)
+                        elif reported.get(field) != want:
+                            mismatched.append(field)
+                    if missing or mismatched:
+                        bits: list[str] = []
+                        if mismatched:
+                            bits.append(
+                                f"{len(mismatched)} mismatched"
+                            )
+                        if missing:
+                            bits.append(f"{len(missing)} missing")
+                        attention.append({
+                            "kind": "desired_config_drifted",
+                            "id": f"desired_config_drifted:{d.id}",
+                            "severity": "warn",
+                            "title": (
+                                "Desired config drifted: " + ", ".join(bits)
+                            ),
+                            "device_id": d.id,
+                            "device_name": d.display_name or d.id,
+                            "since": _iso(d.desired_config_updated_at),
+                            "hint": (
+                                "Hub-side desired_config disagrees with the "
+                                "device's last_reported_config. "
+                                "Push from the device-detail Desired Config "
+                                "card to reconcile."
+                            ),
+                            "rank": 70,
+                        })
+
     # v0.3.6: device_auth_rejected items.
     # Surface unregistered_auth_attempts in the lookback window where the
     # same (device_id, source_ip, endpoint) tuple has been rejected at
