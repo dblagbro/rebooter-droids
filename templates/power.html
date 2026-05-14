@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+{% block title %}Fleet power - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Fleet power</h1>
+  <p class="v3-page-sub">
+    Per-device power telemetry summary over the selected window. Surfaces the v0.5.12 B16 ingest slice. Live cards on
+    <a href="{{ url_for('admin_ui.list_devices_page') }}">Devices →</a>.
+  </p>
+</div>
+
+{# ── window selector ─────────────────────────────────────────────── #}
+<nav class="v3-chips" aria-label="Window">
+  {% for key, _seconds in window_presets %}
+    <a class="v3-chip {% if window_key == key %}v3-chip-active{% endif %}"
+       href="{{ url_for('admin_ui.fleet_power_page') }}?window={{ key }}"
+       aria-pressed="{{ 'true' if window_key == key else 'false' }}">
+      {% if window_key == key %}✓ {% endif %}Last {{ key }}
+    </a>
+  {% endfor %}
+</nav>
+
+{# ── headline summary ────────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <div style="display:flex; flex-wrap:wrap; gap:1.5rem; align-items:baseline">
+    <div>
+      <div class="muted" style="font-size:.75rem">Devices reporting</div>
+      <strong style="font-size:1.6rem">{{ summary.device_count }}</strong>
+    </div>
+    <div>
+      <div class="muted" style="font-size:.75rem">Fleet avg power</div>
+      {% if summary.fleet_avg_w is not none %}
+        <strong style="font-size:1.6rem">{{ '%.1f'|format(summary.fleet_avg_w) }}</strong> <span class="muted">W</span>
+      {% else %}
+        <span class="muted">—</span>
+      {% endif %}
+    </div>
+    <div>
+      <div class="muted" style="font-size:.75rem">Fleet peak (any device)</div>
+      {% if summary.fleet_peak_w is not none %}
+        <strong style="font-size:1.6rem">{{ '%.1f'|format(summary.fleet_peak_w) }}</strong> <span class="muted">W</span>
+      {% else %}
+        <span class="muted">—</span>
+      {% endif %}
+    </div>
+    <div style="font-size:.75rem; color:var(--muted, #888); align-self:flex-end">
+      Window from <code>{{ summary.window_started_at }}</code> to <code>{{ summary.now }}</code>
+    </div>
+  </div>
+</div>
+
+{# ── per-device table ────────────────────────────────────────────── #}
+{% if summary.per_device %}
+<div class="v3-card" style="margin-top:1rem">
+  <h2 style="margin-top:0">Per-device, biggest hogs first</h2>
+  <div class="table-wrap"><table>
+    <thead>
+      <tr>
+        <th>Device</th>
+        <th style="text-align:right">Latest W</th>
+        <th style="text-align:right">Avg W</th>
+        <th style="text-align:right">Min W</th>
+        <th style="text-align:right">Max W</th>
+        <th style="text-align:right">Samples</th>
+        <th>First / last sample</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for d in summary.per_device %}
+      {% set lps = d.latest_sample %}
+      <tr>
+        <td>
+          <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.device_id) }}#power">{{ d.display_name }}</a>
+          <br><code style="font-size:.7rem">{{ d.device_id }}</code>
+        </td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums">
+          {% if lps and lps.p_w is not none %}
+            <span class="badge{% if lps.is_stale %} amber{% else %} green{% endif %}"
+                  title="{% if lps.is_stale %}stale — last sample {{ lps.age_seconds }} s ago{% else %}fresh — {{ lps.age_seconds }} s old{% endif %}">
+              {{ '%.1f'|format(lps.p_w) }} W
+            </span>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums">
+          {% if d.avg_w is not none %}{{ '%.1f'|format(d.avg_w) }}{% else %}—{% endif %}
+        </td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--muted,#888)">
+          {% if d.min_w is not none %}{{ '%.1f'|format(d.min_w) }}{% else %}—{% endif %}
+        </td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--muted,#888)">
+          {% if d.max_w is not none %}{{ '%.1f'|format(d.max_w) }}{% else %}—{% endif %}
+        </td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums">{{ d.sample_count }}</td>
+        <td class="muted" style="font-size:.75rem">
+          {{ d.first_sample_at }}<br>{{ d.last_sample_at }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+{# ── empty state ─────────────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h2>No power samples yet</h2>
+  <p class="muted">
+    No device has reported power telemetry within the last
+    <strong>{{ window_key }}</strong>. This is the expected state until
+    firmware-team ships device-side B16 sampling (the
+    <code>POST /api/v1/device/power-samples</code> endpoint has been
+    live since v0.5.12 but the device firmware has not yet started
+    emitting).
+  </p>
+  <p class="muted">
+    Once firmware-side sampling starts, devices light up here without
+    any further hub change. Per-device live cards on
+    <a href="{{ url_for('admin_ui.list_devices_page') }}">Devices →</a>
+    populate at the same time.
+  </p>
+  <p class="muted" style="font-size:.85rem">
+    See <code>docs/B16-power-analytics-design.md</code> for the
+    sample shape; <code>docs/notes/2026-05-14-hub-power-recovery-alignment-plan.md</code>
+    §1 for the phased roadmap (this page is Phase 1B — Phase 1C adds
+    rollups + per-device charts).
+  </p>
+</div>
+{% endif %}
+
+{# ── what's coming ───────────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3 style="margin-top:0">What's coming next</h3>
+  <ul class="muted" style="font-size:.85rem">
+    <li><strong>Phase 1C (v0.5.29):</strong> nightly rollups into
+      <code>device_power_rollups</code>; sparkline charts on the
+      Device-detail Power tab + a fleet timeseries chart here.</li>
+    <li><strong>Cost calc:</strong> <code>power.rate_per_kwh</code>
+      runtime_setting → "$XX this window" widget per device + fleet.</li>
+    <li><strong>CSV export</strong> from the table's range picker.</li>
+    <li><strong>Threshold alerting</strong> — power-targeted watchdog
+      rule kinds (Phase 1D).</li>
+  </ul>
+</div>
+{% endblock %}
