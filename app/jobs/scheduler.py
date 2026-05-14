@@ -6,6 +6,7 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.services.commands import expire_overdue_commands
+from app.services.device_power import compute_daily_rollups
 from app.services.external_sensors import poll_all_due as external_sensors_poll_all_due
 from app.services.schedule_runtime import tick as schedule_tick
 from app.services.watchdog_runtime import tick as watchdog_tick
@@ -53,6 +54,20 @@ def _external_sensors_job():
         log.info("external sensors tick: %s", stats)
 
 
+def _power_rollups_job():
+    """v0.5.29 (B16 Phase 1C): nightly aggregation of yesterday's
+    `device_power_samples` into `device_power_rollups`. Cron schedule
+    at 02:00 UTC so it runs after the day boundary but before any US
+    operator wakes up to look at /app/power."""
+    try:
+        stats = compute_daily_rollups()
+    except Exception:
+        log.exception("power rollups job crashed")
+        return
+    if stats.get("rollups_written"):
+        log.info("power rollups: %s", stats)
+
+
 def start() -> None:
     """Start the in-process scheduler. Guarded so only one Gunicorn worker runs jobs."""
     global _scheduler
@@ -67,10 +82,21 @@ def start() -> None:
     sched.add_job(
         _external_sensors_job, "interval", seconds=30, id="external_sensors_tick"
     )
+    # v0.5.29 (B16 Phase 1C): nightly daily rollups at 02:00 UTC.
+    # Cron trigger so the run happens after the day boundary; aggregating
+    # the prior full UTC day. Idempotent — re-running the same day
+    # upserts cleanly (see compute_daily_rollups docstring).
+    sched.add_job(
+        _power_rollups_job,
+        "cron",
+        hour=2, minute=0,
+        id="power_rollups_daily",
+    )
     sched.start()
     _scheduler = sched
     log.info(
         "APScheduler started: expire_commands every 30s, "
         "watchdog_tick every 10s, schedule_tick every 30s, "
-        "external_sensors_tick every 30s"
+        "external_sensors_tick every 30s, "
+        "power_rollups_daily @ 02:00 UTC"
     )

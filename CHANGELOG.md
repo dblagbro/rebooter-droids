@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.29] - 2026-05-14
+
+### Added — B16 Phase 1C: daily rollups + per-device sparkline + fleet timeseries chart
+
+The middle slice of the B16 power-monitoring track. Phase 1A (v0.5.26)
+shipped the live single-sample surface; Phase 1B (v0.5.27) shipped the
+fleet `/app/power` table; this ship lights up **historical trend**
+visibility for both surfaces.
+
+**Schema** (auto-creates via `Base.metadata.create_all()`):
+- `device_power_rollups` table: `(id, device_id, day_bucket,
+  computed_at, sample_count, avg_w, min_w, max_w, kwh)`. Unique on
+  `(device_id, day_bucket)` so re-runs upsert cleanly. Index on
+  `(device_id, day_bucket desc)` for the per-device sparkline lookup.
+
+**Nightly aggregation job** — new `power_rollups_daily` APScheduler
+cron tick at 02:00 UTC. Calls
+`services.device_power.compute_daily_rollups()` which:
+- Aggregates yesterday's `device_power_samples` (channel 0 only for
+  now) via a single SQL `GROUP BY device_id`.
+- Computes `kwh = (max(energy_wh) - min(energy_wh)) / 1000.0` per
+  device-day. Devices that don't report `energy_wh` land NULL.
+- Upserts via `INSERT ... ON CONFLICT (device_id, day_bucket) DO
+  UPDATE` (Postgres) or `INSERT OR REPLACE` (SQLite test path).
+  Idempotent — backfill after a samples correction is the expected
+  operator workflow.
+
+**Query helpers** — `services.device_power`:
+- `daily_rollups_for_device(device_id, days=N)` — newest-first list,
+  default 14 days. Used by Device-detail sparkline.
+- `fleet_daily_rollups(days=30)` — pivoted into a per-day-per-device
+  shape ready for stacked-bar rendering. Used by `/app/power`.
+
+**UI** — both surfaces gain inline-SVG charts (no JS dep, no new
+deps):
+- **Device-detail Power tab** — 14-day daily-avg-watts sparkline
+  beneath the live last-sample card. Polyline + per-day dots; peak-W
+  callout in the footer. Hidden when no rollups exist yet (typical
+  state today).
+- **Fleet `/app/power` page** — 30-day stacked-bar chart of per-
+  device daily averages. SVG `<title>` tooltips on hover. Auto-scaled
+  Y-axis to the peak value across the window. Color legend below the
+  chart maps device-id → display name. Hidden when no rollups exist
+  (typical state today since no firmware-side B16 sampling yet).
+
+**Synthetic-data note**: today's fleet has zero `device_power_samples`
+rows, so the nightly rollup job will be a no-op until firmware-team
+ships device-side sampling. Both chart surfaces gracefully hide when
+empty — they do NOT render a broken/zero chart. When firmware starts
+emitting, the next nightly job produces rollups + charts light up
+automatically with zero further hub change.
+
+### Out of scope for this ship (queued for v0.5.30)
+
+- **Phase 1C remainder**: cost calc widget (`power.rate_per_kwh`
+  runtime_setting → "$XX this window"), CSV export from chart range
+  pickers, threshold alerting.
+- **Phase 1D**: power-targeted watchdog probe kinds.
+- **Phase 2C**: richer per-probe event-detail rendering on rules list;
+  integration-source health cues on `/app/settings/integrations`.
+- **Phase 2B edit-flow back-port**: `templates/rules/edit.html` still
+  uses the JSON editor for integration probes; per-kind form blocks
+  on the edit page deferred.
+
 ## [0.5.28] - 2026-05-14
 
 ### Added — Phase 2B: per-kind form fields for integration probes

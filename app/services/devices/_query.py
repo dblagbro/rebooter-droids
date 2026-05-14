@@ -442,4 +442,10 @@ def get_device_detail(device_id: str) -> dict | None:
         from app.services import device_power
 
         out["latest_power_sample"] = device_power.latest_sample(device_id)
+        # v0.5.29 (B16 Phase 1C): daily rollups for the sparkline.
+        # 14 days so the chart can show meaningful trend; rendered as
+        # inline SVG in the template.
+        out["power_rollups_daily"] = device_power.daily_rollups_for_device(
+            device_id, days=14
+        )
         return out
