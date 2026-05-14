@@ -6,6 +6,7 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.services.commands import expire_overdue_commands
+from app.services.external_sensors import poll_all_due as external_sensors_poll_all_due
 from app.services.schedule_runtime import tick as schedule_tick
 from app.services.watchdog_runtime import tick as watchdog_tick
 
@@ -39,6 +40,19 @@ def _schedule_job():
         log.info("schedule tick: %s", stats)
 
 
+def _external_sensors_job():
+    """v0.5.17 (B17 Layer 1): poll registered external sensor sources
+    (Roku ECP first; HA / MQTT / EPG later) and append samples for the
+    `roku_app_active` watchdog probe to read."""
+    try:
+        stats = external_sensors_poll_all_due()
+    except Exception:
+        log.exception("external sensors tick crashed")
+        return
+    if stats.get("polled") or stats.get("errors"):
+        log.info("external sensors tick: %s", stats)
+
+
 def start() -> None:
     """Start the in-process scheduler. Guarded so only one Gunicorn worker runs jobs."""
     global _scheduler
@@ -50,9 +64,13 @@ def start() -> None:
     sched.add_job(_expire_job, "interval", seconds=30, id="expire_commands")
     sched.add_job(_watchdog_job, "interval", seconds=10, id="watchdog_tick")
     sched.add_job(_schedule_job, "interval", seconds=30, id="schedule_tick")
+    sched.add_job(
+        _external_sensors_job, "interval", seconds=30, id="external_sensors_tick"
+    )
     sched.start()
     _scheduler = sched
     log.info(
         "APScheduler started: expire_commands every 30s, "
-        "watchdog_tick every 10s, schedule_tick every 30s"
+        "watchdog_tick every 10s, schedule_tick every 30s, "
+        "external_sensors_tick every 30s"
     )

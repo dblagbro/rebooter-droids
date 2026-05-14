@@ -1,0 +1,141 @@
+{% extends "layout.html" %}
+{% block title %}Integrations - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>External integrations</h2>
+  <p class="muted" style="margin-top:0">
+    Register external systems the hub polls for state. Today supports
+    Roku ECP (HTTP API on port 8060) so watchdog rules can fire on
+    "Roku <em>X</em> is on app <em>Y</em>". Home Assistant / MQTT /
+    EPG / weather / calendar are on the roadmap
+    (<a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/BACKLOG.md">B17</a>).
+  </p>
+</div>
+
+{% if sources %}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Registered sources</h3>
+  <div class="table-wrap"><table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Kind</th>
+        <th>Host / port</th>
+        <th>Poll interval</th>
+        <th>Status</th>
+        <th>Latest sample</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for s in sources %}
+      <tr>
+        <td><strong>{{ s.display_name }}</strong><br>
+            <code style="font-size:.75rem">{{ s.id }}</code></td>
+        <td><span class="badge">{{ s.kind }}</span></td>
+        <td><code>{{ s.host }}:{{ s.port }}</code></td>
+        <td>{{ s.poll_interval_seconds }}s</td>
+        <td>
+          {% if s.enabled %}
+            {% if s.last_error %}
+              <span class="badge red" title="{{ s.last_error }}">error</span>
+            {% elif s.last_success_at %}
+              <span class="badge green">ok</span>
+            {% else %}
+              <span class="badge">never polled</span>
+            {% endif %}
+          {% else %}
+            <span class="badge">disabled</span>
+          {% endif %}
+          {% if s.last_polled_at %}
+            <div class="muted" style="font-size:.75rem">last polled: {{ s.last_polled_at }}</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if s.latest_sample %}
+            <div style="font-size:.85rem">
+              <strong>{{ s.latest_sample.payload.active_app or '—' }}</strong>
+              {% if s.latest_sample.payload.screensaver_active %}
+                <span class="badge" title="device is on the screensaver">screensaver</span>
+              {% endif %}
+            </div>
+            <div class="muted" style="font-size:.75rem">{{ s.latest_sample.sampled_at }}</div>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          <form method="post" action="{{ url_for('admin_ui.settings_integrations_probe_submit', source_id=s.id) }}" style="display:inline">
+            <button type="submit" class="btn-secondary" style="font-size:.8rem">Probe now</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_ui.settings_integrations_toggle_submit', source_id=s.id) }}" style="display:inline">
+            <input type="hidden" name="enabled" value="{{ '0' if s.enabled else '1' }}">
+            <button type="submit" class="btn-secondary" style="font-size:.8rem">{{ 'Disable' if s.enabled else 'Enable' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_ui.settings_integrations_delete_submit', source_id=s.id) }}" style="display:inline"
+                data-confirm-message="Delete this integration? Existing samples will be cascaded.">
+            <button type="submit" class="btn-danger" style="font-size:.8rem">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add a Roku</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <input type="hidden" name="kind" value="roku">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Living-room Roku" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Host (LAN IP or hostname)</span>
+      <input type="text" name="host" placeholder="192.168.1.123" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Port (default 8060)</span>
+      <input type="number" name="port" value="8060" min="1" max="65535">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+      <input type="number" name="poll_interval_seconds" value="30" min="5" max="3600">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    The Roku ECP API is unauthenticated and LAN-local. Click <em>Probe
+    now</em> after adding to verify reachability — the next live
+    sample will appear above.
+  </p>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h3>How to use this in a watchdog rule</h3>
+  <p>
+    Add a probe of kind <code>roku_app_active</code> to a watchdog
+    rule:
+  </p>
+<pre style="overflow:auto; font-size:.8rem; background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px">{
+  "kind": "roku_app_active",
+  "source_id": "ext_…",
+  "app_name": "Spectrum TV",
+  "max_sample_age_seconds": 120
+}</pre>
+  <p>
+    The probe succeeds (rule armed → recovery) when the latest sample
+    is recent <em>and</em> the active app name contains
+    <code>app_name</code> (case-insensitive substring). Pair with a
+    schedule for "Jeopardy is on" rules
+    (e.g. weekdays 19:00–19:30) using the existing schedules primitive.
+  </p>
+</div>
+{% endblock %}

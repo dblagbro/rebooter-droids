@@ -43,4 +43,5 @@ from app.blueprints.admin import (  # noqa: E402,F401
     settings,        # v0.3.0 P1
     schedules,       # v0.4.8 (B8)
     pending_adoption, # v0.4.20
+    integrations,    # v0.5.17 (B17 Layer 1 — Roku ECP)
 )
