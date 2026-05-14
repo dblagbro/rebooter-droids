@@ -85,6 +85,76 @@
   {% endif %}
 </section>
 
+{# ── desired-config (B21 / v0.5.22) ────────────────────────────────── #}
+{% set drift = device.desired_config_drift or {} %}
+{% set desired_set = device.desired_config and device.desired_config|length > 0 %}
+<section class="v3-card" id="desired-config">
+  <h2>
+    Desired config
+    {% if desired_set and not drift.in_sync %}
+      <span class="badge amber" title="hub-side desired_config doesn't match device's last reported config">
+        drift{% if drift.mismatch %} · {{ drift.mismatch|length }} field{{ '' if drift.mismatch|length == 1 else 's' }}{% endif %}{% if drift.missing %} · {{ drift.missing|length }} missing{% endif %}
+      </span>
+    {% elif desired_set %}
+      <span class="badge green" title="device matches hub-side desired_config">in sync</span>
+    {% endif %}
+    {% if not device.desired_config_feature_enabled %}
+      <span class="badge" title="desired_config.enabled runtime_setting is OFF — manual push works, restore auto-push is gated">flag: off</span>
+    {% endif %}
+  </h2>
+  <p class="muted" style="margin-top:0; font-size:.85rem">
+    Operator-set intended config for this device. Restore-after-reflash pushes this back to the device when the feature flag is on; the per-button push always fires.
+    See <code>docs/firmware-apply-config-schema-v01.md</code> for allowed keys.
+  </p>
+
+  {% if device.last_config_pushed_at %}
+    <p class="muted" style="font-size:.85rem">Last pushed: <code>{{ device.last_config_pushed_at }}</code>{% if device.desired_config_updated_at %} · last edited: <code>{{ device.desired_config_updated_at }}</code>{% endif %}</p>
+  {% endif %}
+
+  {% if desired_set and drift.mismatch %}
+    <details {% if drift.mismatch|length <= 3 %}open{% endif %} style="margin:.5rem 0">
+      <summary class="muted" style="cursor:pointer; font-size:.85rem">Mismatched fields ({{ drift.mismatch|length }})</summary>
+      <ul style="margin:.4rem 0 0; padding-left:1.2rem; font-size:.8rem">
+        {% for m in drift.mismatch %}
+          <li><code>{{ m.field }}</code>: desired = <code>{{ m.desired }}</code> · actual = <code>{{ m.actual or '—' }}</code></li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+  {% if desired_set and drift.missing %}
+    <p class="muted" style="font-size:.8rem">Missing from device's last_reported_config: <code>{{ drift.missing|join(', ') }}</code></p>
+  {% endif %}
+
+  {% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+  {% if can_edit %}
+  <form method="post" action="{{ url_for('admin_ui.device_desired_config_save_submit', device_id=device.id) }}" style="margin-top:.5rem">
+    <label style="display:block">
+      Desired-mode (optional)
+      <select name="desired_mode" style="margin-left:.3rem">
+        <option value="" {% if not device.desired_mode %}selected{% endif %}>(unset)</option>
+        <option value="smart_plug" {% if device.desired_mode == 'smart_plug' %}selected{% endif %}>smart_plug</option>
+        <option value="internet_watchdog" {% if device.desired_mode == 'internet_watchdog' %}selected{% endif %}>internet_watchdog</option>
+        <option value="device_watchdog" {% if device.desired_mode == 'device_watchdog' %}selected{% endif %}>device_watchdog</option>
+      </select>
+    </label>
+    <label style="display:block; margin-top:.5rem">
+      Desired-config JSON
+      <textarea name="desired_config_json" rows="8" style="width:100%; font-family:monospace; font-size:.85rem"
+                placeholder='{"device_name": "Erica''s Subwoofer", "manual_button_enabled": true}'>{% if desired_set %}{{ device.desired_config|tojson(indent=2) }}{% endif %}</textarea>
+    </label>
+    <div style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap">
+      <button type="submit" class="btn">Save desired config</button>
+      {% if desired_set and device.central_management_enabled %}
+        <button type="submit" formaction="{{ url_for('admin_ui.device_desired_config_push_submit', device_id=device.id) }}" class="btn-secondary"
+                title="Enqueue apply_config now (operator-explicit; ignores the desired_config.enabled feature flag)">Push to device now</button>
+      {% endif %}
+    </div>
+  </form>
+  {% else %}
+  <p class="muted">View-only — admin role required to edit.</p>
+  {% endif %}
+</section>
+
 {# ── power ──────────────────────────────────────────────────────────── #}
 <section class="v3-card" id="power">
   <h2>Power</h2>

@@ -457,3 +457,107 @@ def device_set_protection(device_id: str):
         "info",
     )
     return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+
+
+# v0.5.22 (B21): desired-config + drift detection endpoints.
+
+@admin_ui_bp.post("/devices/<device_id>/desired-config")
+@admin_required_ui
+def device_desired_config_save_submit(device_id: str):
+    """Operator submits the JSON blob from the device-detail
+    'Desired config' card. Validation is in the service."""
+    import json
+    from flask import flash
+
+    from app.services import device_config
+
+    raw = (request.form.get("desired_config_json") or "").strip()
+    desired_mode = (request.form.get("desired_mode") or "").strip() or None
+    if not raw:
+        # Empty submit → clear the desired_config.
+        try:
+            device_config.set_desired_config(
+                device_id, {}, by_user_id=g.current_user.id, desired_mode=desired_mode
+            )
+        except device_config.DesiredConfigError as e:
+            flash(str(e), "error")
+            return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+        flash("Desired config cleared.", "info")
+        audit_service.record(
+            "device.desired_config_cleared",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="device",
+            target_id=device_id,
+        )
+        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as e:
+        flash(f"Invalid JSON: {e}", "error")
+        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+    if not isinstance(payload, dict):
+        flash("Desired config must be a JSON object.", "error")
+        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+    try:
+        out = device_config.set_desired_config(
+            device_id, payload, by_user_id=g.current_user.id, desired_mode=desired_mode
+        )
+    except device_config.DesiredConfigError as e:
+        flash(str(e), "error")
+        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+    if out is None:
+        abort(404)
+    audit_service.record(
+        "device.desired_config_set",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details={
+            "keys": sorted(payload.keys()),
+            "desired_mode": desired_mode,
+        },
+    )
+    flash(
+        f"Desired config saved ({len(payload)} key{'' if len(payload)==1 else 's'}).",
+        "info",
+    )
+    return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+
+
+@admin_ui_bp.post("/devices/<device_id>/desired-config/push")
+@admin_required_ui
+def device_desired_config_push_submit(device_id: str):
+    """Manual 'Push to device now' button on the Desired-config card.
+    Manual push always fires regardless of the desired_config.enabled
+    feature flag — explicit operator intent."""
+    from flask import flash
+
+    from app.services import device_config
+
+    result = device_config.push_desired_config(
+        device_id,
+        source="manual",
+        issued_by_user_id=g.current_user.id,
+    )
+    audit_service.record(
+        "device.desired_config_pushed",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=device_id,
+        details=result,
+    )
+    if result.get("enqueued"):
+        flash(
+            f"Push enqueued as command {result.get('command_id')}; "
+            f"device will apply on next /device/commands poll.",
+            "info",
+        )
+    else:
+        flash(
+            f"Push skipped: {result.get('reason')}",
+            "warning" if result.get("reason") else "info",
+        )
+    return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
