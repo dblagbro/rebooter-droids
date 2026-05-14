@@ -88,9 +88,9 @@ def _fire_schedule(s: Schedule, now: datetime) -> str:
 
 def _fire_power_cycle(s: Schedule) -> str:
     from app.services.commands import enqueue_for_device
-    from app.services.watchdog_runtime import _resolve_target_devices
+    from app.services.watchdog_runtime import resolve_target_devices
 
-    device_ids = _resolve_target_devices(s.target or {})
+    device_ids = resolve_target_devices(s.target or {})
     if not device_ids:
         return "no_target_devices"
 

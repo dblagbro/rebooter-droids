@@ -36,7 +36,7 @@ DEFAULT_INTERNET_TARGETS: tuple[dict, ...] = (
 MAX_INTERNET_TARGETS = 8
 
 
-def _run_probe(rule: WatchdogRule) -> tuple[str, dict]:
+def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
     """Returns (outcome, details). outcome ∈ {'success', 'failure'}."""
     probe = rule.probe or {}
     kind = probe.get("kind")
@@ -320,3 +320,10 @@ def _probe_roku_app_active(probe: dict) -> tuple[str, dict]:
         "screensaver_active": payload.get("screensaver_active"),
     }
     return ("success" if match else "failure"), details
+
+
+# v0.5.18 (#3 naming cleanup): the public dispatcher is `run_probe`.
+# The underscore-prefixed alias is kept for one release so existing
+# `from app.services.watchdog_runtime import _run_probe` callers don't
+# break mid-rollout. Remove after v0.6.x.
+_run_probe = run_probe
