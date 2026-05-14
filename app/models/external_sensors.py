@@ -20,9 +20,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models import Base
 from app.models._helpers import new_id, ts_column
 
-# Allowed `kind` values. New integrations append to this list and the
-# poller dispatcher in `services/external_sensors.py::poll_source`.
-EXTERNAL_SOURCE_KINDS = ("roku",)
+# Allowed `kind` values. Each one has a `_poll_<kind>` branch in
+# `services/external_sensors.py::_poll_kind`, optional kind-specific
+# config in `external_sensor_sources.config` (JSONB), and an optional
+# matching watchdog probe kind in `services/watchdog_runtime/_probes.py`.
+EXTERNAL_SOURCE_KINDS = (
+    "roku",          # v0.5.17 (B17 L1) — Roku ECP active-app
+    "home_assistant", # v0.5.23 — HA REST API /api/states
+    "weather",        # v0.5.23 — NWS alerts/active
+    "ical",           # v0.5.23 — iCal/WebCal .ics feed
+)
 
 
 class ExternalSensorSource(Base):
@@ -43,6 +50,17 @@ class ExternalSensorSource(Base):
     last_polled_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
     last_success_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # v0.5.23: per-kind extras. Generic JSONB so each new integration
+    # can carry the bag-of-fields it needs without a schema change.
+    # Examples:
+    #   home_assistant → {"token": "...", "verify_ssl": true}
+    #   weather        → {"lat": 38.9, "lng": -77.0}
+    #   ical           → {"url": "https://..."}
+    # `host` + `port` keep their meaning for kinds that have an HTTP
+    # base (roku, home_assistant). Kinds that just need a URL (ical) or
+    # coordinates (weather) can leave host empty.
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()

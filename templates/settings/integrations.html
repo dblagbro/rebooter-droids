@@ -118,6 +118,104 @@
   </p>
 </div>
 
+{# ── Home Assistant (v0.5.23) ──────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add a Home Assistant instance</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <input type="hidden" name="kind" value="home_assistant">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Home Assistant" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Host (IP / hostname)</span>
+      <input type="text" name="host" placeholder="192.168.1.50" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Port (default 8123)</span>
+      <input type="number" name="port" value="8123" min="1" max="65535">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem; min-width:18rem">
+      <span class="muted" style="font-size:.75rem">Long-Lived Access Token</span>
+      <input type="password" name="ha_token" placeholder="eyJhbGc…" autocomplete="off" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+      <input type="number" name="poll_interval_seconds" value="30" min="5" max="3600">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    Mint a long-lived token in HA: Profile → Long-Lived Access Tokens
+    → Create. Token is stored DB-side and masked in the source row
+    above. Hub polls <code>/api/states</code> at the chosen cadence
+    and caches a compact entity dictionary the watchdog probe
+    <code>ha_state_is</code> can match against.
+  </p>
+</div>
+
+{# ── Weather alerts (NWS) ──────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add a Weather feed (NWS active alerts)</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <input type="hidden" name="kind" value="weather">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Home weather" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Latitude (decimal)</span>
+      <input type="text" name="weather_lat" placeholder="38.9072" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Longitude (decimal)</span>
+      <input type="text" name="weather_lng" placeholder="-77.0369" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+      <input type="number" name="poll_interval_seconds" value="600" min="60" max="3600">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    US-only — uses <code>api.weather.gov/alerts/active?point=lat,lng</code>
+    (no auth required, NWS asks for a User-Agent that identifies the
+    project). 10-min poll interval is appropriate; alerts don't change
+    minute-by-minute. Rule probe: <code>weather_alert_active</code>
+    with optional <code>event_contains</code> and
+    <code>min_severity</code>.
+  </p>
+</div>
+
+{# ── iCal / WebCal ────────────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add an iCal / WebCal feed</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <input type="hidden" name="kind" value="ical">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Personal calendar" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem; min-width:24rem">
+      <span class="muted" style="font-size:.75rem">.ics URL</span>
+      <input type="url" name="ical_url" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+      <input type="number" name="poll_interval_seconds" value="600" min="60" max="3600">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    Any HTTP(S) or webcal:// .ics feed: Google Calendar (Settings → Secret
+    address in iCal format), Apple iCloud, Outlook web. Hub fetches at
+    the chosen cadence and parses VEVENTs. Storage is capped at 50
+    events per sample; only events airing in the next 24 h are
+    retained. Rule probe: <code>ical_event_active</code> with
+    <code>summary_contains</code> filter.
+  </p>
+</div>
+
 <div class="v3-card" style="margin-top:1rem">
   <h3>How to use this in a watchdog rule</h3>
   <p>

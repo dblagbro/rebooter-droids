@@ -80,6 +80,10 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("devices", "last_reported_config", "JSONB"),
     ("devices", "desired_config_updated_at", "TIMESTAMPTZ"),
     ("devices", "last_config_pushed_at", "TIMESTAMPTZ"),
+    # v0.5.23 (B17 adjacent integrations): per-kind extras for HA /
+    # weather / iCal integrations. Existing Roku sources keep NULL +
+    # behave exactly as before; new kinds populate it.
+    ("external_sensor_sources", "config", "JSONB"),
 )
 
 
