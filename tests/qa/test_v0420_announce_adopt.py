@@ -217,6 +217,126 @@ def test_pending_adoption_page_renders(base_url, shell_session_admin):
     assert "How adoption works" in body
 
 
+def test_known_device_missing_token_auto_rebinds(base_url, admin_headers):
+    mac = _mac()
+    local_ip = "192.168.1.148"
+    aid = None
+    device_id = None
+
+    try:
+        first = requests.post(
+            f"{base_url}/api/v1/device/announce",
+            json={
+                "mac_address": mac,
+                "hardware_model": "sonoff_s31",
+                "firmware_version": "0.1.17-test",
+                "local_ip": local_ip,
+            },
+            timeout=10,
+        )
+        assert first.status_code == 200, first.text
+
+        listing = requests.get(
+            f"{base_url}/api/v1/admin/pending-adoption",
+            headers=admin_headers, timeout=10,
+        ).json()["data"]
+        match = next((a for a in listing if a["mac_address"] == mac), None)
+        assert match is not None
+        aid = match["id"]
+
+        adopt = requests.post(
+            f"{base_url}/api/v1/admin/pending-adoption/{aid}/adopt",
+            headers=admin_headers,
+            json={"display_name": f"qa-rebind-{unique_suffix()}"},
+            timeout=10,
+        )
+        assert adopt.status_code == 200, adopt.text
+
+        adopted = requests.post(
+            f"{base_url}/api/v1/device/announce",
+            json={
+                "mac_address": mac,
+                "hardware_model": "sonoff_s31",
+                "firmware_version": "0.1.17-test",
+                "local_ip": local_ip,
+            },
+            timeout=10,
+        )
+        assert adopted.status_code == 200, adopted.text
+        token = adopted.json()["data"]["enrollment_token"]
+
+        reg = requests.post(
+            f"{base_url}/api/v1/device/register",
+            json={
+                "enrollment_token": token,
+                "mac_address": mac,
+                "hardware_model": "sonoff_s31",
+                "firmware_version": "0.1.17-test",
+                "local_ip": local_ip,
+            },
+            timeout=10,
+        )
+        assert reg.status_code == 201, reg.text
+        device_id = reg.json()["data"]["device_id"]
+
+        auto = requests.post(
+            f"{base_url}/api/v1/device/announce",
+            json={
+                "mac_address": mac,
+                "hardware_model": "sonoff_s31",
+                "firmware_version": "0.1.17-test",
+                "local_ip": local_ip,
+            },
+            timeout=10,
+        )
+        assert auto.status_code == 200, auto.text
+        auto_body = auto.json()["data"]
+        assert auto_body["status"] == "adopted"
+        assert auto_body["enrollment_token"].startswith("et_")
+        replacement_token = auto_body["enrollment_token"]
+
+        awaiting = requests.post(
+            f"{base_url}/api/v1/device/announce",
+            json={
+                "mac_address": mac,
+                "hardware_model": "sonoff_s31",
+                "firmware_version": "0.1.17-test",
+                "local_ip": local_ip,
+            },
+            timeout=10,
+        )
+        assert awaiting.status_code == 200, awaiting.text
+        assert awaiting.json()["data"]["status"] == "awaiting_register"
+
+        rebind = requests.post(
+            f"{base_url}/api/v1/device/register",
+            json={
+                "enrollment_token": replacement_token,
+                "mac_address": mac,
+                "hardware_model": "sonoff_s31",
+                "firmware_version": "0.1.17-test",
+                "local_ip": local_ip,
+            },
+            timeout=10,
+        )
+        assert rebind.status_code == 201, rebind.text
+        assert rebind.json()["data"]["device_id"] == device_id
+    finally:
+        if device_id:
+            requests.delete(
+                f"{base_url}/api/v1/admin/devices/{device_id}",
+                headers=admin_headers, timeout=10,
+            )
+        if aid:
+            try:
+                requests.post(
+                    f"{base_url}/app/pending-adoption/{aid}/delete",
+                    headers=admin_headers, timeout=10,
+                )
+            except Exception:
+                pass
+
+
 @pytest.fixture(scope="module")
 def shell_session_admin(base_url, admin_creds):
     s = requests.Session()

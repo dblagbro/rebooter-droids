@@ -29,8 +29,8 @@ from sqlalchemy import select
 
 from app.config import load_settings
 from app.db import session_scope
-from app.models import DeviceAnnouncement
-from app.services.enrollment import mint_enrollment_token
+from app.models import Device, DeviceAnnouncement
+from app.services.enrollment import _mint_enrollment_token_in_session, mint_enrollment_token
 
 
 # Same column-width caps as `consume_enrollment_token` (BUG-050).
@@ -54,6 +54,72 @@ class AnnouncementError(ValueError):
 
 def _iso(dt) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
+
+
+def _maybe_prepare_auto_rebind(*, session, row: DeviceAnnouncement, now: datetime) -> bool:
+    """Best-effort self-heal path for a known device that lost its local token.
+
+    Guardrails:
+    - only when the announcement row was previously consumed (device had
+      registered before),
+    - only when there is an active, central-managed Device row with the same MAC,
+    - only when the announcing IP still matches the hub's last-known local_ip.
+
+    When those checks pass, mint a restore-style enrollment token targeted at
+    the existing device row and reset the announcement lifecycle so the device
+    can run the normal /register rebind path without operator intervention.
+    """
+    if row.consumed_at is None or row.adoption_token_secret:
+        return False
+
+    device = session.scalar(
+        select(Device).where(
+            Device.mac_address == row.mac_address,
+            Device.registration_state != "decommissioned",
+            Device.central_management_enabled.is_(True),
+        )
+    )
+    if device is None:
+        return False
+
+    claimed_ip = (row.claimed_local_ip or "").strip()
+    source_ip = (row.source_ip or "").strip()
+    known_ip = (device.local_ip or "").strip()
+    if not known_ip or (claimed_ip != known_ip and source_ip != known_ip):
+        return False
+
+    settings = load_settings()
+    hint = (
+        row.claimed_display_name_hint
+        or device.display_name
+        or f"device-{row.mac_address[-5:].replace(':','')}"
+    )
+    note = (
+        "Auto-rebind after device-side token loss "
+        f"(announcement {row.id}, device {device.id}, MAC {row.mac_address})"
+    )
+    record, raw_secret = _mint_enrollment_token_in_session(
+        session,
+        settings=settings,
+        issued_by_user_id=None,
+        site_id=device.site_id,
+        display_name_hint=hint,
+        note=note,
+        ttl_seconds=86400,
+        target_device_id=device.id,
+    )
+
+    # Re-enter the regular adopted -> awaiting_register lifecycle. This lets
+    # the device miss one announce response without getting stranded forever in
+    # "registered_no_token" again.
+    row.adopted_at = now
+    row.adopted_by_user_id = None
+    row.adoption_token_secret = raw_secret
+    row.enrollment_token_id = record.id
+    row.delivered_at = None
+    row.consumed_at = None
+    session.flush()
+    return True
 
 
 # ── public-side: announce ────────────────────────────────────────────
@@ -134,6 +200,8 @@ def upsert_announcement(
                     setattr(row, k, v)
 
         session.flush()
+
+        _maybe_prepare_auto_rebind(session=session, row=row, now=now)
 
         # Compute the response based on lifecycle state
         if row.rejected_at is not None:
