@@ -38,7 +38,10 @@ from __future__ import annotations
 import http.client
 import logging
 import os
+import re
+import shutil
 import socket
+import subprocess
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
@@ -172,13 +175,8 @@ def _run_probe(rule: WatchdogRule) -> tuple[str, dict]:
         if kind == "internet":
             return _probe_internet(probe)
         if kind == "ping":
-            # No raw ICMP from the container by default — fall back
-            # to a TCP-port-80 probe to the host. If the operator
-            # really wants ICMP they can set probe.kind='custom'
-            # later, but for the common watchdog case ping ≈ "is
-            # this host reachable on port 80".
-            ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 80)))
-        elif kind == "tcp":
+            return _probe_ping(probe)
+        if kind == "tcp":
             ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
         elif kind == "http":
             ok = _probe_http(probe.get("url", ""))
@@ -196,6 +194,81 @@ def _run_probe(rule: WatchdogRule) -> tuple[str, dict]:
         return "failure", {"reason": "probe_exception", "error": str(e)}
 
     return ("success" if ok else "failure"), {}
+
+
+_PING_RTT_RE = re.compile(r"time[=<]\s*([0-9.]+)\s*ms", re.IGNORECASE)
+
+
+def _probe_ping(probe: dict) -> tuple[str, dict]:
+    """v0.5.13 (B6.1): real ICMP ping via /usr/bin/ping subprocess.
+
+    Reads `probe.host` (required) and `probe.timeout_seconds`
+    (default = PROBE_TIMEOUT_SECONDS). Sends one ICMP echo, parses
+    the rtt from stdout, and returns success/failure with a details
+    payload carrying `rtt_ms` (success) or `reason` + stderr snippet
+    (failure). Falls back to a TCP-80 connect if `ping` is unavailable
+    in the runtime (slim images, BSD-only minimal containers) — the
+    details payload notes the fallback so operators don't conflate
+    "real ICMP success" with "TCP-80 success".
+    """
+    host = (probe.get("host") or "").strip()
+    if not host:
+        return "failure", {"reason": "missing host"}
+    try:
+        timeout = int(probe.get("timeout_seconds") or PROBE_TIMEOUT_SECONDS)
+    except (TypeError, ValueError):
+        timeout = PROBE_TIMEOUT_SECONDS
+    if timeout < 1:
+        timeout = 1
+
+    ping_bin = shutil.which("ping")
+    if not ping_bin:
+        ok = _probe_tcp(host, 80)
+        return ("success" if ok else "failure"), {
+            "fallback": "tcp_80",
+            "reason": "ping binary not available in container",
+        }
+
+    # `-c 1` = one packet, `-W <s>` = per-packet timeout in seconds
+    # (iputils-ping semantics). Use `-q` to keep output minimal.
+    # Wall-clock cap = timeout + 1s buffer for subprocess overhead.
+    try:
+        proc = subprocess.run(
+            [ping_bin, "-c", "1", "-W", str(timeout), host],
+            capture_output=True,
+            text=True,
+            timeout=timeout + 1,
+        )
+    except subprocess.TimeoutExpired:
+        return "failure", {"reason": "ping subprocess timeout"}
+    except FileNotFoundError:
+        ok = _probe_tcp(host, 80)
+        return ("success" if ok else "failure"), {
+            "fallback": "tcp_80",
+            "reason": "ping disappeared mid-probe",
+        }
+
+    if proc.returncode == 0:
+        rtt_ms: float | None = None
+        m = _PING_RTT_RE.search(proc.stdout)
+        if m:
+            try:
+                rtt_ms = float(m.group(1))
+            except ValueError:
+                rtt_ms = None
+        details: dict = {"host": host}
+        if rtt_ms is not None:
+            details["rtt_ms"] = rtt_ms
+        return "success", details
+
+    # exit 1 = no reply within timeout; exit 2 = error (unknown host, etc.)
+    stderr_tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-1:] or [""]
+    return "failure", {
+        "host": host,
+        "reason": "no_reply" if proc.returncode == 1 else "ping_error",
+        "exit_code": proc.returncode,
+        "stderr_tail": stderr_tail[0][:200],
+    }
 
 
 def _probe_tcp(host: str, port: int) -> bool:

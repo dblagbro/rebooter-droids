@@ -291,14 +291,19 @@ def discover_on_disk_releases(
         pass
 
     discovered: list[dict] = []
+    updated: list[dict] = []
     skipped_existing = 0
     skipped_pointer = 0
     errors: list[dict] = []
 
-    # Pull existing filenames in one query.
+    # Pull existing filename → (id, sha256, size_bytes) in one query so we
+    # can detect content-changed binaries that kept the same filename
+    # (B19 — firmware team's iterative-fix workflow rebuilds a release
+    # without bumping the version string; the hub used to keep the stale
+    # SHA, which made the device's SHA verification fail at OTA time).
     with session_scope() as session:
         existing = {
-            r.filename
+            r.filename: (r.id, r.sha256, r.size_bytes, r.channel)
             for r in session.scalars(select(FirmwareRelease))
         }
 
@@ -316,7 +321,62 @@ def discover_on_disk_releases(
             if not entry.name.endswith(".bin"):
                 continue
             if entry.name in existing:
-                skipped_existing += 1
+                # v0.5.13 (B19): same filename, different bytes. Re-hash
+                # and update the row + mirrors if the on-disk SHA no
+                # longer matches the registry. Cheap (one SHA per
+                # already-tracked file per scan) and only fires for
+                # actual content changes.
+                existing_id, existing_sha, existing_size, existing_channel = existing[entry.name]
+                try:
+                    on_disk_sha = _sha256_of_path(str(entry))
+                    on_disk_size = entry.stat().st_size
+                except OSError as e:
+                    errors.append({
+                        "path": str(entry),
+                        "error": f"OSError while re-hashing existing: {e}",
+                    })
+                    skipped_existing += 1
+                    continue
+                if on_disk_sha == existing_sha and on_disk_size == existing_size:
+                    skipped_existing += 1
+                    continue
+                # Content changed under us. Update registry + mirrors.
+                try:
+                    with session_scope() as session:
+                        row = session.get(FirmwareRelease, existing_id)
+                        if row is None:
+                            # Disappeared between queries — rare but
+                            # possible if someone deleted the release
+                            # mid-scan. Treat as new on the next pass.
+                            skipped_existing += 1
+                            continue
+                        row.sha256 = on_disk_sha
+                        row.size_bytes = on_disk_size
+                        session.add(row)
+                        for m in session.scalars(
+                            select(FirmwareReleaseMirror)
+                            .where(FirmwareReleaseMirror.release_id == existing_id)
+                        ):
+                            m.verified_sha256 = on_disk_sha
+                            m.last_probed_at = now
+                            m.last_error = None
+                            m.status = MIRROR_STATUS_LIVE
+                            session.add(m)
+                        session.flush()
+                    updated.append({
+                        "id": existing_id,
+                        "filename": entry.name,
+                        "channel": existing_channel,
+                        "old_sha256": existing_sha,
+                        "new_sha256": on_disk_sha,
+                        "old_size_bytes": existing_size,
+                        "new_size_bytes": on_disk_size,
+                    })
+                except Exception as e:
+                    errors.append({
+                        "path": str(entry),
+                        "error": f"{type(e).__name__} while updating row: {e}",
+                    })
                 continue
             try:
                 sha = _sha256_of_path(str(entry))
@@ -398,6 +458,7 @@ def discover_on_disk_releases(
 
     return {
         "discovered": discovered,
+        "updated": updated,
         "skipped_existing": skipped_existing,
         "skipped_pointer": skipped_pointer,
         "errors": errors,

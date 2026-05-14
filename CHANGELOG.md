@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-05-14
+
+### Fixed — B19: firmware scan picks up content-changed binaries with same filename
+
+When the firmware team rebuilt a release without bumping the version
+string (typical iterative-fix workflow, e.g. fixing a BearSSL heap
+bug in `rebooter-0.1.9-dev-central.bin`), the scan in
+`app/services/firmware.py::discover_on_disk_releases` skipped the
+new bytes because the dedupe key was filename-only.
+
+Live consequence pre-fix: the hub-registry SHA stayed stale, devices
+polling `/device/firmware` saw the new bytes but the hub-advertised
+SHA still pointed at the old image, the device's verification failed,
+and OTA refused to flash — even though both sides were operating
+correctly. The only workaround was a manual SQL `UPDATE
+firmware_releases SET sha256 = …` after every rebuild.
+
+Fix:
+- Scan now re-hashes every already-tracked entry and compares to the
+  stored SHA. On change, updates `firmware_releases.sha256` +
+  `size_bytes` for the row and `verified_sha256` + `last_probed_at`
+  + `status='live'` on every mirror row.
+- New `updated` list in the scan response (alongside existing
+  `discovered`); UI flash + API surface both render it.
+- Per-row audit event `firmware.content_updated` with old + new
+  SHA, old + new size, channel, filename, and `via=ui|api`. The
+  unified history feed (C1, already shipped) surfaces these so
+  operators can audit "did anyone swap a firmware on us?"
+- No-op overhead: existing entries that haven't changed cost one
+  SHA per scan, negligible against the operator-triggered cadence.
+
+### Changed — B6.1: real ICMP ping probe in the watchdog runtime
+
+Pre-v0.5.13, the `probe.kind='ping'` watchdog rule was actually a
+TCP-port-80 probe — the container had no `ping` binary, and silently
+treating "is this host reachable on port 80" as "ping" produced
+false negatives for any host that doesn't run an HTTP server (most
+ESP devices, most routers' LAN interfaces, etc.).
+
+Fix:
+- Dockerfile now installs `iputils-ping`.
+- `_probe_ping()` in `watchdog_runtime.py` calls `ping -c 1 -W
+  <timeout>` and parses the rtt from stdout. Success payload
+  carries `rtt_ms`; failure payload carries `exit_code` + a 200-byte
+  `stderr_tail`.
+- Defensive fallback: if `ping` is unavailable in the runtime
+  (slim images, BSD-only containers), the probe falls back to
+  TCP-80 *and* sets `fallback: 'tcp_80'` in the event details so
+  operators can tell real ICMP success from compatibility-mode
+  success without grepping container metadata.
+- `probe.host` is required (was previously optional); `probe.timeout_seconds`
+  is honored if set (defaults to `PROBE_TIMEOUT_SECONDS = 3`).
+
+### Deferred — B6.3 (tag-as-target dispatch)
+
+Implementing tag-targeted watchdog actions requires a `device_tags`
+primitive that doesn't exist in the schema yet. The current stub
+returns an empty target set with a clear "no devices in target"
+downstream signal, which is already the right operator-facing
+behavior; real implementation gates on an operator decision about
+whether tags become their own table or an extension of `groups`.
+Captured in BACKLOG so the placeholder is explicit.
+
 ## [0.5.12] - 2026-05-14
 
 Bundle ship — parallel-session work landed:
