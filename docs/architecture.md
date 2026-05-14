@@ -95,7 +95,11 @@ app/
 │  ├─ commands.py
 │  ├─ dashboard.py
 │  ├─ deployments.py
-│  ├─ devices.py
+│  ├─ devices/            v0.5.15 split — see "Service subpackages" below
+│  │  ├─ __init__.py      public API re-exports
+│  │  ├─ _serialize.py    pure dict/presentation helpers, central-status derivation
+│  │  ├─ _query.py        read-only queries (list_devices, get_device_detail, …)
+│  │  └─ _mutations.py    writes (update/delete/bulk-delete/display-name push)
 │  ├─ email.py            SMTP send (earthlink config)
 │  ├─ enrollment.py
 │  ├─ events.py
@@ -106,7 +110,12 @@ app/
 │  ├─ mass_action.py      blast-radius confirmation gate (v0.2.5)
 │  ├─ sites.py
 │  ├─ unregistered.py     v0.2.5 unregistered-auth-attempts tracker
-│  └─ users.py
+│  ├─ users.py
+│  └─ watchdog_runtime/   v0.5.15 split — see "Service subpackages" below
+│     ├─ __init__.py      tick() entrypoint + re-exports
+│     ├─ _probes.py       internet / ping / tcp / http / dns / gateway
+│     ├─ _state.py        scheduling, event log, streak machine
+│     └─ _actions.py      cycle / hold_off / target resolution
 ├─ models/                SQLAlchemy ORM; one module per aggregate
 │  ├─ _helpers.py         ULID + utcnow + ts_column shortcuts
 │  ├─ audit.py
@@ -140,6 +149,38 @@ tests/qa/                 Playwright + requests regression suite
   and rate limiting are imported from there into every blueprint.
 - **No business logic in blueprints.** They translate HTTP ↔ service
   calls and emit audit-log entries on writes.
+- **Soft size limits** — 500 LOC blueprints, 250 services, 200 models.
+  When a service grows past ~2× its limit, split into a `services/<x>/`
+  subpackage; see "Service subpackages" below for the convention.
+
+## Service subpackages
+
+When a `services/<x>.py` file grows past ~500 LOC (≥ 2× the soft limit)
+**and** the responsibilities inside it are separable, split it into a
+`services/<x>/` package. Two precedents shipped in v0.5.15:
+
+```
+services/<x>/
+├─ __init__.py        Public API surface — re-exports every external symbol;
+│                     declares `__all__`. Existing `from app.services.<x>
+│                     import …` imports must continue to resolve.
+├─ _serialize.py      Pure helpers, no `session_scope()` calls — converting
+│                     ORM rows + bag-of-fields into dicts / templates consume.
+├─ _query.py          Read-only queries; opens its own session_scope.
+├─ _mutations.py      Writes; opens its own session_scope; raises typed errors.
+└─ (_other.py)        Additional cohesive slices as needed
+                      (e.g., watchdog_runtime/_probes / _state / _actions).
+```
+
+Cross-module dependencies between split modules use **deferred imports**
+inside function bodies (e.g., `_state.py` defers `_actions._fire_action`
+to avoid a top-level cycle). The pattern is already in use throughout
+the codebase for `services/commands.enqueue_for_device`.
+
+Files inside a subpackage are leading-underscore (`_serialize.py`) to
+signal "internal — import via the package root, not directly." External
+callers always do `from app.services.devices import …`, never
+`from app.services.devices._query import …`.
 
 ## Surface contracts
 

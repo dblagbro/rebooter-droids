@@ -17,6 +17,127 @@ Append-only journal of structural changes. Newest at top. Format:
 
 ---
 
+## 2026-05-14 — service subpackages: devices + watchdog_runtime
+
+- **Branch:** `main` (single atomic commit)
+- **Releases included:** v0.5.15
+- **Scope:** moderate refactor — two oversized service files split into
+  feature-internal subpackages, plus three small cleanup items.
+- **Key changes:**
+  - `app/services/devices.py` (700 LOC, 2.8× the documented 250-LOC
+    soft limit) → `app/services/devices/` subpackage:
+    - `__init__.py` — public API surface; re-exports all external
+      symbols (15 functions + 1 class) so `from app.services.devices
+      import …` keeps resolving for the 8 importer sites.
+    - `_serialize.py` — `serialize_device`, `_heartbeat_state_for`,
+      `_derive_central_status`, `_serialize_assignment`, `_iso`.
+    - `_query.py` — `find_by_mac`, `latest_stable_release_dict`,
+      `firmware_version_breakdown`, `list_devices`,
+      `get_device_detail`, `_latest_heartbeat_by_device`,
+      `_active_assignments_by_device`.
+    - `_mutations.py` — `update_device`, `delete_device`,
+      `delete_devices_bulk`, `enqueue_display_name_sync`,
+      `UnknownPatchFieldError`, `_PATCHABLE`.
+  - `app/services/watchdog_runtime.py` (578 LOC) →
+    `app/services/watchdog_runtime/` subpackage:
+    - `__init__.py` — `tick()` entrypoint + re-exports for the 3
+      cross-module importers (`services/watchdog.py`,
+      `services/schedule_runtime.py`, `jobs/scheduler.py`).
+    - `_probes.py` — `_run_probe` dispatcher + `_probe_internet`,
+      `_probe_ping`, `_probe_tcp`, `_probe_http`, `_probe_dns`.
+    - `_state.py` — `_rule_is_due`, `_in_maintenance_window`,
+      `_record_event`, `_update_state_and_maybe_fire`.
+    - `_actions.py` — `_fire_action`, `_fire_cycle`, `_fire_hold_off`,
+      `_resolve_target_devices`.
+  - Cleanup (Phase 1):
+    - Deleted empty `app/services/power_samples.py` (0 bytes; the
+      actual `ingest_power_samples` lives in `services/events.py`).
+    - Added `backups/` to `.gitignore` (was untracked but flagged
+      by reconnaissance — SQL dumps + ad-hoc backup folders should
+      never enter git history).
+    - Fixed `tests/qa/test_v0514_*.py` SQLite incompatibility by
+      switching `DeviceHeartbeat.id` to
+      `BigInteger().with_variant(Integer(), 'sqlite')`. Postgres
+      production behaviour unchanged; SQLite test path now picks up
+      the ROWID-alias autoincrement instead of refusing the NULL
+      insert.
+- **Architectural decisions:**
+  - **Subpackage convention codified.** When a service crosses ~2×
+    its 250-LOC soft limit *and* the responsibilities inside it are
+    separable, split it into `services/<x>/{_serialize, _query,
+    _mutations}.py` with `__init__.py` re-exports. Documented in
+    `architecture.md` §"Service subpackages" + `contributing.md`
+    §"Sizing".
+  - **Re-export everything externally referenced** at the package
+    root (`__init__.py`), including the underscore-prefixed helpers
+    that other modules legitimately need (`_run_probe`,
+    `_resolve_target_devices`, etc.). This preserves import paths
+    without code-base-wide find-and-replace. Internal-to-package
+    files keep the underscore prefix as a "import via root" signal.
+  - **Deferred imports inside function bodies** are the canonical
+    way to break cycles between split modules. Established pattern
+    in this codebase (`services/commands.enqueue_for_device` was
+    already deferred from `services/devices`); reused for
+    `_state._update_state_and_maybe_fire` ↔
+    `_actions._fire_action`.
+  - **Out-of-scope deliberately**: `services/firmware.py` (504 LOC,
+    cohesive single-domain), `services/inbox.py` (455 LOC, only 3
+    top-level functions), `services/announcements.py` (393 LOC,
+    borderline), `tests/qa/` feature-mirror restructure
+    (`refactor-log` entry below already defers this), `app/schemas/`
+    Pydantic dir (still gated on ≥3 endpoints feeling validation
+    pain).
+- **Files impacted:**
+  - 2 files deleted (the old big service modules + 1 empty stub)
+  - 8 files created (4 subpackage files × 2 subpackages)
+  - 3 docs updated: `architecture.md`, `contributing.md`,
+    `refactor-log.md` (this file)
+  - 1 model fix: `app/models/devices.py` (DeviceHeartbeat.id variant)
+  - 1 ignore-list addition: `.gitignore`
+  - 0 blueprint/template changes — public import paths preserved
+    end-to-end
+- **Risks:**
+  - Import-path breakage was the main risk; mitigated by re-exporting
+    every externally-referenced symbol and smoke-testing via a full
+    `create_app()` factory invocation inside the production image
+    (`create_app OK, blueprints: [version, auth, device_api,
+    firmware_public, admin_api, admin_ui]`) before deploy.
+  - Cross-module use of underscore-prefixed helpers (`_run_probe`,
+    `_record_event`, `_resolve_target_devices`) is a smell — they
+    have a wider audience than the underscore implies. Promotion to
+    public names (drop the underscore) is queued as a future
+    refactor target.
+  - The deferred-import cycle-break in `_state.py` works but is
+    sensitive: a future caller that imports `_actions` at module
+    load-time before `_state` will not see the issue, while the
+    reverse order would. Documented in `_state.py` docstring.
+- **Remaining technical debt:**
+  - `services/firmware.py` (504 LOC) — defer until growth or scan-
+    path complexity demands it.
+  - `services/inbox.py` (455 LOC) — large because of inline logic
+    in 3 functions; defer; revisit if a 4th top-level entry appears.
+  - `services/announcements.py` (393 LOC) — borderline; revisit
+    after B20 follow-on work lands.
+  - Underscore-prefixed cross-module imports
+    (`_run_probe`, `_record_event`, `_resolve_target_devices`, etc.):
+    promote to public names in a future "naming cleanup" refactor.
+  - `tests/qa/` flat layout: still defer until ≥150 tests.
+  - `app/schemas/` empty dir: still defer pending Pydantic
+    decision.
+- **Next recommended targets:**
+  1. Promote the underscore-prefixed cross-module helpers to public
+     names (`run_probe`, `record_event`, `resolve_target_devices`,
+     `derive_central_status`, etc.). Two-step: add new names as
+     aliases first, then delete the underscore versions after
+     callers migrate. Low-risk; mostly mechanical.
+  2. Split `services/firmware.py` when it next grows (current
+     trigger is the B16 power-monitoring track adding a sibling
+     ingest-and-rollup module).
+  3. Mirror tests under `tests/qa/{admin,device}/` once the suite
+     crosses 150 files — currently ~50.
+
+---
+
 ## 2026-05-09 — admin-blueprint split + first architecture docs
 
 - **Branch:** `refactor/admin-blueprint-split`

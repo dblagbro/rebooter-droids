@@ -35,6 +35,12 @@ Read [`architecture.md`](architecture.md) before any non-trivial change.
   into the closest feature module.
 - Soft limit: 500 lines per blueprint; 250 per service; 200 per model
   module.
+- **When a service crosses ~2× its soft limit** and the responsibilities
+  inside it are separable, split it into a `services/<x>/` subpackage
+  (see `architecture.md` §"Service subpackages"). Existing import
+  paths (`from app.services.<x> import …`) must keep working via
+  re-exports in `__init__.py`. Precedents: `services/devices/` and
+  `services/watchdog_runtime/` (v0.5.15).
 
 ## Commit conventions
 

@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.15] - 2026-05-14
+
+### Refactor — service subpackages: `devices/` + `watchdog_runtime/`
+
+Behavior-preserving structural refactor. No new features, no API
+changes, no template changes. Every existing `from app.services.*
+import …` keeps working.
+
+Two service files that had drifted past 2× their documented soft
+limits get split into feature-internal subpackages:
+
+- `app/services/devices.py` (700 LOC, 2.8× the 250-LOC service soft
+  limit) → `app/services/devices/{__init__,_serialize,_query,_mutations}.py`.
+  - `_serialize.py` — `serialize_device`, `_heartbeat_state_for`,
+    `_derive_central_status`, `_serialize_assignment`.
+  - `_query.py` — `find_by_mac`, `list_devices`, `get_device_detail`,
+    `firmware_version_breakdown`, `latest_stable_release_dict`, plus
+    the two `_*_by_device` join helpers.
+  - `_mutations.py` — `update_device`, `delete_device`,
+    `delete_devices_bulk`, `enqueue_display_name_sync`,
+    `UnknownPatchFieldError`.
+- `app/services/watchdog_runtime.py` (578 LOC) →
+  `app/services/watchdog_runtime/{__init__,_probes,_state,_actions}.py`.
+  - `_probes.py` — `_run_probe` dispatcher + the 5 probe implementations
+    (internet / ping / tcp / http / dns).
+  - `_state.py` — `_rule_is_due`, `_in_maintenance_window`,
+    `_record_event`, `_update_state_and_maybe_fire`.
+  - `_actions.py` — `_fire_action`, `_fire_cycle`, `_fire_hold_off`,
+    `_resolve_target_devices`.
+
+Each subpackage's `__init__.py` re-exports every external symbol
+(both public and the underscore-prefixed helpers other modules
+legitimately import). Internal-only files keep the underscore prefix
+as a "import via package root, not directly" signal.
+
+### Cleanup
+
+- Deleted empty `app/services/power_samples.py` (0 bytes; the actual
+  `ingest_power_samples` lives in `services/events.py`).
+- `backups/` now in `.gitignore` (untracked SQL dumps + ad-hoc backup
+  folders should never enter git history).
+- Fixed `tests/qa/test_v0514_*.py` SQLite incompatibility:
+  `DeviceHeartbeat.id` now uses `BigInteger().with_variant(Integer(),
+  'sqlite')` so SQLite test paths get an autoincrement-capable PK.
+  Postgres production behaviour unchanged.
+
+### Docs
+
+- `docs/architecture.md` updated with the new subpackage tree under
+  `app/services/` and a new "Service subpackages" section codifying
+  the split convention.
+- `docs/contributing.md` updated "Sizing" guidance to point at the
+  new convention.
+- `docs/refactor-log.md` appended with the 2026-05-14 entry covering
+  scope, decisions, risks, remaining debt, and next recommended
+  targets.
+
+### Out-of-scope (deferred deliberately)
+
+- `services/firmware.py` (504 LOC) — cohesive single-domain; defer.
+- `services/inbox.py` (455 LOC) — only 3 top-level functions; defer.
+- `services/announcements.py` (393 LOC) — borderline; defer.
+- `tests/qa/` mirror-by-feature restructure — defer until ≥150 tests.
+- `app/schemas/` Pydantic dir — still gated on ≥3 endpoints feeling
+  validation pain.
+
 ## [0.5.14] - 2026-05-14
 
 ### Added — B18: inline on/off toggle on the devices list
