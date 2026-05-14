@@ -25,10 +25,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.db import session_scope
-from app.models import Device, DevicePowerSample
+from app.models import Device, DevicePowerRollup, DevicePowerSample
 
 
 MAX_FRESH_SAMPLE_AGE_SECONDS = 300  # 5 min — beyond this, surface as stale
@@ -267,3 +267,201 @@ def fleet_summary(*, window_seconds: int = 24 * 60 * 60) -> dict:
         "fleet_peak_w": total_max or None,
         "per_device": per_device,
     }
+
+
+# ── Daily rollups (Phase 1C — v0.5.29) ────────────────────────────────
+
+
+def _serialize_rollup(r: DevicePowerRollup) -> dict:
+    def _f(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+    return {
+        "device_id": r.device_id,
+        "day_bucket": _iso(r.day_bucket),
+        "sample_count": r.sample_count,
+        "avg_w": _f(r.avg_w),
+        "min_w": _f(r.min_w),
+        "max_w": _f(r.max_w),
+        "kwh": _f(r.kwh),
+        "computed_at": _iso(r.computed_at),
+    }
+
+
+def daily_rollups_for_device(
+    device_id: str, *, days: int = 7
+) -> list[dict]:
+    """Most-recent N daily rollups for a device, newest-first.
+
+    Used by the per-device sparkline on the Device-detail Power tab.
+    Default 7 days; clamped to [1, 365].
+    """
+    if not device_id:
+        return []
+    n = max(1, min(int(days or 7), 365))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=n)
+    with session_scope() as session:
+        rows = list(
+            session.scalars(
+                select(DevicePowerRollup)
+                .where(
+                    DevicePowerRollup.device_id == device_id,
+                    DevicePowerRollup.day_bucket >= cutoff,
+                )
+                .order_by(DevicePowerRollup.day_bucket.desc())
+            )
+        )
+        return [_serialize_rollup(r) for r in rows]
+
+
+def fleet_daily_rollups(*, days: int = 30) -> dict:
+    """Fleet timeseries — every device's daily rollups for the last N days.
+
+    Used by the fleet `/app/power` chart (Phase 1C). Returns a shape
+    convenient for stacked-bar rendering: a list of day buckets +
+    per-device totals keyed by device_id.
+    """
+    n = max(1, min(int(days or 30), 365))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=n)
+    with session_scope() as session:
+        rows = list(
+            session.scalars(
+                select(DevicePowerRollup)
+                .where(DevicePowerRollup.day_bucket >= cutoff)
+                .order_by(DevicePowerRollup.day_bucket.asc())
+            )
+        )
+        device_ids = sorted({r.device_id for r in rows})
+        names: dict[str, str] = {}
+        if device_ids:
+            for d in session.scalars(
+                select(Device).where(Device.id.in_(device_ids))
+            ):
+                names[d.id] = d.display_name or d.id
+
+    # Pivot into per-day-per-device dict.
+    day_keys: list[str] = sorted({_iso(r.day_bucket) for r in rows})
+    by_day: dict[str, dict[str, float | None]] = {k: {} for k in day_keys}
+    for r in rows:
+        day = _iso(r.day_bucket)
+        if r.avg_w is None:
+            continue
+        by_day[day][r.device_id] = float(r.avg_w)
+    return {
+        "days": n,
+        "day_keys": day_keys,
+        "device_ids": device_ids,
+        "device_names": names,
+        "avg_w_by_day": [
+            {
+                "day": k,
+                "values": [by_day[k].get(did) for did in device_ids],
+            }
+            for k in day_keys
+        ],
+    }
+
+
+def compute_daily_rollups(*, day: datetime | None = None) -> dict:
+    """Aggregate one day's worth of `device_power_samples` into the
+    `device_power_rollups` table. Idempotent — re-runs for the same
+    `day` upsert via `INSERT ... ON CONFLICT (device_id, day_bucket)
+    DO UPDATE`.
+
+    `day` is the start-of-day-UTC timestamp; defaults to "yesterday in
+    UTC" which matches the typical nightly-cron use case. Returns a
+    stats dict.
+
+    SQL-only aggregation — no per-row Python loop — so this scales
+    cheaply to large fleets.
+    """
+    now = datetime.now(timezone.utc)
+    if day is None:
+        # Yesterday's full UTC day.
+        yest = now - timedelta(days=1)
+        day = yest.replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        day = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day + timedelta(days=1)
+
+    stats = {
+        "day": _iso(day),
+        "day_end": _iso(day_end),
+        "device_count": 0,
+        "rollups_written": 0,
+    }
+
+    with session_scope() as session:
+        # Per-device aggregation for the target day. kWh is the
+        # cumulative `energy_wh` delta within the day (works when
+        # firmware reports monotonically increasing energy_wh) divided
+        # by 1000. Devices that don't report energy_wh land NULL.
+        agg = list(
+            session.execute(
+                select(
+                    DevicePowerSample.device_id.label("device_id"),
+                    func.count(DevicePowerSample.id).label("sample_count"),
+                    func.avg(DevicePowerSample.p_w).label("avg_w"),
+                    func.min(DevicePowerSample.p_w).label("min_w"),
+                    func.max(DevicePowerSample.p_w).label("max_w"),
+                    (
+                        (func.max(DevicePowerSample.energy_wh)
+                         - func.min(DevicePowerSample.energy_wh))
+                        / 1000.0
+                    ).label("kwh"),
+                )
+                .where(
+                    DevicePowerSample.channel_id == 0,
+                    DevicePowerSample.sampled_at >= day,
+                    DevicePowerSample.sampled_at < day_end,
+                )
+                .group_by(DevicePowerSample.device_id)
+            )
+        )
+        stats["device_count"] = len(agg)
+        for row in agg:
+            # Upsert via raw SQL — Postgres ON CONFLICT keeps the path
+            # idempotent under re-runs (backfill after a samples
+            # correction is the expected workflow). SQLite test path
+            # uses INSERT OR REPLACE.
+            dialect_name = session.bind.dialect.name if session.bind else "postgresql"
+            if dialect_name == "sqlite":
+                stmt = text(
+                    "INSERT OR REPLACE INTO device_power_rollups "
+                    "(device_id, day_bucket, computed_at, sample_count, "
+                    " avg_w, min_w, max_w, kwh) "
+                    "VALUES (:device_id, :day_bucket, :computed_at, "
+                    " :sample_count, :avg_w, :min_w, :max_w, :kwh)"
+                )
+            else:
+                stmt = text(
+                    "INSERT INTO device_power_rollups "
+                    "(device_id, day_bucket, computed_at, sample_count, "
+                    " avg_w, min_w, max_w, kwh) "
+                    "VALUES (:device_id, :day_bucket, :computed_at, "
+                    " :sample_count, :avg_w, :min_w, :max_w, :kwh) "
+                    "ON CONFLICT (device_id, day_bucket) DO UPDATE SET "
+                    " computed_at = EXCLUDED.computed_at, "
+                    " sample_count = EXCLUDED.sample_count, "
+                    " avg_w = EXCLUDED.avg_w, "
+                    " min_w = EXCLUDED.min_w, "
+                    " max_w = EXCLUDED.max_w, "
+                    " kwh = EXCLUDED.kwh"
+                )
+            session.execute(stmt, {
+                "device_id": row.device_id,
+                "day_bucket": day,
+                "computed_at": now,
+                "sample_count": int(row.sample_count or 0),
+                "avg_w": float(row.avg_w) if row.avg_w is not None else None,
+                "min_w": float(row.min_w) if row.min_w is not None else None,
+                "max_w": float(row.max_w) if row.max_w is not None else None,
+                "kwh": float(row.kwh) if row.kwh is not None else None,
+            })
+            stats["rollups_written"] += 1
+
+    return stats
