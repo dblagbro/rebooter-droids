@@ -1,0 +1,12 @@
+{
+  "database_backend": "sqlite-local-harness",
+  "note": "SQLite required a naive-UTC datetime shim for enrollment expiry and an audit no-op stub; core announce/adopt/register/rebind path executed against real service code.",
+  "initial_announce_status": "pending",
+  "post_adopt_status": "adopted",
+  "auto_rebind_status": "adopted",
+  "awaiting_register_status": "awaiting_register",
+  "device_id_preserved": true,
+  "credential_rotated": true,
+  "credential_rows_after_rebind": 1,
+  "device_id": "dev_01KRM0JE1XWBP21XAH5JT3WWP3"
+}
