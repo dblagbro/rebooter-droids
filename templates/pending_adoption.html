@@ -30,12 +30,30 @@
 </script>
 
 {% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+{% set state_counts = state_counts or {} %}
 
 <div style="margin-bottom:1rem">
   <a href="{{ url_for('admin_ui.pending_adoption_page') }}{% if not show_all %}?show_all=1{% endif %}" class="muted" style="font-size:.85rem">
     {% if show_all %}Show only pending →{% else %}Show all (including consumed/rejected) →{% endif %}
   </a>
 </div>
+
+{% if show_all %}
+<div class="v3-card" style="margin-bottom:1rem">
+  <div style="font-size:.9rem; font-weight:600; margin-bottom:.25rem">Announcement history view</div>
+  <div class="muted" style="font-size:.85rem; line-height:1.5">
+    This view includes <strong>pending</strong> announcements plus historical rows that are already
+    <strong>registered</strong> or <strong>rejected</strong>. Those history rows do <em>not</em> count as current pending work.
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem">
+    <span class="badge amber">pending: {{ state_counts.pending or 0 }}</span>
+    <span class="badge">awaiting pickup: {{ state_counts.awaiting_pickup or 0 }}</span>
+    <span class="badge">awaiting register: {{ state_counts.awaiting_register or 0 }}</span>
+    <span class="badge green">registered history: {{ state_counts.registered or 0 }}</span>
+    <span class="badge red">rejected history: {{ state_counts.rejected or 0 }}</span>
+  </div>
+</div>
+{% endif %}
 
 {% if announcements %}
 <div class="table-wrap"><table>
@@ -187,11 +205,12 @@
 <div class="v3-card" style="margin-top:1.5rem">
   <h2 style="font-size:1rem">How adoption works</h2>
   <ol class="muted" style="font-size:.85rem; line-height:1.6">
-    <li>Device boots without a token → POSTs <code>/api/v1/device/announce</code> with MAC + claims every ~30s</li>
+    <li>Device boots without a token → POSTs <code>/api/v1/device/announce</code> with MAC + claims every ~5s while pending</li>
     <li>Hub records it; row appears here as <strong>pending</strong></li>
     <li>You click <strong>Adopt</strong> (optionally setting a display name) → hub mints a fresh enrolment token, stashes it on the announcement</li>
-    <li>Device's next announce poll (within ~30s) returns the token; row flips to <strong>awaiting register</strong></li>
+    <li>Device's next announce poll (within ~5s while pending) returns the token; row flips to <strong>awaiting register</strong></li>
     <li>Device uses the token against <code>/api/v1/device/register</code> → row flips to <strong>registered</strong> + a normal device row appears on <a href="{{ url_for('admin_ui.list_devices_page') }}">/app/devices</a></li>
   </ol>
 </div>
 {% endblock %}
+

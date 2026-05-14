@@ -158,8 +158,15 @@
           {% endif %}
         </td>
         <td>
-          {% if d.central_management_enabled %}<span class="badge" title="device opts in to central management">central</span>
-          {% else %}<span class="badge" title="device opts out — local-only is healthy">local-only</span>{% endif %}
+          {% if d.central_status == 'transport_stale' %}
+            <span class="badge amber" title="{{ d.central_status_reason }}">transport stale</span>
+          {% elif d.central_status == 'upgrade_pending' %}
+            <span class="badge amber" title="{{ d.central_status_reason }}">upgrade pending</span>
+          {% elif d.central_status in ('attention', 'central_stale') %}
+            <span class="badge red" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
+          {% else %}
+            <span class="badge" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
+          {% endif %}
         </td>
         <td>
           {{ d.firmware_version or '—' }}
@@ -231,10 +238,14 @@
     </div>
     <div class="v3-device-card-meta">
       <span class="badge">{{ d.registration_state }}</span>
-      {% if d.central_management_enabled %}
-        <span class="badge" title="opts in to central">central</span>
+      {% if d.central_status == 'transport_stale' %}
+        <span class="badge amber" title="{{ d.central_status_reason }}">transport stale</span>
+      {% elif d.central_status == 'upgrade_pending' %}
+        <span class="badge amber" title="{{ d.central_status_reason }}">upgrade pending</span>
+      {% elif d.central_status in ('attention', 'central_stale') %}
+        <span class="badge red" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
       {% else %}
-        <span class="badge" title="opts out — local-only is healthy">local-only</span>
+        <span class="badge" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
       {% endif %}
       {% if d.firmware_version %}<span>fw {{ d.firmware_version }}</span>{% endif %}
       {% if d.last_heartbeat_at %}<span>{{ d.last_heartbeat_at }}</span>{% endif %}
