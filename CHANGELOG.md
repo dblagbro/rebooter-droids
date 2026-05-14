@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.27] - 2026-05-14
+
+### Added — B16 Phase 1B: `/app/power` fleet page
+
+UI ride-along to the `fleet_summary()` backend that pre-shipped in
+v0.5.26. New top-level nav entry "Power" leads to a per-device
+table sorted biggest-hogs-first over a 24h / 7d / 30d window.
+
+- **New blueprint**: `app/blueprints/admin/power.py` →
+  `GET /app/power?window=24h|7d|30d`. Unknown window values fall
+  back to 24h cleanly.
+- **New template**: `templates/power.html` — window-selector chips,
+  fleet headline (device count + avg + peak watts), per-device
+  table (latest W with stale/fresh chip, avg/min/max W over window,
+  sample count, first/last sample timestamps), forward-look
+  "what's coming next" card.
+- **Nav**: topnav + bottomnav both gain a "Power" item between
+  History and Settings (⚡ icon on mobile).
+- **Empty state**: when no device has reported in the window
+  (the steady state today — firmware-side B16 sampling not yet
+  shipped), renders an explicit empty card explaining that this
+  will light up when firmware emits, with no further hub change.
+
+No new schema. No new API. Read-only page over the existing
+`device_power_samples` table.
+
+### Out of scope for this ship
+
+- Phase 1C charts (sparklines + fleet timeseries) — v0.5.29
+- Phase 1C rollups (`device_power_rollups`) — v0.5.29
+- Cost calc widget (`power.rate_per_kwh`) — v0.5.29
+- CSV export — v0.5.29
+- Threshold alerting / Phase 1D — later
+
 ## [0.5.26] - 2026-05-14
 
 ### Added — B16 Phase 1A: Power-tab live telemetry + devices-list watts chip
