@@ -744,3 +744,43 @@ order found.
     enumerates what we need from the firmware team to unblock device
     bring-up.
   - **B5** in `docs/BACKLOG.md` tracks this as the unblocker.
+
+### BUG-052 - Devices page collapses transport-stale and truly-offline into the same "offline" state
+
+- **Severity:** medium (operator diagnosis confusion)
+- **Area:** devices list / heartbeat-state presentation
+- **Status:** **open - observed live 2026-05-14**
+- **Detail:** On the live hub snapshot taken about `2026-05-14T03:04Z`,
+  device `192.168.1.225` (`Erica''s F.R Speaker`) was shown as
+  **offline** in `/app/devices`, but its local API still returned
+  `200` with:
+  - `wifi_connected: true`
+  - `central_enabled: true`
+  - `central_registered: true`
+  - `central_state: "firmware_check_transport_failed"`
+  - `central_heartbeat_age_seconds: 509`
+  The operator-facing UI currently makes this look identical to a
+  truly dead or unreachable device such as `192.168.1.69`, which was
+  timing out on its local API from the same workstation.
+- **Fix direction:** split the visible state model into at least:
+  `online`, `central stale/transport failed`, and `offline`.
+
+### BUG-053 - Desired-name drift persists on ordinary fleet devices outside restore-after-reflash
+
+- **Severity:** medium (source-of-truth drift)
+- **Area:** hub desired-config / rename propagation
+- **Status:** **open - observed live 2026-05-14**
+- **Detail:** Live comparison between `/api/v1/admin/devices` and
+  local device APIs shows `.48` is correct after the manual
+  `apply_config.device_name` push, but multiple other devices still
+  diverge:
+  - hub `Erica''s Subwoofer` vs device `Rebooter` on `192.168.1.30`
+  - hub `Erica''s F.R Speaker` vs device `Rebooter` on
+    `192.168.1.225`
+  - hub `Erica''s R.R. Speaker` vs device `Erica''s ?.?. Speaker` on
+    `192.168.1.207`
+  This proves `v0.5.8` solved the restore-after-reflash name push,
+  but not the broader "hub display_name is the desired device name"
+  contract.
+- **Fix direction:** desired-name propagation must run on ordinary
+  rename / drift reconciliation, not only restore-after-reflash.
