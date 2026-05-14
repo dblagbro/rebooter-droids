@@ -131,6 +131,7 @@
         <th>Name</th>
         <th>State</th>
         <th>Online</th>
+        <th>Power</th>
         <th>Central</th>
         <th>Firmware</th>
         <th>Last heartbeat</th>
@@ -155,6 +156,46 @@
           {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
           {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
           {% else %}<span class="badge red" title="last heartbeat older than 3 min">offline</span>
+          {% endif %}
+        </td>
+        {# v0.5.14 (B18): inline relay toggle. Reuses /commands path
+           with `next=list` so the operator stays on the list. State
+           chosen from latest_relay_on:
+             true  -> green ON button, click queues relay_off
+             false -> grey OFF button, click queues relay_on
+             None  -> em-dash, device never heartbeated
+           is_held_off and is_protected are surface-only — back end
+           still enforces. #}
+        <td style="white-space:nowrap">
+          {% set can_toggle = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+          {% if d.latest_relay_on is none %}
+            <span class="muted" title="no heartbeat from device yet">—</span>
+          {% elif d.is_held_off %}
+            <span class="badge" title="device is held-off; clear hold-off from detail page to toggle">HELD</span>
+          {% elif not d.online %}
+            <button type="button" class="btn-secondary" disabled
+                    title="device is offline — toggle will queue but won't execute until reconnect">
+              {{ 'ON' if d.latest_relay_on else 'OFF' }}
+            </button>
+          {% elif can_toggle %}
+            {% set target_type = 'relay_off' if d.latest_relay_on else 'relay_on' %}
+            {% set verb = 'Turn off' if d.latest_relay_on else 'Turn on' %}
+            <form method="post"
+                  action="{{ url_for('admin_ui.device_send_command', device_id=d.id) }}"
+                  style="display:inline; margin:0"
+                  {% if d.is_protected %}data-confirm-message="Toggle 🔒 protected device {{ d.display_name or d.id }}? You must also tick override-lockout below to actually fire."{% endif %}>
+              <input type="hidden" name="type" value="{{ target_type }}">
+              <input type="hidden" name="next" value="list">
+              {% if d.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
+              <button type="submit"
+                      class="{{ 'btn' if d.latest_relay_on else 'btn-secondary' }}"
+                      title="{{ verb }} ({{ target_type }})"
+                      style="{% if d.latest_relay_on %}background:var(--green-fg,#15803d);color:white;{% endif %}font-weight:600;min-width:3.2rem">
+                {{ 'ON' if d.latest_relay_on else 'OFF' }}
+              </button>
+            </form>
+          {% else %}
+            <span class="badge {% if d.latest_relay_on %}green{% endif %}">{{ 'ON' if d.latest_relay_on else 'OFF' }}</span>
           {% endif %}
         </td>
         <td>
@@ -251,6 +292,38 @@
       {% if d.last_heartbeat_at %}<span>{{ d.last_heartbeat_at }}</span>{% endif %}
       {% if d.local_ip %}<a href="http://{{ d.local_ip }}/" target="_blank" rel="noopener">{{ d.local_ip }}</a>{% endif %}
     </div>
+    {# v0.5.14 (B18): mobile-card inline relay toggle — thumb-reachable
+       below the meta line. Same gating logic as the table row. #}
+    {% set can_toggle = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+    {% if d.latest_relay_on is not none and can_toggle %}
+      <div style="margin-top:.5rem">
+        {% if d.is_held_off %}
+          <span class="badge" title="device is held-off; clear from detail page">HELD</span>
+        {% elif not d.online %}
+          <button type="button" class="btn-secondary" disabled
+                  title="device is offline — toggle will queue but won't execute until reconnect">
+            {{ 'ON' if d.latest_relay_on else 'OFF' }} (offline)
+          </button>
+        {% else %}
+          {% set target_type = 'relay_off' if d.latest_relay_on else 'relay_on' %}
+          {% set verb = 'Turn off' if d.latest_relay_on else 'Turn on' %}
+          <form method="post"
+                action="{{ url_for('admin_ui.device_send_command', device_id=d.id) }}"
+                style="display:inline; margin:0"
+                {% if d.is_protected %}data-confirm-message="Toggle 🔒 protected device {{ d.display_name or d.id }}?"{% endif %}>
+            <input type="hidden" name="type" value="{{ target_type }}">
+            <input type="hidden" name="next" value="list">
+            {% if d.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
+            <button type="submit"
+                    class="{{ 'btn' if d.latest_relay_on else 'btn-secondary' }}"
+                    title="{{ verb }}"
+                    style="{% if d.latest_relay_on %}background:var(--green-fg,#15803d);color:white;{% endif %}font-weight:600;min-width:4rem">
+              {{ 'ON' if d.latest_relay_on else 'OFF' }}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
   </article>
   {% endfor %}
 </div>
