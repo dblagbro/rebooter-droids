@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.14] - 2026-05-14
+
+### Added — B18: inline on/off toggle on the devices list
+
+The devices list at `/app/devices` had no inline power control —
+operators had to drill into the per-device detail page to fire
+`relay_on` / `relay_off`. Every commercial smart-plug app (Kasa,
+Shelly, HA, SmartThings) puts a toggle on the row itself. R-DEV-2
+asked for this in the v0.3.1 redesign Phase 2 and it never shipped.
+With the firmware-side relay dispatcher fixed in 0.1.6-dev-central,
+the inline toggle is now the satisfying single-click action it
+should have been at v0.3.1.
+
+Implementation:
+- **Backend**: `list_devices()` now joins the latest `DeviceHeartbeat`
+  row per device (one extra query per scan, not per device) and
+  surfaces `latest_relay_on` + `latest_mode` on every list payload.
+  Devices with no heartbeat carry `latest_relay_on: None`.
+- **Frontend**: new "Power" column in the desktop table layout and
+  matching toggle on the mobile card layout. State logic:
+  - `latest_relay_on=True` → green **ON** button, click POSTs
+    `relay_off` (with `next=list` so the operator stays on the list)
+  - `latest_relay_on=False` → grey **OFF** button, click POSTs
+    `relay_on`
+  - `latest_relay_on=None` → em-dash (device never heartbeated)
+  - `is_held_off=True` → grey HELD badge (toggle disabled — must
+    clear hold-off from the detail page first)
+  - `online=False` → button disabled with offline tooltip; visual
+    state still shown so the operator knows what state the device
+    was last in
+  - `is_protected=True` → `data-confirm-message` typed-confirm modal
+    + hidden `override_lockout=1` field so the API actually fires
+    once confirmed
+- Existing `POST /devices/<id>/commands` endpoint extended with a
+  `next=list` form field; success flash + redirect now land back on
+  the list instead of the detail page when invoked inline.
+- Audit event `device.command_issued` carries
+  `via='list_inline_toggle'` for traceability vs the detail form.
+
+Tests: `tests/qa/test_v0514_inline_toggle.py` exercises the
+list-payload contract (`latest_relay_on` key present) and
+verifies `next=list` redirect on the toggle endpoint.
+
+### Backlog cleanup
+
+- B4 (runtime-editable SMTP): retired in BACKLOG (was shipped
+  v0.4.25; entry was stale).
+- B6.1 (real ICMP ping): retired in BACKLOG (shipped v0.5.13).
+- B6.3 (tag-as-target dispatch): explicitly deferred — needs a
+  `device_tags` primitive that doesn't exist yet.
+- B19 / B23 / B24 marked FIXED in BACKLOG with the version that
+  closed each.
+
 ## [0.5.13] - 2026-05-14
 
 ### Fixed — B19: firmware scan picks up content-changed binaries with same filename

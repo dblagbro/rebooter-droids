@@ -79,6 +79,38 @@ def _serialize_assignment(
     }
 
 
+def _latest_heartbeat_by_device(
+    session, device_ids: Iterable[str]
+) -> dict[str, DeviceHeartbeat]:
+    """v0.5.14 (B18): fetch the most-recent DeviceHeartbeat row for
+    each device in `device_ids`. Used by the devices list view to
+    surface `relay_on` / `mode` inline so operators can toggle power
+    without drilling into the detail page.
+
+    One query per scan (`MAX(received_at)` per device); empty input
+    short-circuits. Devices with no heartbeats are absent from the
+    returned dict.
+    """
+    ids = [d for d in device_ids if d]
+    if not ids:
+        return {}
+    rows = list(
+        session.scalars(
+            select(DeviceHeartbeat)
+            .where(DeviceHeartbeat.device_id.in_(ids))
+            .order_by(
+                DeviceHeartbeat.device_id.asc(),
+                DeviceHeartbeat.received_at.desc(),
+            )
+        )
+    )
+    latest: dict[str, DeviceHeartbeat] = {}
+    for row in rows:
+        # Order-by puts newest first per device_id; setdefault wins.
+        latest.setdefault(row.device_id, row)
+    return latest
+
+
 def _active_assignments_by_device(session, device_ids: Iterable[str]) -> dict[str, dict]:
     ids = [d for d in device_ids if d]
     if not ids:
@@ -381,9 +413,9 @@ def list_devices(
 
         stmt = stmt.order_by(Device.created_at.desc())
         rows = list(session.scalars(stmt))
-        assignments_by_device = _active_assignments_by_device(
-            session, [d.id for d in rows]
-        )
+        device_ids = [d.id for d in rows]
+        assignments_by_device = _active_assignments_by_device(session, device_ids)
+        heartbeats_by_device = _latest_heartbeat_by_device(session, device_ids)
         out = []
         for d in rows:
             obj = serialize_device(d)
@@ -394,6 +426,13 @@ def list_devices(
             )
             obj["heartbeat_state"] = hb_state
             obj["online"] = hb_state == "online"
+            # v0.5.14 (B18): surface relay_on + mode from the latest
+            # heartbeat so the list-row inline toggle can render
+            # without a per-row query. None when the device has
+            # never heartbeated.
+            latest_hb = heartbeats_by_device.get(d.id)
+            obj["latest_relay_on"] = bool(latest_hb.relay_on) if latest_hb else None
+            obj["latest_mode"] = latest_hb.mode if latest_hb else None
             assignment = assignments_by_device.get(d.id)
             if assignment:
                 obj["active_firmware_assignment"] = assignment

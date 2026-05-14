@@ -353,6 +353,16 @@ def device_send_command(device_id: str):
             payload["post_reboot_holdoff_seconds"] = 180
     override_lockout = (request.form.get("override_lockout") or "").lower() in ("1", "true", "yes")
     set_hold_off = (request.form.get("hold_off") or "").lower() in ("1", "true", "yes")
+    # v0.5.14 (B18): when the toggle is invoked from the devices list,
+    # honour `next=list` so the operator stays on the list view
+    # instead of getting punted to the detail page on every click.
+    next_target = (request.form.get("next") or "").strip()
+    if next_target == "list":
+        success_redirect = url_for("admin_ui.list_devices_page")
+    else:
+        success_redirect = url_for(
+            "admin_ui.device_detail_page", device_id=device_id
+        )
     try:
         cmd = enqueue_for_device(
             device_id=device_id,
@@ -368,7 +378,7 @@ def device_send_command(device_id: str):
             "to issue power commands against it.",
             "error",
         )
-        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+        return redirect(success_redirect)
     except (LookupError, ValueError):
         abort(400)
     audit_service.record(
@@ -383,9 +393,15 @@ def device_send_command(device_id: str):
             "reason": "operator",
             "override_lockout": override_lockout,
             "set_hold_off": set_hold_off,
+            "via": "list_inline_toggle" if next_target == "list" else "detail_form",
         },
     )
-    return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+    if next_target == "list":
+        flash(
+            f"{cmd_type} queued for {device_id}. Command id: {cmd.id}",
+            "info",
+        )
+    return redirect(success_redirect)
 
 
 # v0.3.2 (P3): cancel a queued command before delivery (R-CTRL-8).
