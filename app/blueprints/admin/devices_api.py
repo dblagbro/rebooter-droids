@@ -33,6 +33,7 @@ from app.services.commands import (
     enqueue_for_device,
 )
 from app.services.devices import (
+    enqueue_display_name_sync,
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
     delete_devices_bulk as svc_delete_devices_bulk,
@@ -77,19 +78,34 @@ def get_device(device_id: str):
 @role_required_api(*ADMIN_AND_UP)
 def patch_device(device_id: str):
     body = request.get_json(silent=True) or {}
+    before = get_device_detail(device_id)
+    if before is None:
+        return err("device_unknown", "Device not found.", status=404)
     try:
         updated = update_device(device_id, body)
     except UnknownPatchFieldError as e:
         return err("validation_failed", str(e), status=400)
     if updated is None:
         return err("device_unknown", "Device not found.", status=404)
+    renamed = before.get("display_name") != updated.get("display_name")
+    sync_enqueued = False
+    if renamed:
+        sync_enqueued = enqueue_display_name_sync(
+            device_id,
+            display_name=updated.get("display_name"),
+            issued_by_user_id=g.current_user.id,
+            reason="patch_device_api",
+        )
     audit_service.record(
         "device.updated",
         actor_user_id=g.current_user.id,
         actor_email_snapshot=g.current_user.email,
         target_type="device",
         target_id=device_id,
-        details={"fields": sorted(body.keys())},
+        details={
+            "fields": sorted(body.keys()),
+            "display_name_sync_enqueued": sync_enqueued,
+        },
     )
     return ok(updated)
 
