@@ -264,6 +264,12 @@ def list_devices(
         device_ids = [d.id for d in rows]
         assignments_by_device = _active_assignments_by_device(session, device_ids)
         heartbeats_by_device = _latest_heartbeat_by_device(session, device_ids)
+        # v0.5.26 (B16 Phase 1A): latest power sample per device, batched.
+        # Imported lazily — keeps the import graph small for callers that
+        # don't render the devices list (e.g. internal jobs).
+        from app.services import device_power
+
+        power_samples_by_device = device_power.latest_samples_by_device(device_ids)
         out = []
         for d in rows:
             obj = serialize_device(d)
@@ -289,6 +295,9 @@ def list_devices(
             obj["central_status"] = central_status["code"]
             obj["central_status_label"] = central_status["label"]
             obj["central_status_reason"] = central_status["reason"]
+            # v0.5.26: latest_power_sample is None when the device has
+            # never reported, present (with is_stale flag) otherwise.
+            obj["latest_power_sample"] = power_samples_by_device.get(d.id)
             out.append(obj)
         return out
 
@@ -426,4 +435,11 @@ def get_device_detail(device_id: str) -> dict | None:
         out["last_config_pushed_at"] = _iso(d.last_config_pushed_at)
         out["desired_config_drift"] = device_config.compute_drift(device_id)
         out["desired_config_feature_enabled"] = device_config.is_feature_enabled()
+
+        # v0.5.26 (B16 Phase 1A): latest power sample for the Power tab
+        # live-card. Imported lazily — keeps the package import graph
+        # small for callers that don't render device-detail.
+        from app.services import device_power
+
+        out["latest_power_sample"] = device_power.latest_sample(device_id)
         return out

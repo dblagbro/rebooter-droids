@@ -156,8 +156,59 @@
 </section>
 
 {# ── power ──────────────────────────────────────────────────────────── #}
+{% set lps = device.latest_power_sample %}
 <section class="v3-card" id="power">
-  <h2>Power</h2>
+  <h2>
+    Power
+    {% if lps %}
+      {% if lps.is_stale %}
+        <span class="badge amber" title="Last reading older than 5 min. Either the device stopped reporting or the firmware-side sampling isn't running.">telemetry stale</span>
+      {% else %}
+        <span class="badge green" title="telemetry from device-side CSE7766 sensor">live telemetry</span>
+      {% endif %}
+    {% else %}
+      <span class="badge" title="no power samples received yet — either firmware-side sampling isn't shipped on this device, or ingestion just started">no telemetry yet</span>
+    {% endif %}
+  </h2>
+
+  {# v0.5.26 (B16 Phase 1A): live last-sample card. The CSE7766 chip on
+     the S31 reports voltage / current / real power / apparent power /
+     power factor / frequency / accumulated energy. Older firmware
+     doesn't sample at all; the empty state above tells operators that. #}
+  {% if lps %}
+  <div class="v3-card" style="background:rgba(80,180,255,0.06); margin-bottom:1rem; padding:.6rem .8rem">
+    <div class="muted" style="font-size:.75rem; margin-bottom:.3rem">
+      Last sample {{ lps.sampled_at }}
+      {% if lps.age_seconds is not none %}
+        · {{ lps.age_seconds }} s ago
+      {% endif %}
+      {% if lps.source and lps.source != 'steady' %}· source = <code>{{ lps.source }}</code>{% endif %}
+      {% if lps.chip_type %}· chip <code>{{ lps.chip_type }}</code>{% endif %}
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:baseline">
+      {% if lps.p_w is not none %}
+        <div><strong style="font-size:1.6rem">{{ '%.1f'|format(lps.p_w) }}</strong> <span class="muted">W</span></div>
+      {% else %}
+        <div class="muted">no real-power reading</div>
+      {% endif %}
+      {% if lps.v_v is not none %}<div>{{ '%.1f'|format(lps.v_v) }} <span class="muted">V</span></div>{% endif %}
+      {% if lps.i_ma is not none %}<div>{{ lps.i_ma }} <span class="muted">mA</span></div>{% endif %}
+      {% if lps.pf is not none %}<div>pf {{ '%.3f'|format(lps.pf) }}</div>{% endif %}
+      {% if lps.hz is not none %}<div>{{ '%.2f'|format(lps.hz) }} <span class="muted">Hz</span></div>{% endif %}
+      {% if lps.s_va is not none %}<div>{{ '%.1f'|format(lps.s_va) }} <span class="muted">VA</span></div>{% endif %}
+      {% if lps.energy_wh is not none %}<div>{{ lps.energy_wh }} <span class="muted">Wh cumulative</span></div>{% endif %}
+      {% if lps.rssi_dbm is not none %}<div class="muted" style="font-size:.85rem">rssi {{ lps.rssi_dbm }} dBm</div>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="muted" style="font-size:.85rem; margin-bottom:1rem">
+    No power samples received from this device yet. When the firmware
+    starts emitting via <code>POST /api/v1/device/power-samples</code>
+    (B16 device-side sampling), the live card lands here. See
+    <code>docs/B16-power-analytics-design.md</code> for the contract.
+    Charting + rollups land in Phase 1C (v0.5.29).
+  </p>
+  {% endif %}
 
   {% if device.is_protected %}
   <div class="v3-lockout-banner" role="alert">

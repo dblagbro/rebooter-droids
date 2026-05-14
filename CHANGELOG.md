@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.26] - 2026-05-14
+
+### Added — B16 Phase 1A: Power-tab live telemetry + devices-list watts chip
+
+The first operator-visible surface over the B16 power-ingest slice
+shipped in v0.5.12. `DevicePowerSample` rows have been writable since
+then; this ship makes them *visible* on the Device-detail Power tab
+and as a compact "{N} W" chip on the devices list.
+
+**New service** — `app/services/device_power.py`:
+- `latest_sample(device_id, channel_id=0)` — most-recent sample for one
+  device (or `None` if never sampled). Cheap: one indexed lookup on
+  `ix_device_power_samples_device_channel_sampled`.
+- `latest_samples_by_device(device_ids, channel_id=0)` — batched
+  variant used by the devices-list render (one ordered SELECT, first-
+  wins per device).
+- `recent_samples(device_id, *, window_seconds, limit)` — raw window
+  for the future Phase 1C charting. Window clamped to [60, 86400]
+  with a 720-sample defensive cap.
+- `fleet_summary(window_seconds=86400)` — aggregate over the window:
+  per-device sample_count + avg/min/max watts + first/last sample
+  timestamps + latest sample blob. Used by the future v0.5.27
+  `/app/power` page; landed here so it ships once and lights up when
+  Phase 1B wires the UI.
+- `MAX_FRESH_SAMPLE_AGE_SECONDS = 300` (5 min) — anything older
+  surfaces with `is_stale: true` so the UI can chip it amber.
+
+**Numeric coercion**: `DevicePowerSample.v_v` / `p_w` / `s_va` /
+`pf` / `hz` are SQLAlchemy `Numeric` columns (Decimal in Python).
+The serializer coerces them to `float` so JSON envelopes + Jinja
+templates don't have to deal with Decimal arithmetic. Bytes-wise
+identical numerically.
+
+**Device detail** (`/app/devices/<id>` `#power` section):
+- New chip on the "Power" header:
+  `live telemetry` (green) when a sample exists and is fresh;
+  `telemetry stale` (amber) when the latest sample is older than
+  5 min; `no telemetry yet` (grey) when the device has never
+  reported. The empty state is explicit — the card doesn't render
+  broken numeric fields for devices that haven't reported yet.
+- Live last-sample card under the header showing **W / V / mA / pf /
+  Hz / VA / Wh cumulative / rssi_dbm**, plus the sample's `source`
+  (steady/burst/synthetic) and `chip_type` (CSE7766 today). Sample-
+  age in seconds rendered next to the sampled-at timestamp.
+- Older "no telemetry" path links operators to the B16 design doc
+  so they know charting + rollups land in Phase 1C (v0.5.29).
+
+**Devices list** (`/app/devices`):
+- Compact `{N} W` chip in the existing Power column, next to the
+  relay-state toggle. Renders only when there's a sample; absent
+  when the device has never reported. Amber when stale.
+  `font-variant-numeric:tabular-nums` so the watt readouts align.
+
+**Get-device-detail + list-devices** (`services.devices`):
+- `get_device_detail()` now returns `latest_power_sample` (dict or
+  None).
+- `list_devices()` returns `latest_power_sample` per row — one
+  batched query for the entire list, not N queries.
+
+**Empty-state behavior**: today most devices in the fleet have NOT
+shipped firmware-side B16 sampling (`POST /api/v1/device/power-
+samples`). They'll render the "no telemetry yet" empty state cleanly
+— no broken card, no fallthrough.
+
+### Out of scope for this ship (still queued)
+
+- Phase 1B fleet `/app/power` page (v0.5.27) — backend ready
+  (`fleet_summary`); UI route + template pending.
+- Phase 1C rollups + charts + `device_power_rollups` table (v0.5.29).
+- Phase 1D power-targeted watchdog rule hook points.
+- Cost calculation widget (`power.rate_per_kwh` runtime_setting).
+- CSV export from chart range-pickers.
+- Threshold alerting.
+
 ## [0.5.25] - 2026-05-14
 
 ### Fixed — Phase 2A contract normalization for integration probe kinds
