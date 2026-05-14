@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.28] - 2026-05-14
+
+### Added — Phase 2B: per-kind form fields for integration probes
+
+Closes the v0.5.25 Phase 2A escape-hatch gap. Operators no longer
+need the JSON editor to create rules using the four integration
+probe kinds — the rules-create form on `/app/rules` now has per-
+kind blocks with kind-filtered source pickers.
+
+**New probe-kind options** in the form `<select>`:
+- `roku — active app matches`
+- `home assistant — entity state matches`
+- `weather — active NWS alert`
+- `calendar — iCal event currently airing`
+
+**Per-kind form blocks** (show/hide JS keyed off the `<select>`):
+- **Roku** — source picker (filtered to `kind=roku`) + app-name
+  text + max-sample-age (default 120s).
+- **Home Assistant** — source picker (`kind=home_assistant`) +
+  entity_id + expected_state + max-sample-age (default 60s).
+- **Weather** — source picker (`kind=weather`) + optional
+  event-contains substring + optional min-severity dropdown
+  (Minor / Moderate / Severe / Extreme) + max-sample-age
+  (default 600s).
+- **iCal** — source picker (`kind=ical`) + optional
+  summary-contains substring + max-sample-age (default 1800s).
+
+Each block has a graceful "no sources of this kind registered yet"
+fallback that links to `/app/settings/integrations` so the operator
+knows what's missing.
+
+**Backend** (`app/blueprints/admin/rules.py`):
+- `rules_page()` now passes `sources_by_kind` (a dict of `{kind:
+  [sources]}`) to the template — one batched call to
+  `external_sensors.list_sources()`.
+- `rules_create_submit()` gains four `elif probe_kind ==` branches
+  that pull the per-kind fields off the form and build the probe
+  dict in the shape `services.watchdog.create_rule()` validates.
+
+**JS** — extended the existing `syncVisibility()` to drive the four
+new blocks. `PROBE_ARG_KINDS = {ping, tcp, http, dns}` is the only
+set that shows the generic `probe_arg` textbox; integration kinds
+hide it.
+
+**JSON editor** stays as the escape hatch for shapes the form
+can't express (custom probes, exotic combos).
+
+### Out of scope for this ship
+
+- Edit flow for the integration probes still uses the JSON editor
+  (`templates/rules/edit.html`). Per-kind form support on the edit
+  page is queued as a follow-up for v0.5.29 or later.
+- Phase 2C — richer per-probe event-detail rendering on the
+  rules-list event log + integration-source health cues on
+  `/app/settings/integrations` (queued for v0.5.29).
+
 ## [0.5.27] - 2026-05-14
 
 ### Added — B16 Phase 1B: `/app/power` fleet page

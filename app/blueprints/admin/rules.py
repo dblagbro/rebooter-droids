@@ -55,6 +55,18 @@ def rules_page():
     for r in rules:
         r["recent_events"] = svc_list_events(r["id"], limit=10)
         rules_with_events.append(r)
+    # v0.5.28 (Phase 2B): kind-filtered source pickers for the
+    # integration probes. Lazy import keeps the rules page's import
+    # graph small.
+    from app.services import external_sensors as ext_svc
+
+    all_sources = ext_svc.list_sources()
+    sources_by_kind = {
+        "roku": [s for s in all_sources if s["kind"] == "roku"],
+        "home_assistant": [s for s in all_sources if s["kind"] == "home_assistant"],
+        "weather": [s for s in all_sources if s["kind"] == "weather"],
+        "ical": [s for s in all_sources if s["kind"] == "ical"],
+    }
     return render_template(
         "rules/index.html",
         **_ctx({
@@ -62,6 +74,7 @@ def rules_page():
             "rules": rules_with_events,
             "devices": devices,
             "groups": groups,
+            "sources_by_kind": sources_by_kind,
         }),
     )
 
@@ -109,6 +122,62 @@ def rules_create_submit():
         probe = {"kind": "dns", "hostname": probe_arg}
     elif probe_kind == "gateway":
         probe = {"kind": "gateway"}
+    # v0.5.28 (Phase 2B): per-kind form fields for the four integration
+    # probe kinds shipped in v0.5.17 + v0.5.23. Operators no longer
+    # need the JSON editor for the common cases — JSON editor stays as
+    # an escape hatch for advanced shapes.
+    elif probe_kind == "roku_app_active":
+        probe = {
+            "kind": "roku_app_active",
+            "source_id": (request.form.get("roku_source_id") or "").strip(),
+            "app_name": (request.form.get("roku_app_name") or "").strip(),
+        }
+        try:
+            max_age = int(request.form.get("roku_max_sample_age_seconds") or 120)
+            probe["max_sample_age_seconds"] = max_age
+        except ValueError:
+            pass
+    elif probe_kind == "ha_state_is":
+        probe = {
+            "kind": "ha_state_is",
+            "source_id": (request.form.get("ha_source_id") or "").strip(),
+            "entity_id": (request.form.get("ha_entity_id") or "").strip(),
+            "expected_state": (request.form.get("ha_expected_state") or "").strip(),
+        }
+        try:
+            max_age = int(request.form.get("ha_max_sample_age_seconds") or 60)
+            probe["max_sample_age_seconds"] = max_age
+        except ValueError:
+            pass
+    elif probe_kind == "weather_alert_active":
+        probe = {
+            "kind": "weather_alert_active",
+            "source_id": (request.form.get("weather_source_id") or "").strip(),
+        }
+        ev = (request.form.get("weather_event_contains") or "").strip()
+        if ev:
+            probe["event_contains"] = ev
+        sev = (request.form.get("weather_min_severity") or "").strip()
+        if sev:
+            probe["min_severity"] = sev
+        try:
+            max_age = int(request.form.get("weather_max_sample_age_seconds") or 600)
+            probe["max_sample_age_seconds"] = max_age
+        except ValueError:
+            pass
+    elif probe_kind == "ical_event_active":
+        probe = {
+            "kind": "ical_event_active",
+            "source_id": (request.form.get("ical_source_id") or "").strip(),
+        }
+        summary = (request.form.get("ical_summary_contains") or "").strip()
+        if summary:
+            probe["summary_contains"] = summary
+        try:
+            max_age = int(request.form.get("ical_max_sample_age_seconds") or 1800)
+            probe["max_sample_age_seconds"] = max_age
+        except ValueError:
+            pass
     else:
         flash("Unsupported probe kind.", "error")
         return redirect(url_for("admin_ui.rules_page"))
