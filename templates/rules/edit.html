@@ -108,9 +108,59 @@
     </p>
   </details>
 
+  {# v0.5.32 (B16 Phase 1D): power-targeted probes. #}
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">power_above</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "power_above",
+  "device_id": "dev_…",
+  "threshold_w": 1500,
+  "window_seconds": 300,
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Fires when avg watts over <code>window_seconds</code> exceeds <code>threshold_w</code>.
+      Stale samples (older than <code>max_sample_age_seconds</code>) return failure
+      with <code>reason='stale_sample'</code>.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">power_below</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "power_below",
+  "device_id": "dev_…",
+  "threshold_w": 5,
+  "window_seconds": 600,
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Fires when avg watts over <code>window_seconds</code> is under <code>threshold_w</code>.
+      Useful for "is the device actually drawing power?".
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">power_zero_while_on</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "power_zero_while_on",
+  "device_id": "dev_…",
+  "near_zero_threshold_w": 0.5,
+  "window_seconds": 300,
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      "Phantom failure" detector: fires when relay_on is true but the
+      device is drawing near zero. Catches appliances that died while
+      the smart-plug relay is still energized.
+    </p>
+  </details>
+
   <p class="muted" style="font-size:.85rem; margin-top:.6rem">
     Find your <code>source_id</code>s at
     <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>.
+    <code>device_id</code>s are on the
+    <a href="{{ url_for('admin_ui.list_devices_page') }}">Devices →</a> page.
   </p>
 </div>
 {% endblock %}
