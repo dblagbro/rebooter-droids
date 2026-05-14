@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.18] - 2026-05-14
+
+### Refactor — naming cleanup (drop underscore on cross-module watchdog helpers)
+
+Behavior-preserving rename. The v0.5.15 refactor-log flagged this as
+the next-recommended target; this ship lands it.
+
+Three watchdog_runtime helpers that are imported from outside the
+package shed their leading underscore (since the underscore claimed
+"internal" while their import site list said otherwise):
+
+| Old name | New name | External caller |
+|---|---|---|
+| `_run_probe` | `run_probe` | `services/watchdog.py::probe_now` |
+| `_record_event` | `record_event` | `services/watchdog.py::probe_now` |
+| `_resolve_target_devices` | `resolve_target_devices` | `services/schedule_runtime.py::_fire_power_cycle` |
+
+The underscore-prefixed names remain as **deprecated aliases** for
+one release so any third-party caller (or a stale Claude session)
+that still imports `_run_probe` keeps working. Remove the aliases
+in v0.6.x.
+
+Surveyed in passing: `_derive_central_status`, `_heartbeat_state_for`,
+`_serialize_assignment`, `_active_assignments_by_device`,
+`_latest_heartbeat_by_device` (all in `services/devices/`) are
+genuinely internal — used only inside the subpackage — so they keep
+the underscore per the v0.5.15 "internal to package" convention.
+Same for `_fire_action`, `_fire_cycle`, `_fire_hold_off` (only the
+target-resolution helper has cross-module use, so only that one was
+promoted).
+
+### Docs
+
+- `docs/architecture.md` — no source-layout change (rename only).
+- `docs/refactor-log.md` will be appended on the next structural
+  refactor; for naming-only renames the CHANGELOG is the durable
+  record.
+
 ## [0.5.17] - 2026-05-14
 
 ### Added — B17 Layer 1: Roku ECP integration + `roku_app_active` watchdog probe
