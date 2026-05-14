@@ -50,19 +50,11 @@ Audit hooks: `password_reset.requested` /
 
 ### B4. SMTP from coordinator-hub creds
 
-✅ **Partially shipped in v0.4.1.** Settings → Notifications tab
-shows env-var SMTP config + a "Send test email" form (audit-
-logged). The single internal helper `email_service.send(...)` is
-already in use by invitations + password-reset.
-
-⏳ **Still open:** *runtime-editable* SMTP settings. Today values
-come from env vars (`REBOOTER_SMTP_*`); the operator wanted them
-seeded from the coordinator-hub at deploy time, **OR** editable
-in the UI. Either of these is a follow-up — not blocking anything.
-
-> Status: **partially DONE; runtime-editable settings deferred to a
-> v0.4.2+ slice when an operator needs to change SMTP without a
-> container recreate.**
+✅ **CLOSED — shipped in v0.4.25.** SMTP is now DB-backed via
+`runtime_settings`: DB row → env-var fallback. Settings →
+Notifications tab editor lets the operator rotate creds without a
+container recreate. Audit hook `smtp.config_updated`. Test:
+`tests/qa/test_v0425_runtime_smtp.py`.
 
 ### B5. Get devices online (firmware-team coordination)
 
@@ -89,11 +81,18 @@ event log inline on the list page.
 
 ⏳ **Still queued (smaller v0.4.3+ items):**
 
-- Native ICMP ping probes (today the runtime falls back to TCP-80).
+- ✅ Native ICMP ping probes — **CLOSED in v0.5.13.** Real
+  ICMP via `iputils-ping`; success details carry `rtt_ms`,
+  failure carries `exit_code` + `stderr_tail`. Defensive
+  fallback to TCP-80 when ping binary is unavailable with an
+  explicit `fallback:tcp_80` marker.
 - `gateway` probe — no-op until device firmware reports its LAN
   gateway in heartbeat.
 - Tag-as-target dispatch — shape exists; resolution stubbed.
-- Status inbox attention item for `watchdog.firing`.
+  **Deferred** pending an operator decision on whether
+  `device_tags` is its own primitive or an extension of `groups`.
+- ✅ Status inbox attention item for `watchdog.firing` — shipped
+  in v0.4.7 (see B13 below).
 
 > Status: **DONE.** Operators can create rules and they fire on
 > threshold. Cooldown + recovery work. Operator-stop available via
@@ -519,7 +518,7 @@ Ship Layer 1 only against a single Roku for the Jeopardy use case:
 That's ~4 h of work and delivers 80% of the dream without needing
 EPG, OCR, or Spectrum-specific anything.
 
-### B19. Firmware scan misses content-changed binaries with same filename — **NEW 2026-05-11 PM**
+### B19. Firmware scan misses content-changed binaries with same filename — **FIXED in v0.5.13** (filed 2026-05-11 PM)
 
 Operator-hit 2026-05-11 PM: when the sub-firmware team replaces
 `rebooter-0.1.9-dev-central.bin` with a new build (same filename,
@@ -807,7 +806,7 @@ When the operator says "continue":
 The pause-state doc (`docs/PROJECT-STATE-2026-05-09-FULL-SYNC.md`)
 captures what's *been done*; this doc captures what's *next*.
 
-### B23. Split "offline" into real operator-meaningful states on Devices / Status - **NEW 2026-05-14**
+### B23. Split "offline" into real operator-meaningful states on Devices / Status - **FIXED in v0.5.12** (filed 2026-05-14)
 
 Observed live on `v0.5.11`:
 - `192.168.1.225` was shown as **offline** in the hub UI
@@ -837,7 +836,7 @@ Acceptance:
 - Operators can tell "plug is alive but not talking to central" from
   "plug is gone"
 
-### B24. Finish desired-name reconciliation beyond restore-after-reflash - **NEW 2026-05-14**
+### B24. Finish desired-name reconciliation beyond restore-after-reflash - **FIXED in v0.5.12** (filed 2026-05-14)
 
 Observed live on `v0.5.11` + current firmware fleet:
 - `.48` matches after manual `apply_config.device_name` push

@@ -177,17 +177,45 @@ def firmware_scan_submit():
         details={
             "discovered_count": len(result["discovered"]),
             "discovered_versions": [r["version"] for r in result["discovered"]],
+            "updated_count": len(result.get("updated") or []),
+            "updated_filenames": [u["filename"] for u in (result.get("updated") or [])],
             "skipped_existing": result["skipped_existing"],
             "errors": len(result["errors"]),
         },
     )
-    if result["discovered"]:
-        flash(
-            f"Discovered {len(result['discovered'])} new release"
-            f"{'' if len(result['discovered']) == 1 else 's'}: "
-            + ", ".join(r['version'] for r in result['discovered']),
-            "info",
+    # B19: emit one audit event per content-changed release so the
+    # unified history feed can answer "did someone secretly swap a
+    # firmware?" with a target-scoped row.
+    for u in (result.get("updated") or []):
+        audit_service.record(
+            "firmware.content_updated",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="firmware_release",
+            target_id=u["id"],
+            details={
+                "filename": u["filename"],
+                "channel": u["channel"],
+                "old_sha256": u["old_sha256"],
+                "new_sha256": u["new_sha256"],
+                "old_size_bytes": u["old_size_bytes"],
+                "new_size_bytes": u["new_size_bytes"],
+                "via": "ui",
+            },
         )
+    flash_parts: list[str] = []
+    if result["discovered"]:
+        flash_parts.append(
+            f"discovered {len(result['discovered'])}: "
+            + ", ".join(r['version'] for r in result['discovered'])
+        )
+    if result.get("updated"):
+        flash_parts.append(
+            f"content-changed {len(result['updated'])}: "
+            + ", ".join(u['filename'] for u in result['updated'])
+        )
+    if flash_parts:
+        flash("Firmware scan: " + " · ".join(flash_parts), "info")
     elif result["errors"]:
         flash(
             f"Scan completed with {len(result['errors'])} error(s); see audit log.",
@@ -218,9 +246,27 @@ def firmware_scan_api():
         target_id=None,
         details={
             "discovered_count": len(result["discovered"]),
+            "updated_count": len(result.get("updated") or []),
             "via": "api",
         },
     )
+    for u in (result.get("updated") or []):
+        audit_service.record(
+            "firmware.content_updated",
+            actor_user_id=g.current_user.id,
+            actor_email_snapshot=g.current_user.email,
+            target_type="firmware_release",
+            target_id=u["id"],
+            details={
+                "filename": u["filename"],
+                "channel": u["channel"],
+                "old_sha256": u["old_sha256"],
+                "new_sha256": u["new_sha256"],
+                "old_size_bytes": u["old_size_bytes"],
+                "new_size_bytes": u["new_size_bytes"],
+                "via": "api",
+            },
+        )
     return ok(result)
 
 
