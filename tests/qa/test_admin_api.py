@@ -89,6 +89,49 @@ def test_send_command_validates_apply_config(base_url, admin_headers):
     assert "admin_password" in r.json()["error"]["message"]
 
 
+def test_patch_device_rename_enqueues_apply_config_command(base_url, admin_headers):
+    devs = (
+        requests.get(f"{base_url}/api/v1/admin/devices", headers=admin_headers)
+        .json()["data"]["devices"]
+    )
+    if not devs:
+        return
+    dev_id = devs[0]["id"]
+    before = requests.get(
+        f"{base_url}/api/v1/admin/devices/{dev_id}",
+        headers=admin_headers,
+        timeout=10,
+    ).json()["data"]
+    new_name = f"qa-rename-{unique_suffix()}"
+    r = requests.patch(
+        f"{base_url}/api/v1/admin/devices/{dev_id}",
+        headers=admin_headers,
+        json={"display_name": new_name},
+        timeout=10,
+    )
+    assert r.status_code == 200, r.text
+
+    after = requests.get(
+        f"{base_url}/api/v1/admin/devices/{dev_id}",
+        headers=admin_headers,
+        timeout=10,
+    ).json()["data"]
+    assert after["display_name"] == new_name
+    assert any(
+        c["type"] == "apply_config"
+        and (c.get("payload") or {}).get("device_name") == new_name
+        for c in after.get("pending_commands", [])
+    ), "rename should enqueue apply_config.device_name for the unit"
+
+    # Revert the display name so later QA keeps the original fixture naming.
+    requests.patch(
+        f"{base_url}/api/v1/admin/devices/{dev_id}",
+        headers=admin_headers,
+        json={"display_name": before["display_name"]},
+        timeout=10,
+    )
+
+
 def test_send_unsupported_command_type_rejected(base_url, admin_headers):
     devs = (
         requests.get(f"{base_url}/api/v1/admin/devices", headers=admin_headers)

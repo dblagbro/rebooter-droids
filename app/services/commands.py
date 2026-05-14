@@ -42,6 +42,7 @@ APPLY_CONFIG_ALLOWED_TOP_LEVEL = {
     "internet",
     "device",
     "notifications",
+    "power",
 }
 
 

@@ -225,3 +225,50 @@ def test_firmware_assignment_initially_none(base_url, admin_headers):
     ) or not r.json()["data"]["assigned"], (
         "freshly registered device should not have a firmware assignment"
     )
+
+
+def test_power_samples_batch_ingest(base_url, admin_headers):
+    et = _mint_enrollment(base_url, admin_headers)["enrollment_token"]
+    reg = _register(base_url, et).json()["data"]
+    H = {"Authorization": f"Bearer {reg['device_token']}"}
+    samples = [
+        {
+            "sampled_at": "2026-05-14T00:00:00Z",
+            "source": "steady",
+            "v_v": 120.4,
+            "i_ma": 1450,
+            "p_w": 175.3,
+            "rssi_dbm": -61,
+            "chip_type": "CSE7766",
+        },
+        {
+            "sampled_uptime_seconds": 120,
+            "source": "synthetic",
+            "source_flags": 1,
+            "rssi_dbm": -63,
+            "chip_type": "CSE7766",
+        },
+    ]
+    r = requests.post(
+        f"{base_url}/api/v1/device/power-samples",
+        headers=H,
+        json={"device_id": reg["device_id"], "samples": samples},
+        timeout=10,
+    )
+    assert r.status_code == 200
+    assert r.json()["data"]["ingested"] == 2
+
+
+def test_power_samples_over_max_batch_rejected(base_url, admin_headers):
+    et = _mint_enrollment(base_url, admin_headers)["enrollment_token"]
+    reg = _register(base_url, et).json()["data"]
+    H = {"Authorization": f"Bearer {reg['device_token']}"}
+    samples = [{"source": "synthetic", "rssi_dbm": -60} for _ in range(3601)]
+    r = requests.post(
+        f"{base_url}/api/v1/device/power-samples",
+        headers=H,
+        json={"device_id": reg["device_id"], "samples": samples},
+        timeout=10,
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "validation_failed"

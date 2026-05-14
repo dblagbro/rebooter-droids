@@ -806,3 +806,56 @@ When the operator says "continue":
 
 The pause-state doc (`docs/PROJECT-STATE-2026-05-09-FULL-SYNC.md`)
 captures what's *been done*; this doc captures what's *next*.
+
+### B23. Split "offline" into real operator-meaningful states on Devices / Status - **NEW 2026-05-14**
+
+Observed live on `v0.5.11`:
+- `192.168.1.225` was shown as **offline** in the hub UI
+- local API still returned `200`
+- device still reported `central_enabled=true`,
+  `central_registered=true`
+- `central_state="firmware_check_transport_failed"`
+
+So "offline" currently conflates:
+- truly unreachable device
+- central heartbeat stale / transport failure
+- potentially other central-side failure modes
+
+Fix scope:
+- Devices page and Status page should surface at least:
+  - `online`
+  - `central stale` / `transport failed`
+  - `offline`
+- If possible, include the device-reported `central_state` as a chip
+  or secondary status sentence
+- Long-term: helper/peer reachability can become another dimension,
+  but not required for the first fix
+
+Acceptance:
+- A device like `.225` no longer presents identically to a truly dead
+  device like `.69`
+- Operators can tell "plug is alive but not talking to central" from
+  "plug is gone"
+
+### B24. Finish desired-name reconciliation beyond restore-after-reflash - **NEW 2026-05-14**
+
+Observed live on `v0.5.11` + current firmware fleet:
+- `.48` matches after manual `apply_config.device_name` push
+- `.30` hub name != local device name
+- `.225` hub name != local device name
+- `.207` hub name != local device name
+
+Interpretation:
+- `v0.5.8` restore-name auto-push is real
+- the broader desired-name contract is still incomplete
+
+Fix scope:
+- ordinary device rename must enqueue / reconcile `device_name`
+- hub should be able to detect and optionally surface name drift
+- this should eventually fold into B21 desired-config blob work
+
+Acceptance:
+- rename a device in the hub UI
+- device local UI / `/api/status` / `/api/config` converge to the
+  same name without requiring restore-after-reflash
+- at least one regression test covers the non-restore path

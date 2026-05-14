@@ -16,6 +16,7 @@ from app.services.deployments import (
 )
 from app.services.enrollment import EnrollmentError, consume_enrollment_token
 from app.services.events import ingest_events
+from app.services.events import ingest_power_samples
 from app.services.heartbeats import record_heartbeat
 
 bp = Blueprint("device_api", __name__)
@@ -209,6 +210,23 @@ def upload_events():
         return err("validation_failed", "events must be a list", status=400)
     try:
         n = ingest_events(device.id, events)
+    except ValueError as e:
+        return err("validation_failed", str(e), status=400)
+    return ok({"ingested": n})
+
+
+@bp.post("/power-samples")
+@device_auth_required
+def upload_power_samples():
+    body = request.get_json(silent=True) or {}
+    device = g.current_device
+    if body.get("device_id") and body["device_id"] != device.id:
+        return err("device_mismatch", "device_id mismatch.", status=400)
+    samples = body.get("samples") or []
+    if not isinstance(samples, list):
+        return err("validation_failed", "samples must be a list", status=400)
+    try:
+        n = ingest_power_samples(device.id, samples)
     except ValueError as e:
         return err("validation_failed", str(e), status=400)
     return ok({"ingested": n})

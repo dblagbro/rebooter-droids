@@ -10,10 +10,14 @@
     · {{ device.hardware_model or 'unknown model' }}
     · firmware {{ device.firmware_version or '—' }}
     {% if device.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
-    {% if device.central_management_enabled %}
-      <span class="badge">central</span>
+    {% if device.central_status == 'transport_stale' %}
+      <span class="badge amber" title="{{ device.central_status_reason }}">transport stale</span>
+    {% elif device.central_status == 'upgrade_pending' %}
+      <span class="badge amber" title="{{ device.central_status_reason }}">upgrade pending</span>
+    {% elif device.central_status in ('attention', 'central_stale') %}
+      <span class="badge red" title="{{ device.central_status_reason }}">{{ device.central_status_label }}</span>
     {% else %}
-      <span class="badge" title="opts out — local-only is healthy">local-only</span>
+      <span class="badge" title="{{ device.central_status_reason }}">{{ device.central_status_label }}</span>
     {% endif %}
     {% if device.is_protected %}
       <span class="badge red" title="power commands require explicit override">🔒 protected</span>
@@ -48,17 +52,36 @@
   {% if device.latest_heartbeat %}
     <p>Last seen <strong>{{ device.latest_heartbeat.received_at }}</strong></p>
     <ul>
+      <li>heartbeat_state: {{ device.heartbeat_state }}</li>
+      <li>central_status: {{ device.central_status_label }}</li>
       <li>mode: {{ device.latest_heartbeat.mode or '—' }}</li>
       <li>relay_on: {{ device.latest_heartbeat.relay_on }}</li>
       <li>health: {{ device.latest_heartbeat.health_state or '—' }}</li>
       <li>uptime_s: {{ device.latest_heartbeat.uptime_seconds or 0 }}</li>
       <li>incident_cycles: {{ device.latest_heartbeat.incident_cycles or 0 }}</li>
     </ul>
+    {% if device.active_firmware_assignment %}
+      <p class="muted" style="margin-top:0">
+        Firmware assignment:
+        state=<strong>{{ device.active_firmware_assignment.state }}</strong>,
+        target=<code>{{ device.active_firmware_assignment.target_version or '—' }}</code>,
+        last_reported=<code>{{ device.active_firmware_assignment.last_reported_version or device.firmware_version or '—' }}</code>.
+        {{ device.central_status_reason }}
+      </p>
+    {% endif %}
   {% else %}
     <p>
       <span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
       <span class="muted">— this device is enrolled but has not yet sent a first heartbeat. Check the firmware: is the device powered, on Wi-Fi, and configured with the correct <code>central_base_url</code>?</span>
     </p>
+    {% if device.active_firmware_assignment %}
+      <p class="muted" style="margin-top:0">
+        Firmware assignment:
+        state=<strong>{{ device.active_firmware_assignment.state }}</strong>,
+        target=<code>{{ device.active_firmware_assignment.target_version or '—' }}</code>.
+        {{ device.central_status_reason }}
+      </p>
+    {% endif %}
   {% endif %}
 </section>
 

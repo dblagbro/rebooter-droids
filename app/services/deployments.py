@@ -195,3 +195,61 @@ def mark_assignment_delivered(device_id: str) -> None:
             a.state = "delivered"
             a.updated_at = datetime.now(timezone.utc)
             session.add(a)
+
+
+def reconcile_assignment_reported_version(
+    session,
+    device_id: str,
+    reported_version: str | None,
+    *,
+    error_message: str | None = None,
+    reported_at: datetime | None = None,
+) -> None:
+    """Reconcile the active firmware assignment against the device's
+    latest reported firmware version.
+
+    The live soak surfaced a gap where deployments moved from
+    `pending` -> `delivered` when the device fetched `/device/firmware`,
+    but never advanced to `completed` after the device came back on the
+    target version. Heartbeat is the most trustworthy completion signal
+    we already have on the hub side, so we close the loop here.
+    """
+    normalized_version = (reported_version or "").strip() or None
+    if not device_id:
+        return
+
+    a = session.scalar(
+        select(DeploymentAssignment)
+        .where(
+            DeploymentAssignment.device_id == device_id,
+            DeploymentAssignment.state.in_(("pending", "delivered")),
+        )
+        .order_by(DeploymentAssignment.created_at.desc())
+        .limit(1)
+    )
+    if a is None:
+        return
+
+    now = reported_at or datetime.now(timezone.utc)
+    changed = False
+    if a.last_reported_version != normalized_version:
+        a.last_reported_version = normalized_version
+        changed = True
+
+    if error_message and a.error_message != error_message:
+        a.error_message = error_message
+        changed = True
+
+    release = session.get(FirmwareRelease, a.release_id)
+    target_version = (release.version or "").strip() if release else ""
+    if normalized_version and target_version and normalized_version == target_version:
+        if a.state != "completed":
+            a.state = "completed"
+            changed = True
+        if a.error_message is not None:
+            a.error_message = None
+            changed = True
+
+    if changed:
+        a.updated_at = now
+        session.add(a)
