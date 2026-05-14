@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.16] - 2026-05-14
+
+### Added — B15: Settings → Sync tab content
+
+Replaced the pre-decision stub on `/app/settings/sync` with a
+structured page reflecting the locked RFC-004 §10b Option-C design.
+
+The page now surfaces:
+- **This hub right now** — configured role, container hostname,
+  public base URL, active-device count, most-recent-heartbeat age.
+- **Today's reality** — single-hub explanation with the dual-URL
+  nginx semantics (both URLs share fate at the Postgres layer).
+- **Locked design** — Option-C summary (outbox_events + HMAC-bearer
+  cross-pull, idempotent apply, LWW conflict resolution, tombstone
+  rows for deletes, 1–3 s steady-state latency target).
+- **What will appear here once sync ships** — explicit forward-
+  looking inventory (peer status, replication health, operator
+  actions, conflict log).
+
+Backend (`app/blueprints/admin/settings.py::settings_sync_page`) now
+queries `Device` for the fleet count + max heartbeat timestamp and
+threads through the runtime envs (hostname, public base URL, hub
+role). Pure-read; no schema change.
+
+### Closed in BACKLOG (no code work)
+
+- **B5** — Get-devices-online firmware-team coordination. Firmware
+  team has been actively delivering since the original handoff
+  (0.1.3 → 0.1.17). Hub-side bugs surfaced by each cut were closed
+  as their own items (B19, B20, B22, B23, B24). Marked CLOSED in
+  BACKLOG.
+- **B12** — RFC-005 redlines were marked CLOSED 2026-05-10 already;
+  tidied the trailing prose to make the device-side-OTA ownership
+  explicit so future resumers don't think hub work is owed here.
+- **B20** — Live-DB inspection confirmed the production MAC dupe
+  (`dev_01KRH81ASVCMHZ7SXC72J0RHPH`) was cleaned up at some prior
+  point. Only `dev_01KR8127W5XMP6MDF34J0TXQP9` ("Erica's Subwoofer")
+  remains for MAC `C4:D8:D5:0C:F7:A5`. Schema + UI for restore-vs-
+  fresh-vs-decommission already shipped in v0.5.7; nothing left to
+  do. Marked RESOLVED in BACKLOG.
+
 ## [0.5.15] - 2026-05-14
 
 ### Refactor — service subpackages: `devices/` + `watchdog_runtime/`
