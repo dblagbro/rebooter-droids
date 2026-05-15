@@ -1,0 +1,176 @@
+{
+    "date":  "2026-05-14T21:01:03",
+    "base_url":  "http://192.168.1.48",
+    "checks":  [
+                   {
+                       "name":  "status healthy and normal mode",
+                       "passed":  true,
+                       "details":  "health=healthy; recovery=False; central=idle"
+                   },
+                   {
+                       "name":  "status requires auth",
+                       "passed":  true,
+                       "details":  "auth_required=True"
+                   },
+                   {
+                       "name":  "public config keeps safe central summary",
+                       "passed":  true,
+                       "details":  "registered=True; has_enrollment_token=True"
+                   },
+                   {
+                       "name":  "public config excludes secrets deeply",
+                       "passed":  true,
+                       "details":  "enabled,base_urls,device_alias,registered,has_enrollment_token,poll_interval_seconds,heartbeat_interval_seconds"
+                   },
+                   {
+                       "name":  "protected backup includes secrets",
+                       "passed":  true,
+                       "details":  "device_id_len=30; token_len=46"
+                   },
+                   {
+                       "name":  "unauth rejected /api/system/config-backup",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "wrong token rejected /api/system/config-backup",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "unauth rejected /api/system/heartbeat-preview",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "wrong token rejected /api/system/heartbeat-preview",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "unauth rejected /api/system/central-diagnostic",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "wrong token rejected /api/system/central-diagnostic",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "config save missing body returns 400",
+                       "passed":  true,
+                       "details":  "status=400"
+                   },
+                   {
+                       "name":  "config save invalid json returns 400",
+                       "passed":  true,
+                       "details":  "status=400"
+                   },
+                   {
+                       "name":  "config save wrong token returns 401",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "relay wrong token returns 401",
+                       "passed":  true,
+                       "details":  "status=401"
+                   },
+                   {
+                       "name":  "405 /api/relay/on",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "405 /api/relay/off",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "405 /api/relay/toggle",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "405 /api/config/save",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "405 /api/system/reboot",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "405 /api/system/recovery-boot",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "405 /api/system/factory-reset",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "405 /api/system/ota",
+                       "passed":  true,
+                       "details":  "status=405"
+                   },
+                   {
+                       "name":  "central diagnostic has exactly one default target",
+                       "passed":  true,
+                       "details":  "count=1"
+                   },
+                   {
+                       "name":  "central diagnostic target healthy",
+                       "passed":  true,
+                       "details":  "code=200; url=https://www.voipguru.org/rebooter/api/v1/version"
+                   },
+                   {
+                       "name":  "events are sequenced monotonically",
+                       "passed":  true,
+                       "details":  "seqs=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32"
+                   },
+                   {
+                       "name":  "events include multiple boot ids",
+                       "passed":  true,
+                       "details":  "boot_ids=1,2,3,4,5,6,7"
+                   },
+                   {
+                       "name":  "events all expose ts_basis",
+                       "passed":  true,
+                       "details":  "non_uptime_basis_count=0"
+                   },
+                   {
+                       "name":  "config save accepted with auth",
+                       "passed":  true,
+                       "details":  "status=200"
+                   },
+                   {
+                       "name":  "config save persisted temp monitor interval",
+                       "passed":  true,
+                       "details":  "saved=6; expected=6"
+                   },
+                   {
+                       "name":  "config save revert accepted with auth",
+                       "passed":  true,
+                       "details":  "status=200"
+                   },
+                   {
+                       "name":  "config save reverted monitor interval",
+                       "passed":  true,
+                       "details":  "reverted=5; expected=5"
+                   },
+                   {
+                       "name":  "central base_urls persist without legacy secondary after save cycle",
+                       "passed":  true,
+                       "details":  "https://www.voipguru.org/rebooter"
+                   }
+               ],
+    "summary":  {
+                    "total":  33,
+                    "passed":  33,
+                    "failed":  0
+                }
+}

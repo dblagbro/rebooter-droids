@@ -1,0 +1,31 @@
+{
+    "date":  "2026-05-15T12:23:57",
+    "device":  "192.168.1.48",
+    "firmware":  "0.1.22-dev-central-safe",
+    "baseline":  "healthy named/authenticated/registered",
+    "recovery_boot":  {
+                          "triggered":  true,
+                          "phone_reprovision_required":  true,
+                          "returned_to_lan":  true,
+                          "returned_to_normal_mode":  true,
+                          "evidence":  "boot event: Recovery provisioning completed; rebooting into normal mode"
+                      },
+    "factory_reset":  {
+                          "triggered":  true,
+                          "returned_to_lan":  true,
+                          "clean_name":  "Rebooter",
+                          "auth_required":  false,
+                          "central_enabled":  false,
+                          "central_registered":  false,
+                          "recovery_mode":  false
+                      },
+    "restore":  {
+                    "named_state_restored":  true,
+                    "auth_restored":  true,
+                    "central_enabled":  true,
+                    "central_identity_present":  true,
+                    "final_central_state":  "poll_transport_failed",
+                    "note":  "identity returned; central transport still settling after restore"
+                },
+    "remaining_gap":  "physical button hold proof still pending"
+}

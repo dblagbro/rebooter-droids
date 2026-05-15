@@ -10,6 +10,7 @@ from app.services.commands import expire_overdue_commands
 from app.services.device_power import compute_daily_rollups
 from app.services.external_sensors import poll_all_due as external_sensors_poll_all_due
 from app.services.schedule_runtime import tick as schedule_tick
+from app.services.sync_replicator import tick as sync_replicator_tick
 from app.services.watchdog_runtime import tick as watchdog_tick
 
 log = logging.getLogger(__name__)
@@ -83,6 +84,20 @@ def _audit_prune_job():
         log.info("audit prune: %s", stats)
 
 
+def _sync_replicator_job():
+    """v0.5.48 (B11 Phase 5): multi-hub sync replicator. Polls peer
+    hubs' /api/v1/sync/since endpoints every 3s, fetches outbox events,
+    applies them locally, updates sync cursors. RFC-004 Option C
+    target: ~1-3s steady-state latency."""
+    try:
+        stats = sync_replicator_tick()
+    except Exception:
+        log.exception("sync replicator tick crashed")
+        return
+    if stats.get("events_applied") or stats.get("errors"):
+        log.info("sync replicator: %s", stats)
+
+
 def start() -> None:
     """Start the in-process scheduler. Guarded so only one Gunicorn worker runs jobs."""
     global _scheduler
@@ -97,6 +112,9 @@ def start() -> None:
     sched.add_job(
         _external_sensors_job, "interval", seconds=30, id="external_sensors_tick"
     )
+    # v0.5.48 (B11 Phase 5): multi-hub sync replicator every 3s for
+    # ~1-3s steady-state latency per RFC-004 target.
+    sched.add_job(_sync_replicator_job, "interval", seconds=3, id="sync_replicator")
     # v0.5.29 (B16 Phase 1C): nightly daily rollups at 02:00 UTC.
     # Cron trigger so the run happens after the day boundary; aggregating
     # the prior full UTC day. Idempotent — re-running the same day
@@ -123,6 +141,7 @@ def start() -> None:
         "APScheduler started: expire_commands every 30s, "
         "watchdog_tick every 10s, schedule_tick every 30s, "
         "external_sensors_tick every 30s, "
+        "sync_replicator every 3s, "
         "power_rollups_daily @ 02:00 UTC, "
         "audit_prune_daily @ 03:00 UTC"
     )
