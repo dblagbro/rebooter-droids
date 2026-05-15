@@ -234,6 +234,48 @@
     </div>
   {% endif %}
 
+  {# v0.5.59 (P1.3): interactive 24h watts time-series. Server-rendered
+     SVG — gaps for empty buckets, native <title> hover tooltips on each
+     point (CSP-safe — no JS). The 14-day rollup sparkline below stays
+     as the longer trend view. #}
+  {% set series = device.power_intraday_series %}
+  {% if series and series.point_count %}
+    {% set bk = series.buckets %}
+    {% set vmax = series.max_w if (series.max_w and series.max_w > 0) else 1 %}
+    {% set cw = 600 %}
+    {% set ch = 130 %}
+    {% set base = 118 %}
+    {% set plot_h = 104 %}
+    {% set step = cw / (bk|length - 1) if bk|length > 1 else cw %}
+    <div class="v3-card" style="margin-bottom:1rem; padding:.6rem .8rem">
+      <div class="muted" style="font-size:.75rem; margin-bottom:.3rem">
+        Last 24 h — average watts ({{ series.point_count }} of {{ bk|length }} time buckets reporting · hover a point for detail)
+      </div>
+      <svg viewBox="0 0 {{ cw }} {{ ch }}" width="100%" style="height:{{ ch }}px" role="img" aria-label="24-hour average-watts time series">
+        <line x1="0" y1="{{ base }}" x2="{{ cw }}" y2="{{ base }}" stroke="rgba(128,128,128,.3)" stroke-width="1"/>
+        {% for b in bk %}
+          {% if b.avg_w is not none %}
+            {% set x = '%.1f'|format(loop.index0 * step) %}
+            {% set y = '%.1f'|format(base - (b.avg_w / vmax) * plot_h) %}
+            {% if not loop.last and bk[loop.index].avg_w is not none %}
+              {% set nx = '%.1f'|format(loop.index * step) %}
+              {% set ny = '%.1f'|format(base - (bk[loop.index].avg_w / vmax) * plot_h) %}
+              <line x1="{{ x }}" y1="{{ y }}" x2="{{ nx }}" y2="{{ ny }}" stroke="var(--accent-fg,#3b82f6)" stroke-width="1.5"/>
+            {% endif %}
+            <circle cx="{{ x }}" cy="{{ y }}" r="2.2" fill="{{ '#d97706' if b.synthetic and not b.real else 'var(--accent-fg,#3b82f6)' }}">
+              <title>{{ b.t[11:16] }} UTC — {{ '%.1f'|format(b.avg_w) }} W ({{ b.sample_count }} sample{{ '' if b.sample_count == 1 else 's' }}{% if b.synthetic %}, {{ b.synthetic }} synthetic{% endif %})</title>
+            </circle>
+          {% endif %}
+        {% endfor %}
+      </svg>
+      <div class="muted" style="font-size:.7rem; display:flex; justify-content:space-between">
+        <span>{{ bk[0].t[11:16] }} UTC</span>
+        <span>peak {{ '%.1f'|format(series.max_w) }} W</span>
+        <span>{{ bk[-1].t[11:16] }} UTC</span>
+      </div>
+    </div>
+  {% endif %}
+
   {# v0.5.29 (B16 Phase 1C): 14-day avg-watts sparkline from
      device_power_rollups. Inline SVG — no JS dep. Empty array means
      the rollup job hasn't run yet (or no samples to aggregate); we

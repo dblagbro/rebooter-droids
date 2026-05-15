@@ -63,6 +63,14 @@ This is the next session's research charter.
   the session; can run any time (~10 min).
 - **`.225` / `.69` reflash** — held for firmware-team bench
   testing. Resume when firmware team is done.
+- **Enable SNMP on the UniFi gear** (operator action) — the v0.5.58
+  SNMP integration (P2.2/P2.3) is shipped and ready, but UniFi serves
+  SNMP only once it is turned on in the UniFi Network controller
+  (Settings → System → SNMP → enable SNMPv1/v2c, set a community
+  string). Until then an `snmp` source pointed at a UniFi device just
+  records a poll timeout. Once enabled, add the source on
+  `/app/settings/integrations` and tell hub-Claude the device IP for a
+  live-poll verification. Filed 2026-05-15 per operator.
 
 ---
 
