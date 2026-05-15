@@ -20,6 +20,8 @@ import http.client
 import json
 import logging
 import re
+import shutil
+import subprocess
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
@@ -62,18 +64,28 @@ def _serialize(row: ExternalSensorSource, *, latest_sample: dict | None = None) 
     }
 
 
-_SECRET_CONFIG_KEYS = ("token", "api_key", "jwt")
+_SECRET_CONFIG_KEYS = ("token", "api_key", "jwt", "community")
+# v0.5.58: SNMPv3 secrets live nested under config.v3.
+_SECRET_V3_KEYS = ("auth_key", "priv_key")
 
 
 def _redact_config(kind: str, config: dict) -> dict:
     """Strip secret fields (HA bearer tokens, SolarEdge API keys,
-    Enphase JWTs, etc.) from the admin-facing source serialization."""
+    Enphase JWTs, SNMP community strings + v3 keys) from the
+    admin-facing source serialization."""
     if not config:
         return {}
     out = dict(config)
     for key in _SECRET_CONFIG_KEYS:
         if out.get(key):
             out[key] = "********"
+    v3 = out.get("v3")
+    if isinstance(v3, dict):
+        v3 = dict(v3)
+        for key in _SECRET_V3_KEYS:
+            if v3.get(key):
+                v3[key] = "********"
+        out["v3"] = v3
     return out
 
 
@@ -129,7 +141,7 @@ def create_source(
     host = (host or "").strip()
     # Default ports per kind. Kinds that don't need a host (weather,
     # ical, solaredge — cloud) skip host/port validation entirely.
-    needs_host = kind in ("roku", "home_assistant", "enphase_envoy")
+    needs_host = kind in ("roku", "home_assistant", "enphase_envoy", "snmp")
     if needs_host and not host:
         raise ValueError("host is required for this kind")
     if port is None:
@@ -139,6 +151,8 @@ def create_source(
             port = 8123
         elif kind == "enphase_envoy":
             port = 80
+        elif kind == "snmp":
+            port = 161
         else:
             port = 0
     try:
@@ -232,6 +246,49 @@ def _validate_kind_config(kind: str, config: dict) -> dict:
         jwt = str(config.get("jwt") or "").strip()
         if jwt:
             out["jwt"] = jwt
+        return out
+    if kind == "snmp":
+        # v0.5.58 (P2.2/P2.3): router/managed-switch SNMP poll. v2c uses
+        # a community string; v3 uses a nested user/auth/priv block.
+        version = str(config.get("version") or "2c").strip().lower()
+        if version not in ("2c", "3"):
+            raise ValueError("snmp config.version must be '2c' or '3'")
+        out: dict = {"version": version}
+        if version == "2c":
+            community = str(config.get("community") or "").strip()
+            if not community:
+                raise ValueError("snmp config.community is required for SNMP v2c")
+            out["community"] = community
+        else:
+            v3 = config.get("v3") or {}
+            if not isinstance(v3, dict):
+                raise ValueError("snmp config.v3 must be an object")
+            user = str(v3.get("user") or "").strip()
+            auth_key = str(v3.get("auth_key") or "").strip()
+            priv_key = str(v3.get("priv_key") or "").strip()
+            if not user or not auth_key or not priv_key:
+                raise ValueError(
+                    "snmp v3 requires v3.user, v3.auth_key, and v3.priv_key"
+                )
+            auth_proto = str(v3.get("auth_proto") or "SHA").strip().upper()
+            priv_proto = str(v3.get("priv_proto") or "AES").strip().upper()
+            if auth_proto not in ("SHA", "MD5"):
+                raise ValueError("snmp v3.auth_proto must be SHA or MD5")
+            if priv_proto not in ("AES", "DES"):
+                raise ValueError("snmp v3.priv_proto must be AES or DES")
+            out["v3"] = {
+                "user": user, "auth_proto": auth_proto, "auth_key": auth_key,
+                "priv_proto": priv_proto, "priv_key": priv_key,
+            }
+        # Optional interface allow-list — limits which interfaces are
+        # stored in the sample (a 48-port switch otherwise stores 48).
+        iface_filter = config.get("interface_filter")
+        if iface_filter:
+            if not isinstance(iface_filter, list):
+                raise ValueError("snmp config.interface_filter must be a list")
+            names = [str(x).strip() for x in iface_filter if str(x).strip()]
+            if names:
+                out["interface_filter"] = names
         return out
     return {}
 
@@ -350,6 +407,8 @@ def _poll_kind(src: ExternalSensorSource) -> dict:
         return _poll_solaredge(src.config or {})
     if src.kind == "enphase_envoy":
         return _poll_enphase_envoy(src.host, src.port, src.config or {})
+    if src.kind == "snmp":
+        return _poll_snmp(src.host, src.port, src.config or {})
     raise ValueError(f"unsupported source kind: {src.kind}")
 
 
@@ -834,7 +893,208 @@ def _poll_enphase_envoy(host: str, port: int, config: dict) -> dict:
     }
 
 
+# ── SNMP (router / managed-switch IF-MIB poll) ──────────────────────────
+
+
+SNMP_POLL_TIMEOUT_SECONDS = 12
+
+# IF-MIB / ifXTable column OIDs. ifTable entries are
+# 1.3.6.1.2.1.2.2.1.<col>.<ifIndex>; ifXTable entries are
+# 1.3.6.1.2.1.31.1.1.1.<col>.<ifIndex>. See the design note
+# docs/notes/2026-05-15-p2-router-switch-telemetry-design.md §2.1.
+_SNMP_IFTABLE_OID = "1.3.6.1.2.1.2.2.1"
+_SNMP_IFXTABLE_OID = "1.3.6.1.2.1.31.1.1.1"
+_SNMP_IFTABLE_COLS = {
+    "8": "oper_status",
+    "13": "in_discards",
+    "14": "in_errors",
+    "19": "out_discards",
+    "20": "out_errors",
+}
+_SNMP_IFXTABLE_COLS = {
+    "1": "if_name",
+    "6": "in_octets",   # ifHCInOctets — 64-bit
+    "10": "out_octets",  # ifHCOutOctets — 64-bit
+    "15": "speed_mbps",  # ifHighSpeed
+}
+_SNMP_OPER_STATUS = {
+    "1": "up", "2": "down", "3": "testing", "4": "unknown",
+    "5": "dormant", "6": "notPresent", "7": "lowerLayerDown",
+}
+
+
+def _snmp_auth_args(config: dict) -> list[str]:
+    """Build the net-snmp version/auth argv fragment from a validated
+    snmp config (see `_validate_kind_config`)."""
+    version = (config.get("version") or "2c").strip().lower()
+    if version == "3":
+        v3 = config.get("v3") or {}
+        return [
+            "-v", "3", "-l", "authPriv",
+            "-u", str(v3.get("user") or ""),
+            "-a", str(v3.get("auth_proto") or "SHA"),
+            "-A", str(v3.get("auth_key") or ""),
+            "-x", str(v3.get("priv_proto") or "AES"),
+            "-X", str(v3.get("priv_key") or ""),
+        ]
+    return ["-v", "2c", "-c", str(config.get("community") or "")]
+
+
+def _run_snmp(binary: str, auth: list[str], target: str, oid: str) -> str:
+    """Run one net-snmp CLI call, return stdout. `-Oqn` = quick output,
+    numeric OIDs (no MIB files needed). Raises RuntimeError on a
+    non-zero exit, surfacing the net-snmp error line."""
+    bin_path = shutil.which(binary)
+    if not bin_path:
+        raise RuntimeError(f"net-snmp not installed in container ({binary} missing)")
+    try:
+        proc = subprocess.run(
+            [bin_path, "-Oqn", "-t", "5", "-r", "1", *auth, target, oid],
+            capture_output=True, text=True,
+            timeout=SNMP_POLL_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"snmp timeout polling {target}") from None
+    if proc.returncode != 0:
+        # net-snmp prints a one-time "Created directory: /var/lib/snmp/…"
+        # notice to stderr on first run — filter that (and blank lines)
+        # so the surfaced error is the real one (Timeout / Authentication
+        # failure / Unknown host …), not the housekeeping noise.
+        lines = [
+            ln.strip()
+            for ln in (proc.stderr or proc.stdout or "").splitlines()
+            if ln.strip() and not ln.strip().startswith("Created directory:")
+        ]
+        raise RuntimeError(f"snmp error: {lines[0] if lines else 'unknown'}")
+    return proc.stdout
+
+
+def _parse_snmp_table(stdout: str, base_oid: str, cols: dict) -> dict:
+    """Parse `-Oqn` walk output into {if_index: {field: value}}.
+
+    Each line is `.<oid> <value>` — the OID's last component is the
+    ifIndex and the one before it is the column number.
+    """
+    out: dict[str, dict] = {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        oid, value = parts[0].lstrip("."), parts[1].strip()
+        segs = oid.split(".")
+        if len(segs) < 2:
+            continue
+        col, if_index = segs[-2], segs[-1]
+        field = cols.get(col)
+        if field is None:
+            continue
+        out.setdefault(if_index, {})[field] = value
+    return out
+
+
+def _poll_snmp(host: str, port: int, config: dict) -> dict:
+    """v0.5.58 (P2.2/P2.3): poll a router/managed-switch IF-MIB over SNMP.
+
+    Shells out to net-snmp `snmpbulkwalk`/`snmpget` (the same
+    subprocess pattern the watchdog ping probe uses) — two table walks
+    + one scalar get. Raw monotonic counters are stored as-is; the
+    watchdog rate probes compute deltas between consecutive samples.
+    """
+    target = f"{host}:{port or 161}"
+    auth = _snmp_auth_args(config)
+
+    iftable = _parse_snmp_table(
+        _run_snmp("snmpbulkwalk", auth, target, _SNMP_IFTABLE_OID),
+        _SNMP_IFTABLE_OID, _SNMP_IFTABLE_COLS,
+    )
+    ifxtable = _parse_snmp_table(
+        _run_snmp("snmpbulkwalk", auth, target, _SNMP_IFXTABLE_OID),
+        _SNMP_IFXTABLE_OID, _SNMP_IFXTABLE_COLS,
+    )
+    # Scalars — sysName + sysUptime in one get.
+    sys_out = _run_snmp("snmpget", auth, target,
+                        "1.3.6.1.2.1.1.5.0 1.3.6.1.2.1.1.3.0")
+    sys_lines = [ln.strip() for ln in sys_out.splitlines() if ln.strip()]
+    sys_name = sys_lines[0].split(None, 1)[-1].strip().strip('"') if sys_lines else None
+    sys_uptime_ticks = None
+    if len(sys_lines) > 1:
+        try:
+            sys_uptime_ticks = int(sys_lines[1].split(None, 1)[-1].strip())
+        except (ValueError, IndexError):
+            sys_uptime_ticks = None
+
+    def _int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    iface_filter = config.get("interface_filter") or None
+    interfaces: dict[str, dict] = {}
+    for if_index in set(iftable) | set(ifxtable):
+        ift = iftable.get(if_index, {})
+        ifx = ifxtable.get(if_index, {})
+        name = (ifx.get("if_name") or "").strip().strip('"') or f"if{if_index}"
+        if iface_filter and name not in iface_filter:
+            continue
+        status_raw = ift.get("oper_status")
+        interfaces[name] = {
+            "if_index": _int(if_index),
+            "oper_status": _SNMP_OPER_STATUS.get(str(status_raw), str(status_raw)),
+            "speed_mbps": _int(ifx.get("speed_mbps")),
+            "in_octets": _int(ifx.get("in_octets")),
+            "out_octets": _int(ifx.get("out_octets")),
+            "in_errors": _int(ift.get("in_errors")),
+            "out_errors": _int(ift.get("out_errors")),
+            "in_discards": _int(ift.get("in_discards")),
+            "out_discards": _int(ift.get("out_discards")),
+        }
+    up_count = sum(1 for i in interfaces.values() if i["oper_status"] == "up")
+    return {
+        "modality": "network",
+        "sys_name": sys_name,
+        "sys_uptime_seconds": (
+            sys_uptime_ticks // 100 if sys_uptime_ticks is not None else None
+        ),
+        "interface_count": len(interfaces),
+        "interfaces_up": up_count,
+        "interfaces": interfaces,
+    }
+
+
 # ── consumed by the watchdog probes ─────────────────────────────────────
+
+
+def last_two_samples(
+    source_id: str, *, max_age_seconds: int = 600
+) -> tuple[dict, dict] | None:
+    """v0.5.58 (P2.2/P2.3): return the (newer, older) two most-recent
+    samples for a source, used by the SNMP rate probes to compute a
+    counter delta. Returns None if there are fewer than two samples or
+    the *newer* one is already older than `max_age_seconds`.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    with session_scope() as session:
+        rows = list(
+            session.scalars(
+                select(ExternalSensorSample)
+                .where(ExternalSensorSample.source_id == source_id)
+                .order_by(ExternalSensorSample.sampled_at.desc())
+                .limit(2)
+            )
+        )
+        if len(rows) < 2:
+            return None
+        newer, older = rows[0], rows[1]
+        if newer.sampled_at < cutoff:
+            return None
+        return (
+            {"sampled_at": newer.sampled_at, "payload": newer.payload or {}},
+            {"sampled_at": older.sampled_at, "payload": older.payload or {}},
+        )
 
 
 def latest_sample(source_id: str, *, max_age_seconds: int = 120) -> dict | None:
