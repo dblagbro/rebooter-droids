@@ -128,3 +128,49 @@ def me():
             "role": getattr(u, "role", "admin"),
         }
     )
+
+
+# ── Signup Requests (v0.5.39) ──────────────────────────────────────────────
+
+@bp.post("/signup-request")
+@limiter.limit("10 per hour")
+def create_signup_request_api():
+    """v0.5.39: Public endpoint for self-service signup requests.
+
+    Rate-limited to prevent spam. Sends email notification to admins.
+    """
+    body = request.get_json(silent=True) or request.form.to_dict()
+    email = (body.get("email") or "").strip()
+    display_name = (body.get("display_name") or "").strip()
+    message = (body.get("message") or "").strip() or None
+
+    from app.services.signup_requests import (
+        SignupRequestError,
+        create_signup_request,
+    )
+
+    try:
+        signup_req = create_signup_request(
+            email=email,
+            display_name=display_name,
+            message=message,
+        )
+    except SignupRequestError as e:
+        return err(e.code, e.message, status=400)
+
+    # Send email notification to all admins
+    try:
+        from app.services.email import notify_admins_of_signup_request
+        notify_admins_of_signup_request(signup_req)
+    except Exception:
+        current_app.logger.exception("Failed to send signup request notification")
+
+    return ok(
+        {
+            "id": signup_req.id,
+            "email": signup_req.email,
+            "status": "pending",
+            "message": "Your request has been submitted. An admin will review it shortly.",
+        },
+        status=201,
+    )
