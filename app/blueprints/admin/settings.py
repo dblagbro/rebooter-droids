@@ -545,3 +545,111 @@ def settings_theme_submit():
     # doesn't keep sending it.
     resp.delete_cookie("theme")
     return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sync settings (v0.5.48 / B11 Phase 7)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@admin_ui_bp.get("/settings/sync")
+@admin_required_ui
+def settings_sync_page():
+    """Settings → Sync tab (RFC-004 Option C multi-hub sync config).
+
+    v0.5.48 (B11 Phase 7): operator-facing UI for:
+    - Enable/disable sync replicator
+    - Configure this hub's identifier + HMAC key
+    - Configure peer hubs (JSON list)
+    - View sync status (outbox depth, peer cursors)
+    """
+    import json
+    import requests
+
+    from app.services import runtime_settings as rs
+
+    # Get sync configuration
+    sync_enabled = rs.get("sync.enabled", default=False)
+    hub_id = rs.get("sync.hub_id", default="www")
+    hmac_key = rs.get("sync.hmac_key", default="")
+    peer_hubs_json = rs.get("sync.peer_hubs", default="[]")
+
+    # Parse peer_hubs for display
+    if isinstance(peer_hubs_json, str):
+        peer_hubs = peer_hubs_json
+    else:
+        peer_hubs = json.dumps(peer_hubs_json, indent=2)
+
+    # Fetch sync status from API
+    sync_status = None
+    try:
+        resp = requests.get(
+            "http://localhost:8090/api/v1/sync/status",
+            headers={"Authorization": f"Bearer {g.current_user.get_bearer_token()}"},
+            timeout=5,
+        )
+        if resp.ok:
+            sync_status = resp.json()
+    except Exception:
+        pass  # Sync status unavailable
+
+    return render_template(
+        "settings/sync.html",
+        **_ctx(
+            {
+                "active": "settings",
+                "settings_tab": "sync",
+                "sync_enabled": sync_enabled,
+                "hub_id": hub_id,
+                "hmac_key": hmac_key,
+                "peer_hubs": peer_hubs,
+                "sync_status": sync_status,
+            }
+        ),
+    )
+
+
+@admin_ui_bp.post("/settings/sync")
+@admin_required_ui
+def settings_sync_save_submit():
+    """Save sync settings from the Settings → Sync form."""
+    import json
+
+    from app.services import runtime_settings as rs
+
+    # Parse and validate inputs
+    sync_enabled = request.form.get("sync_enabled", "false").strip().lower() == "true"
+    hub_id = request.form.get("hub_id", "").strip() or "www"
+    hmac_key = request.form.get("hmac_key", "").strip()
+    peer_hubs_raw = request.form.get("peer_hubs", "").strip()
+
+    # Validate peer_hubs JSON
+    try:
+        if peer_hubs_raw:
+            peer_hubs = json.loads(peer_hubs_raw)
+            if not isinstance(peer_hubs, list):
+                raise ValueError("peer_hubs must be a JSON array")
+        else:
+            peer_hubs = []
+    except (json.JSONDecodeError, ValueError) as e:
+        flash(f"Invalid peer_hubs JSON: {e}", "error")
+        return redirect(url_for("admin_ui.settings_sync_page"))
+
+    # Validate HMAC key format (if provided)
+    if hmac_key:
+        try:
+            bytes.fromhex(hmac_key)
+            if len(hmac_key) != 64:
+                raise ValueError("HMAC key must be 64 hex characters (32 bytes)")
+        except (ValueError, TypeError) as e:
+            flash(f"Invalid HMAC key: {e}", "error")
+            return redirect(url_for("admin_ui.settings_sync_page"))
+
+    # Save settings
+    rs.set_("sync.enabled", sync_enabled, user_id=g.current_user.id)
+    rs.set_("sync.hub_id", hub_id, user_id=g.current_user.id)
+    if hmac_key:
+        rs.set_("sync.hmac_key", hmac_key, user_id=g.current_user.id)
+    rs.set_("sync.peer_hubs", json.dumps(peer_hubs), user_id=g.current_user.id)
+
+    flash("Sync settings saved", "success")
+    return redirect(url_for("admin_ui.settings_sync_page"))
