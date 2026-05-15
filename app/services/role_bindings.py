@@ -259,3 +259,219 @@ def can_act_on_device(user_id: str, device_id: str, role_needed: str) -> bool:
 def can_act_on_site(user_id: str, site_id: str, role_needed: str) -> bool:
     eff = effective_site_ids(user_id, role_needed)
     return eff == ALL_SENTINEL or site_id in eff
+
+
+def effective_group_ids(user_id: str, role_needed: str) -> str | set[str]:
+    """All group_ids the user can act on at the requested role tier.
+    Returns ``"ALL"`` for a global binding, else the set of the user's
+    direct group bindings. A `site` binding does NOT imply group access —
+    in the binding model a group is not nested under a site (the two are
+    parallel device-set sources, see `effective_device_ids`)."""
+    with session_scope() as session:
+        bindings = list(
+            session.scalars(
+                select(RoleBinding).where(RoleBinding.user_id == user_id)
+            )
+        )
+        for b in bindings:
+            if b.scope_type == SCOPE_GLOBAL and _role_satisfies(b.role, role_needed):
+                return ALL_SENTINEL
+        return {
+            b.scope_id
+            for b in bindings
+            if b.scope_type == SCOPE_GROUP
+            and _role_satisfies(b.role, role_needed)
+            and b.scope_id is not None
+        }
+
+
+def can_act_on_group(user_id: str, group_id: str, role_needed: str) -> bool:
+    eff = effective_group_ids(user_id, role_needed)
+    return eff == ALL_SENTINEL or group_id in eff
+
+
+# ── SHADOW-MODE ENFORCEMENT (A2 — v0.5.35, B1 RBAC Phase 1) ──────────────
+# The resolvers above answer "can this user act on X?". The require_*
+# helpers below turn that answer into a *gate*: in shadow mode a miss is
+# logged as an `rbac.shadow_deny` audit row and the request still proceeds
+# (legacy `role_required_*` stays authoritative); in enforce mode a miss
+# raises RbacScopeDenied. The ONLY difference between the two modes is the
+# `rbac.enforce_mode` runtime setting — there is no code branch to flip,
+# so the A8 cut-over is a single setting toggle with no redeploy.
+
+ENFORCE_MODE_SHADOW = "shadow"
+ENFORCE_MODE_ENFORCE = "enforce"
+
+RBAC_ENFORCE_MODE_KEY = "rbac.enforce_mode"
+RBAC_ENFORCE_MODE_ENV = "REBOOTER_RBAC_ENFORCE_MODE"
+
+
+class RbacScopeDenied(Exception):
+    """Raised by ``require_can_act_on_*`` when ``rbac.enforce_mode`` is
+    ``enforce`` and the caller's role bindings do not cover the target
+    resource. In shadow mode this is never raised — the miss is logged
+    as an audit row instead and the request proceeds."""
+
+    def __init__(
+        self,
+        scope_type: str,
+        scope_id: str | None,
+        role_needed: str,
+        reason: str = "out_of_scope",
+    ):
+        self.scope_type = scope_type
+        self.scope_id = scope_id
+        self.role_needed = role_needed
+        self.reason = reason
+        super().__init__(
+            f"caller may not act on {scope_type}:{scope_id} at role '{role_needed}'"
+        )
+
+
+def enforce_mode() -> str:
+    """Current RBAC enforcement mode — ``shadow`` (default) or
+    ``enforce``. Runtime-toggleable via the ``rbac.enforce_mode``
+    setting; takes effect immediately with no container restart."""
+    from app.services import runtime_settings
+
+    raw = runtime_settings.get(
+        RBAC_ENFORCE_MODE_KEY,
+        env_var=RBAC_ENFORCE_MODE_ENV,
+        default=ENFORCE_MODE_SHADOW,
+    )
+    return (
+        ENFORCE_MODE_ENFORCE
+        if str(raw).strip().lower() == ENFORCE_MODE_ENFORCE
+        else ENFORCE_MODE_SHADOW
+    )
+
+
+def _current_user():
+    """Best-effort fetch of the request's authenticated user. The role
+    decorators set ``g.current_user``; outside a request context this is
+    simply ``None`` and the gate becomes a no-op."""
+    try:
+        from flask import g
+
+        return getattr(g, "current_user", None)
+    except Exception:
+        return None
+
+
+def _request_route() -> tuple[str | None, str | None]:
+    try:
+        from flask import request
+
+        return request.path, request.method
+    except Exception:
+        return None, None
+
+
+def _is_super_admin(user) -> bool:
+    """super_admin escape hatch (RFC-003 §9.0 / B10 Q1): a super_admin is
+    never scope-denied. Accepts EITHER the legacy ``users.role`` column or
+    a global super_admin binding, so a super_admin stays exempt even if
+    the one-shot backfill row is somehow missing."""
+    if user is None:
+        return False
+    if getattr(user, "role", None) == ROLE_SUPER_ADMIN:
+        return True
+    uid = getattr(user, "id", None)
+    return bool(uid) and has_global_role(uid, ROLE_SUPER_ADMIN)
+
+
+def _scope_gate(
+    user,
+    *,
+    allowed: bool,
+    scope_type: str,
+    scope_id: str | None,
+    role_needed: str,
+) -> None:
+    """Shared shadow/enforce decision. When ``allowed`` → no-op. When
+    denied: emit an audit row (``rbac.shadow_deny`` or
+    ``rbac.enforce_deny``) and, in enforce mode only, raise
+    ``RbacScopeDenied``."""
+    if allowed:
+        return
+    mode = enforce_mode()
+    route, method = _request_route()
+    action = (
+        "rbac.enforce_deny" if mode == ENFORCE_MODE_ENFORCE else "rbac.shadow_deny"
+    )
+    # The audit path is best-effort and never raises (see audit.record).
+    from app.services import audit
+
+    audit.record(
+        action,
+        actor_user_id=getattr(user, "id", None),
+        actor_email_snapshot=getattr(user, "email", None),
+        target_type=scope_type,
+        target_id=scope_id,
+        details={
+            "route": route,
+            "method": method,
+            "scope_type": scope_type,
+            "scope_id": scope_id,
+            "role_needed": role_needed,
+            "reason": "out_of_scope",
+            "enforce_mode": mode,
+        },
+    )
+    if mode == ENFORCE_MODE_ENFORCE:
+        raise RbacScopeDenied(scope_type, scope_id, role_needed)
+
+
+def require_can_act_on_device(
+    device_id: str, role_needed: str, *, user=None
+) -> None:
+    """Gate the caller against a device-scoped resource. See the
+    module-level SHADOW-MODE note. ``user`` defaults to
+    ``g.current_user`` (set by the role decorators)."""
+    user = user if user is not None else _current_user()
+    if user is None:
+        return  # legacy auth already 401'd; nothing to gate
+    if _is_super_admin(user):
+        return
+    allowed = can_act_on_device(user.id, device_id, role_needed)
+    _scope_gate(
+        user,
+        allowed=allowed,
+        scope_type=SCOPE_DEVICE,
+        scope_id=device_id,
+        role_needed=role_needed,
+    )
+
+
+def require_can_act_on_site(site_id: str, role_needed: str, *, user=None) -> None:
+    """Gate the caller against a site-scoped resource."""
+    user = user if user is not None else _current_user()
+    if user is None:
+        return
+    if _is_super_admin(user):
+        return
+    allowed = can_act_on_site(user.id, site_id, role_needed)
+    _scope_gate(
+        user,
+        allowed=allowed,
+        scope_type=SCOPE_SITE,
+        scope_id=site_id,
+        role_needed=role_needed,
+    )
+
+
+def require_can_act_on_group(group_id: str, role_needed: str, *, user=None) -> None:
+    """Gate the caller against a group-scoped resource."""
+    user = user if user is not None else _current_user()
+    if user is None:
+        return
+    if _is_super_admin(user):
+        return
+    allowed = can_act_on_group(user.id, group_id, role_needed)
+    _scope_gate(
+        user,
+        allowed=allowed,
+        scope_type=SCOPE_GROUP,
+        scope_id=group_id,
+        role_needed=role_needed,
+    )
