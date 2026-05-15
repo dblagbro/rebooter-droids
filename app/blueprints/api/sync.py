@@ -10,7 +10,7 @@ from flask import Blueprint, request, jsonify
 from pydantic import BaseModel, ValidationError
 
 from app.db import session_scope
-from app.middleware.admin_auth import require_authenticated
+from app.middleware.admin_auth import admin_required_api
 from app.services import sync as sync_svc
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class SyncSinceRequest(BaseModel):
 
 
 @bp.get("/api/v1/sync/since")
-@require_authenticated  # TODO: Change to HMAC bearer auth for peer hubs
+@admin_required_api  # TODO: Change to HMAC bearer auth for peer hubs (B11 Phase 3)
 def sync_since():
     """Fetch outbox events since a given sequence number.
 
@@ -94,7 +94,7 @@ def sync_since():
 
 
 @bp.get("/api/v1/sync/status")
-@require_authenticated
+@admin_required_api
 def sync_status():
     """Get sync status for this hub.
 
