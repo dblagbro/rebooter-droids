@@ -156,10 +156,19 @@ session. They form the v0.4.1 + v0.4.2 release plan.
   R-RBAC asks for fine-grained per-resource gating).
 - Site-as-scope: each role assignment is `(user, role, site_id?)` —
   `site_id NULL` means org-wide; otherwise scoped to that site.
-- Unblockers: RFC-003 §RBAC redline #1–#4.
-- Suggested first slice: ship the `(user, role, site_id?)` join table
-  and audit-log the migration from the current flat-role model;
-  enforcement comes in iteration 2.
+- Unblockers: RFC-003 §RBAC redline #1–#4 — all CLOSED 2026-05-10.
+- Full rollout plan: `docs/notes/2026-05-15-b1-rbac-design.md` (5 ships
+  P1–P5, ~22–30 h).
+
+> **Progress.** A1 (`role_bindings` table + resolver + backfill)
+> shipped v0.5.0/.1. **P1 — shadow-mode scope-check foundation —
+> shipped v0.5.35**: `require_can_act_on_*` helpers,
+> `scope_required_api/ui` decorators, `record_scoped()` choke-point,
+> default-shadow `rbac.enforce_mode` runtime flag, two demonstrator
+> routes (`GET /devices/<id>`, `POST /devices/<id>/commands`).
+> **Next: P2** — `Device.site_id NOT NULL` backfill + audit-events
+> archive table + nightly soft-prune. See design doc §4. The enforce
+> flip (P5b) is gated on a ≥7-day clean shadow soak.
 
 ### B2. Admin / super-admin invite via email (30-day token expiry)
 
