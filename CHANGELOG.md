@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.36] - 2026-05-15
+
+### Added — B1 RBAC Phase 2 (P2): Device.site_id NOT NULL + audit archive
+
+Second phase of B1 RBAC rollout per `docs/notes/2026-05-15-b1-rbac-design.md` §4 (P2).
+Enforces `Device.site_id NOT NULL` via one-shot backfill + schema constraint, and ships
+the audit archival system for long-term audit retention.
+
+- **Device.site_id NOT NULL enforcement**: One-shot backfill in
+  `app/services/bootstrap.py::ensure_device_site_id_backfill()` assigns any devices
+  with `site_id=NULL` to a "Default" site (or reuses the single existing site if
+  exactly one exists). New `_PENDING_CONSTRAINTS` pattern in `bootstrap.py` then
+  applies `ALTER TABLE devices ALTER COLUMN site_id SET NOT NULL`. Backfill runs
+  before the constraint is applied, ensuring no devices are orphaned. Unblocks P3
+  (scope-aware list filtering) which depends on reliable site associations.
+
+- **Audit event archival system**: New `audit_events_archive` table
+  (`app/models/audit.py::AuditEventArchive`) mirrors `audit_events` shape with
+  additional `archived_at` timestamp. Nightly APScheduler job at 03:00 UTC
+  (`app/services/audit_prune.py::prune_old_audit_events()`) soft-prunes events older
+  than `system.audit_retention_days` runtime setting (default 90 days) into the
+  archive, then deletes from source. Date-rollover guard ensures one run per day.
+
+- **Runtime setting**: `system.audit_retention_days` (default 90) controls audit prune
+  threshold; env-var fallback `REBOOTER_AUDIT_RETENTION_DAYS`. Documented in
+  `app/services/runtime_settings.py::SYSTEM_KEYS`.
+
+### Changed
+- **APScheduler**: Now starts 6 jobs (added `_audit_prune_job` / `audit_prune_daily`).
+  Startup log shows `audit_prune_daily @ 03:00 UTC`.
+- **Bootstrap sequence**: `run_startup_bootstrap()` calls `ensure_device_site_id_backfill()`
+  after RBAC backfill, then applies `_ensure_constraints()` to enforce pending constraints
+  that depend on backfills having run.
+
+### Tests
+- **Regression test**: `tests/qa/test_v0536_site_not_null_and_archive.py` validates:
+  (a) all devices have non-null `site_id` after backfill; (b) `audit_events_archive`
+  table exists with correct schema; (c) nightly prune job moves old events to archive;
+  (d) date-rollover guard prevents double-runs. (Requires app context; designed for
+  in-container execution or host with psycopg installed.)
+
 ## [0.5.35] - 2026-05-15
 
 ### Added — B1 RBAC Phase 1 (P1): shadow-mode scope-check foundation

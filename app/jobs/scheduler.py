@@ -5,6 +5,7 @@ import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.services.audit_prune import prune_old_audit_events
 from app.services.commands import expire_overdue_commands
 from app.services.device_power import compute_daily_rollups
 from app.services.external_sensors import poll_all_due as external_sensors_poll_all_due
@@ -68,6 +69,20 @@ def _power_rollups_job():
         log.info("power rollups: %s", stats)
 
 
+def _audit_prune_job():
+    """v0.5.36 (B1 RBAC P2): nightly soft-prune of old audit_events
+    into audit_events_archive. Controlled by system.audit_retention_days
+    runtime setting (default 90 days). Runs at 03:00 UTC so it happens
+    after the day boundary and doesn't collide with power_rollups."""
+    try:
+        stats = prune_old_audit_events()
+    except Exception:
+        log.exception("audit prune job crashed")
+        return
+    if stats.get("archived") or stats.get("errors"):
+        log.info("audit prune: %s", stats)
+
+
 def start() -> None:
     """Start the in-process scheduler. Guarded so only one Gunicorn worker runs jobs."""
     global _scheduler
@@ -92,11 +107,22 @@ def start() -> None:
         hour=2, minute=0,
         id="power_rollups_daily",
     )
+    # v0.5.36 (B1 RBAC P2): nightly audit prune at 03:00 UTC.
+    # Soft-prunes audit_events older than system.audit_retention_days
+    # into audit_events_archive. Date-rollover guard inside the job
+    # prevents double-runs.
+    sched.add_job(
+        _audit_prune_job,
+        "cron",
+        hour=3, minute=0,
+        id="audit_prune_daily",
+    )
     sched.start()
     _scheduler = sched
     log.info(
         "APScheduler started: expire_commands every 30s, "
         "watchdog_tick every 10s, schedule_tick every 30s, "
         "external_sensors_tick every 30s, "
-        "power_rollups_daily @ 02:00 UTC"
+        "power_rollups_daily @ 02:00 UTC, "
+        "audit_prune_daily @ 03:00 UTC"
     )
