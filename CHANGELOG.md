@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.60] - 2026-05-15
+
+### Added — P3a: consistent modality tagging (RFC-006 phase 1)
+
+First phase of RFC-006 (`docs/RFC-006-multimodal-ingest.md`) — the serialization-only, zero-migration step the RFC §5 greenlit for a routine version. Stops the `modality` tagging inconsistency from spreading before the cross-modal query layer (P3b) is built.
+
+- **`KIND_TO_MODALITY` map** (`app/models/external_sensors.py`): the authoritative source-kind → modality lookup (`roku`→media, `home_assistant`→appliance_state, `weather`→weather, `ical`→calendar, `solaredge`/`enphase_envoy`→solar, `snmp`→network). Per RFC-006 §4 this code-side map is preferred over a denormalized DB column — zero migration.
+- **`modality` in serialization**: every external-sensor source now carries `modality` in its admin-API/list serialization (derived from the map); every power sample carries `modality: "power"`. The cross-modal envelope (RFC-006 Decision 1) is now consistently tagged across all three shipped modalities.
+
+### Notes
+- P3b+ (the `app/services/multimodal.py` cross-modal query layer) remains gated on the RFC-006 §9 schema review and the operator confirming cross-modal analytics is a v1 goal.
+
 ### Design
 
 - **P3 — RFC-006 Multimodal Ingest drafted.** `docs/RFC-006-multimodal-ingest.md`. Locks the six P3 cross-modal decisions per the hub-team plan §6: (1) a common ingest envelope (`source_ref`/`modality`/`sampled_at`/`quality`/`metrics`/`metadata`) as a query contract; (2) keep the typed-power / JSON-polled storage fork — ratified, not debt; never one sparse table; (3) a first-class cross-modal query layer (`app/services/multimodal.py`) that gates "final" schema; (4) mixed transport, one normalized ingest (direct HTTPS for plugs, no forced MQTT); (5) per-modality adapter failure isolation; (6) time sync measured not assumed — coarse windows until firmware G2 drift data. Near-zero migration by design. **Phase P3a** (make `modality` tagging mandatory + consistent across all poll payloads) is safe to ship in a routine version; **P3b+** (the query layer) waits on a schema review (RFC §9 gate) and the operator confirming cross-modal analytics is a v1 goal.

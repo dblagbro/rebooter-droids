@@ -29,7 +29,7 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import ExternalSensorSample, ExternalSensorSource
-from app.models.external_sensors import EXTERNAL_SOURCE_KINDS
+from app.models.external_sensors import EXTERNAL_SOURCE_KINDS, KIND_TO_MODALITY
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +48,8 @@ def _serialize(row: ExternalSensorSource, *, latest_sample: dict | None = None) 
     return {
         "id": row.id,
         "kind": row.kind,
+        # v0.5.60 (P3a / RFC-006): cross-modal query key, derived from kind.
+        "modality": KIND_TO_MODALITY.get(row.kind),
         "display_name": row.display_name,
         "host": row.host,
         "port": row.port,

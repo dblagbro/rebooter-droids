@@ -118,6 +118,8 @@ def _serialize_sample(s: DevicePowerSample, *, now: datetime | None = None) -> d
 
     return {
         "id": s.id,
+        # v0.5.60 (P3a / RFC-006): cross-modal envelope modality tag.
+        "modality": "power",
         "channel_id": s.channel_id,
         "sampled_at": _iso(sampled_at),
         "received_at": _iso(s.received_at),

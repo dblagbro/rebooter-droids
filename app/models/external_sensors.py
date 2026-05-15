@@ -34,6 +34,20 @@ EXTERNAL_SOURCE_KINDS = (
     "snmp",          # v0.5.58 (P2.2/P2.3) — router/switch SNMP IF-MIB poll
 )
 
+# v0.5.60 (P3a / RFC-006): the authoritative source-kind → modality map.
+# RFC-006 Decision 1 makes `modality` the cross-modal query key; §4 picks
+# this code-side map over a denormalized DB column (zero migration). Power
+# samples (a separate table, not an external sensor) are modality "power".
+KIND_TO_MODALITY = {
+    "roku": "media",
+    "home_assistant": "appliance_state",
+    "weather": "weather",
+    "ical": "calendar",
+    "solaredge": "solar",
+    "enphase_envoy": "solar",
+    "snmp": "network",
+}
+
 
 class ExternalSensorSource(Base):
     __tablename__ = "external_sensor_sources"
