@@ -160,6 +160,7 @@ def create_app() -> Flask:
     from app.blueprints.firmware_public import bp as firmware_public_bp
     from app.blueprints.admin import admin_api_bp, admin_ui_bp
     from app.blueprints.api.sync import bp as sync_api_bp
+    from app.blueprints.api.integrations_webhook import bp as integrations_webhook_bp
 
     app.register_blueprint(version_bp, url_prefix="/api/v1")
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
@@ -167,6 +168,7 @@ def create_app() -> Flask:
     app.register_blueprint(firmware_public_bp, url_prefix="/api/v1/firmware")
     app.register_blueprint(admin_api_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(sync_api_bp)  # Mounts at /api/v1/sync/*
+    app.register_blueprint(integrations_webhook_bp)  # /api/v1/integrations/webhook/*
     app.register_blueprint(admin_ui_bp, url_prefix="/app")
 
     register_envelope_handlers(app)

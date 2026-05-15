@@ -65,6 +65,10 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_snmp_throughput(probe, kind)
         if kind == "snmp_error_rate_above":
             return _probe_snmp_error_rate(probe)
+        if kind == "media_session_active":
+            return _probe_media_session_active(probe)
+        if kind == "webhook_field_equals":
+            return _probe_webhook_field_equals(probe)
         if kind == "tcp":
             ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
         elif kind == "http":
@@ -1036,3 +1040,122 @@ def _probe_snmp_error_rate(probe: dict) -> tuple[str, dict]:
         "sampled_at": sampled_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     return ("failure" if errors_per_min > threshold else "success"), details
+
+
+# ── webhook-source probes (B17 Ship 2 — v0.5.61) ────────────────────────
+
+# Substring tokens classifying a media-webhook event. Plex uses `event`
+# (media.play / media.stop / …); Jellyfin uses `NotificationType`
+# (PlaybackStart / PlaybackStop / …). Checked stopped-first.
+_MEDIA_STOPPED_TOKENS = ("stop", "pause")
+_MEDIA_PLAYING_TOKENS = ("play", "start", "resume", "progress", "scrobble", "unpause")
+
+
+def _probe_media_session_active(probe: dict) -> tuple[str, dict]:
+    """v0.5.61 (B17 Ship 2): media-playback probe over a Plex/Jellyfin
+    webhook source.
+
+    Rule shape:
+        probe = {"kind": "media_session_active",
+                 "source_id": "ext_…",
+                 "presumed_duration_seconds": 7200,
+                 "max_sample_age_seconds": 7200}
+
+    Webhook samples are *events*, not point-in-time state — a
+    `media.play` may be 90 min old while playback continues. So: if the
+    most-recent event within `presumed_duration_seconds` is a
+    playing-type event, the session is presumed active.
+
+    Semantics mirror `roku_app_active` — **success = media is active**
+    (rule stays armed/recovered → its action does NOT build). A reboot
+    rule therefore fires only when media is idle. The operator story is
+    "don't power-cycle the AV gear while a movie is playing."
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    if not source_id:
+        return "failure", {"reason": "missing source_id"}
+    try:
+        presumed = int(probe.get("presumed_duration_seconds") or 7200)
+    except (TypeError, ValueError):
+        presumed = 7200
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or presumed)
+    except (TypeError, ValueError):
+        max_age = presumed
+
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        # No event inside the window — session presumed over → not active.
+        return "failure", {
+            "reason": "no_recent_event",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    event = str(
+        payload.get("event")
+        or payload.get("NotificationType")
+        or payload.get("Event")
+        or ""
+    ).lower()
+    if any(tok in event for tok in _MEDIA_STOPPED_TOKENS):
+        active = False
+    elif any(tok in event for tok in _MEDIA_PLAYING_TOKENS):
+        active = True
+    else:
+        active = False  # unrecognized event — cannot confirm playback
+    return ("success" if active else "failure"), {
+        "source_id": source_id,
+        "event": event or None,
+        "media_active": active,
+        "sampled_at": sample.get("sampled_at"),
+    }
+
+
+def _probe_webhook_field_equals(probe: dict) -> tuple[str, dict]:
+    """v0.5.61 (B17 Ship 2): generic webhook-field probe — the
+    iOS-Shortcuts / Apple-Home hook.
+
+    Rule shape:
+        probe = {"kind": "webhook_field_equals",
+                 "source_id": "ext_…",
+                 "field": "state",
+                 "expected": "home",
+                 "max_sample_age_seconds": 3600}
+
+    Reads `payload[field]` from the latest webhook sample and compares
+    it case-insensitively to `expected`. **success = match.** An iOS
+    Shortcut posting `{"state": "home"}` can then arm/disarm a rule.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    field = (probe.get("field") or "").strip()
+    expected = str(probe.get("expected") if probe.get("expected") is not None else "").strip()
+    if not source_id or not field:
+        return "failure", {"reason": "missing source_id / field"}
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 3600)
+    except (TypeError, ValueError):
+        max_age = 3600
+
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    actual = payload.get(field) if isinstance(payload, dict) else None
+    actual_str = str(actual if actual is not None else "")
+    match = actual_str.strip().lower() == expected.lower()
+    return ("success" if match else "failure"), {
+        "source_id": source_id,
+        "field": field,
+        "expected": expected,
+        "actual": actual_str,
+        "sampled_at": sample.get("sampled_at"),
+    }
