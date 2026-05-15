@@ -14,6 +14,64 @@ from app.models import AuditEvent
 log = logging.getLogger(__name__)
 
 
+def _emit_outbox_for_scoped_action(
+    action: str,
+    target_type: str | None,
+    target_id: str | None,
+    scope_claim: dict | None,
+    entity_snapshot: dict | None,
+) -> None:
+    """Emit an outbox event for multi-hub sync (B11 / RFC-004 Option C).
+
+    Best-effort: never raises. Skips emission if target_type or target_id
+    is missing (not all audit actions map to syncable entities).
+    """
+    if not (target_type and target_id):
+        return  # Not a resource-level mutation; nothing to sync
+
+    try:
+        from app.services import sync as sync_svc
+
+        # Determine event_type from action
+        # Format: entity.verb (e.g., "device.created", "site.deleted")
+        # Audit actions use this format already
+        event_type = action
+
+        # Determine if this is a delete action
+        is_delete = action.endswith((".deleted", ".bulk_deleted"))
+
+        with session_scope() as session:
+            if is_delete:
+                # For deletes, emit tombstone
+                sync_svc.emit_outbox_event(
+                    session,
+                    event_type=event_type,
+                    entity_type=target_type,
+                    entity_id=target_id,
+                    payload={"deleted": True},
+                    tombstone_for=target_id,
+                    scope_claims=scope_claim,
+                )
+            elif entity_snapshot:
+                # For creates/updates, emit full entity payload
+                sync_svc.emit_outbox_event(
+                    session,
+                    event_type=event_type,
+                    entity_type=target_type,
+                    entity_id=target_id,
+                    payload=entity_snapshot,
+                    scope_claims=scope_claim,
+                )
+            # else: no entity_snapshot provided for a non-delete; skip
+    except Exception:
+        log.exception(
+            "outbox emit failed for action=%s target=%s/%s",
+            action,
+            target_type,
+            target_id,
+        )
+
+
 def _client_ip() -> str | None:
     if not has_request_context():
         return None
@@ -59,19 +117,19 @@ def record_scoped(
     scope_claim: dict | None = None,
     details: dict | None = None,
     ip: str | None = None,
+    entity_snapshot: dict | None = None,  # v0.5.45 (B11) — full entity for outbox payload
 ) -> None:
     """v0.5.35 (B1 RBAC Phase 1) — audit a per-resource mutation with its
     RBAC scope claim attached.
 
-    Today this is a thin wrapper over ``record()`` that folds
-    ``scope_claim`` into ``details``. It exists as a deliberate
-    choke-point: when B11 multi-hub sync ships (RFC-004 Option C), this
-    is the single place that will *also* append the row to
-    ``outbox_events`` with the scope claim already attached — so every
-    per-resource mutation routed through here is B11-ready without a
-    second cross-blueprint sweep.
+    v0.5.45 (B11 multi-hub sync) — this is now the outbox-emission
+    choke-point per RFC-004 Option C. Every scoped mutation emits both
+    an audit_events row AND an outbox_events row. The outbox event
+    carries the full entity snapshot (if provided) or a tombstone
+    marker (for deletes).
 
     ``scope_claim`` shape: ``{"scope_type": "device", "scope_id": "..."}``.
+    ``entity_snapshot``: full entity dict for creates/updates; omit for deletes.
     Best-effort: never raises (see ``record``)."""
     merged = dict(details or {})
     if scope_claim is not None:
@@ -84,6 +142,15 @@ def record_scoped(
         target_id=target_id,
         details=merged,
         ip=ip,
+    )
+
+    # v0.5.45 (B11): Emit outbox event for multi-hub sync
+    _emit_outbox_for_scoped_action(
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        scope_claim=scope_claim,
+        entity_snapshot=entity_snapshot,
     )
 
 
