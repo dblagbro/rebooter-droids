@@ -92,6 +92,14 @@
                 {% if pl.events and pl.events|length > 0 %}
                   · next: "{{ pl.events[0].summary|truncate(40, true, '…') }}"
                 {% endif %}
+              {% elif s.kind in ('solaredge', 'enphase_envoy') %}
+                {% if pl.production_w is not none %}
+                  <strong>{{ '%.0f'|format(pl.production_w) }} W</strong> producing
+                {% else %}
+                  <span class="muted">no production reading</span>
+                {% endif %}
+                {% if pl.day_energy_wh %}· {{ '%.1f'|format(pl.day_energy_wh / 1000.0) }} kWh today{% endif %}
+                {% if pl.reading_type %}<span class="badge" title="Envoy reading source">{{ pl.reading_type }}</span>{% endif %}
               {% else %}
                 <span class="muted">sample stored</span>
               {% endif %}
@@ -248,6 +256,76 @@
   </p>
 </div>
 
+{# ── SolarEdge (cloud) ────────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add a SolarEdge site (cloud)</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <input type="hidden" name="kind" value="solaredge">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Rooftop array" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Site ID</span>
+      <input type="text" name="solaredge_site_id" placeholder="1234567" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem; min-width:20rem">
+      <span class="muted" style="font-size:.75rem">Monitoring API key</span>
+      <input type="text" name="solaredge_api_key" placeholder="API key from monitoring portal" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+      <input type="number" name="poll_interval_seconds" value="300" min="300" max="3600">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    Polls <code>monitoringapi.solaredge.com/site/{id}/overview</code>.
+    Generate the API key in the SolarEdge monitoring portal (Admin →
+    Site Access → API Access). The API key is stored encrypted-at-rest
+    and never shown back. <strong>Rate limit: 300 requests/day</strong> —
+    keep the interval ≥ 300 s. Rule probe:
+    <code>solar_production_above</code> / <code>solar_production_below</code>.
+  </p>
+</div>
+
+{# ── Enphase Envoy (local) ────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add an Enphase Envoy (local)</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <input type="hidden" name="kind" value="enphase_envoy">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Garage Envoy" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Envoy IP / host</span>
+      <input type="text" name="host" placeholder="192.168.1.50" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Port</span>
+      <input type="number" name="port" value="80" min="1" max="65535">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem; min-width:20rem">
+      <span class="muted" style="font-size:.75rem">JWT (firmware-7.0+ Envoys only — leave blank for legacy)</span>
+      <input type="text" name="envoy_jwt" placeholder="optional bearer token">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+      <input type="number" name="poll_interval_seconds" value="300" min="60" max="3600">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    Polls the Envoy's local <code>/production.json</code> — no cloud
+    round-trip. Legacy Envoys need no auth; firmware-7.0+ Envoys require
+    a JWT (minted at <code>enlighten.enphaseenergy.com</code>) and serve
+    HTTPS. Metered gateways report an accurate <code>eim</code> reading;
+    others fall back to the inverter sum. Rule probe:
+    <code>solar_production_above</code> / <code>solar_production_below</code>.
+  </p>
+</div>
+
 <div class="v3-card" style="margin-top:1rem">
   <h3>How to use this in a watchdog rule</h3>
   <p>
@@ -266,6 +344,22 @@
     <code>app_name</code> (case-insensitive substring). Pair with a
     schedule for "Jeopardy is on" rules
     (e.g. weekdays 19:00–19:30) using the existing schedules primitive.
+  </p>
+  <p style="margin-top:1rem">
+    For a solar source, use a <code>solar_production_above</code> /
+    <code>solar_production_below</code> probe:
+  </p>
+<pre style="overflow:auto; font-size:.8rem; background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px">{
+  "kind": "solar_production_above",
+  "source_id": "ext_…",
+  "threshold_w": 3000,
+  "max_sample_age_seconds": 1800
+}</pre>
+  <p>
+    Mirrors the B16 <code>power_above</code>/<code>power_below</code>
+    shape — pairs naturally with power monitoring (load) to act on the
+    generation-minus-load delta, e.g. "exporting &gt; 3 kW → switch on
+    the water heater."
   </p>
 </div>
 {% endblock %}

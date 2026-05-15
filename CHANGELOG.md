@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.56] - 2026-05-15
+
+### Added — P2.1: Solar integration (SolarEdge cloud + Enphase Envoy local)
+
+First phase of the P2 work track (zero-hardware-cost integration sources) per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6 and the B17 design (`docs/notes/2026-05-15-b17-remaining-integrations-design.md` §3.4). Solar is the highest-priority P2 source — it pairs directly with B16 power monitoring (power measures *load*, solar measures *generation*; the delta is real import/export).
+
+- **Two new `external_sensor_sources` kinds** (`app/models/external_sensors.py`):
+  - `solaredge` — cloud: polls `monitoringapi.solaredge.com/site/{id}/overview`. Config `{site_id, api_key}` (static key, no OAuth). 300 req/day rate limit — the UI defaults the interval to 300 s.
+  - `enphase_envoy` — local: polls the Envoy's `/production.json`. `host` = Envoy IP; optional `config.jwt` for firmware-7.0+ Envoys (legacy Envoys need no auth). Prefers the metered `eim` reading, falls back to the inverter sum.
+
+- **Poll drivers** (`app/services/external_sensors.py`): `_poll_solaredge()` and `_poll_enphase_envoy()`. Both emit a normalized payload — `{vendor, production_w, lifetime_energy_wh, ...}`. Config validation, default ports (Envoy → 80), and secret redaction (`api_key`, `jwt` masked in the admin API) wired through the existing source CRUD.
+
+- **Watchdog probe** (`app/services/watchdog_runtime/_probes.py`): `solar_production_above` / `solar_production_below` — `_probe_solar()` reads the latest source sample, gates on `max_sample_age_seconds` (default 1800 s), and compares `production_w` to `threshold_w`. Mirrors the B16 `power_above`/`power_below` semantics for operator-mental-model consistency.
+
+- **Integrations UI** (`templates/settings/integrations.html`): two new add-source forms (SolarEdge / Enphase Envoy), per-kind sample summary (`N W producing · N kWh today`), and a `solar_production_above` rule-probe example.
+
+### Notes
+- Per the design, Enphase *cloud* is deferred — the local Envoy gives the same data without the OAuth dance.
+- Operator value: *"if solar is exporting > 3 kW, switch on the water heater"* — the most synergistic integration with the just-shipped B16 power track.
+
 ## [0.5.55] - 2026-05-15
 
 ### Added — P1.2: Power data-quality surfacing
