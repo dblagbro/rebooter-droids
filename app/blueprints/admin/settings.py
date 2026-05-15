@@ -35,10 +35,16 @@ def settings_page():
 @admin_ui_bp.get("/settings/system")
 @admin_required_ui
 def settings_system_page():
-    """v0.4.26: editable system settings (DB → env-var fallback)."""
+    """v0.4.26: editable system settings (DB → env-var fallback).
+    v0.5.44 (P5): added RBAC enforce mode toggle."""
     from app.services import runtime_settings
 
     cfg = runtime_settings.system_config()
+    rbac_enforce_mode = runtime_settings.get(
+        "rbac.enforce_mode",
+        env_var="REBOOTER_RBAC_ENFORCE_MODE",
+        default="shadow",
+    )
     return render_template(
         "settings/system.html",
         **_ctx(
@@ -55,6 +61,10 @@ def settings_system_page():
                         k.split(".", 1)[1]: runtime_settings.has_db_value(k)
                         for k, _ in runtime_settings.SYSTEM_KEYS
                     },
+                },
+                "rbac": {
+                    "enforce_mode": str(rbac_enforce_mode).strip().lower(),
+                    "is_override": runtime_settings.has_db_value("rbac.enforce_mode"),
                 },
             }
         ),
@@ -91,6 +101,19 @@ def settings_system_save_submit():
             return redirect(url_for("admin_ui.settings_system_page"))
         runtime_settings.set_(key, value, user_id=g.current_user.id)
         changed.append(f"{key}=set")
+
+    # v0.5.44 (P5): RBAC enforce mode toggle
+    rbac_mode = (request.form.get("rbac_enforce_mode") or "").strip().lower()
+    if rbac_mode in ("shadow", "enforce"):
+        old_mode = runtime_settings.get("rbac.enforce_mode", env_var="REBOOTER_RBAC_ENFORCE_MODE", default="shadow")
+        if rbac_mode != old_mode:
+            runtime_settings.set_("rbac.enforce_mode", rbac_mode, user_id=g.current_user.id)
+            changed.append(f"rbac.enforce_mode={rbac_mode}")
+    elif rbac_mode == "":
+        # Empty = revert to env-var default
+        if runtime_settings.has_db_value("rbac.enforce_mode"):
+            runtime_settings.delete("rbac.enforce_mode")
+            changed.append("rbac.enforce_mode=cleared")
 
     audit_service.record(
         "system.config_updated",
