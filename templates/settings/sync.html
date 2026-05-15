@@ -7,112 +7,116 @@
 {% include "_components/settings_tabs.html" %}
 
 <div class="v3-card">
-  <h2>Hub identity + sync</h2>
+  <h2>Multi-Hub Sync <span class="badge green" style="font-size:.8rem;vertical-align:middle">RFC-004 Option C LIVE</span></h2>
   <p class="muted" style="margin-top:0">
-    What this hub is, where it ships data, and how multi-hub sync
-    will work when it lands.
-  </p>
-</div>
-
-{# ── This hub right now ──────────────────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>This hub right now</h3>
-  <table style="width:auto; min-width:0; border-collapse:collapse">
-    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Configured role:</td>
-        <td><code>{{ hub_role }}</code></td></tr>
-    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Container hostname:</td>
-        <td><code>{{ hub_hostname }}</code></td></tr>
-    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Public base URL:</td>
-        <td><code>{{ public_base }}</code></td></tr>
-    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Active devices:</td>
-        <td>{{ fleet_count }}</td></tr>
-    <tr><td style="padding:.2rem .8rem .2rem 0; font-weight:600">Most recent heartbeat:</td>
-        <td>
-          {% if latest_hb_at %}
-            <code>{{ latest_hb_at }}</code>
-            {% if seconds_since_latest_hb is not none %}
-              <span class="muted">({{ seconds_since_latest_hb }} s ago)</span>
-            {% endif %}
-          {% else %}
-            <span class="muted">none yet</span>
-          {% endif %}
-        </td></tr>
-  </table>
-</div>
-
-{# ── Today: single-hub reality ───────────────────────────────────── #}
-{% if hub_role == 'single' %}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Today: single-hub deployment</h3>
-  <p>
-    <code>www.voipguru.org/rebooter</code> and
-    <code>www2.voipguru.org/rebooter</code> are both nginx aliases
-    that proxy into <strong>this one container</strong>. There is
-    nothing to sync, because there is only one logical hub.
+    Peer-to-peer outbox replication for active-active multi-hub deployments.
+    Each hub polls peers' <code>/api/v1/sync/since</code> endpoints, fetches
+    outbox events, applies locally. Target latency: ~1-3s.
   </p>
   <p class="muted">
-    The dual-URL setup gives you nginx-level failover (if one nginx
-    is down the other still serves), but not a true second hub. Both
-    URLs share fate at the application + Postgres layer.
+    <strong>Current status:</strong>
+    {% if sync_enabled %}
+      <span class="badge green">Enabled</span> — replicator polls every 3s
+    {% else %}
+      <span class="badge">Disabled</span>
+    {% endif %}
   </p>
-</div>
-{% else %}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Multi-hub mode is configured but the implementation isn't shipped yet</h3>
-  <p>
-    <code>REBOOTER_HUB_ROLE={{ hub_role }}</code> was set, but the
-    RFC-004 runtime that honours it hasn't shipped. Today this hub
-    still behaves as a single-hub deployment regardless of role.
-  </p>
-</div>
-{% endif %}
-
-{# ── Locked design: RFC-004 Option C (active-active) ─────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Multi-hub sync — locked design (not yet implemented)</h3>
-  <p>
-    The operator picked <strong>Option C</strong> on 2026-05-10:
-    application-level event-log sync, active-active. See
-    <a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/RFC-004-multi-hub-sync.md">
-      <code>docs/RFC-004-multi-hub-sync.md</code></a>
-    §10b for the full design. Quick summary of how the sync will work
-    when it ships:
-  </p>
-  <ul>
-    <li>Each hub gets a per-instance append-only
-      <code>outbox_events</code> table that mirrors our existing
-      audit pattern.</li>
-    <li>A replicator daemon polls peers'
-      <code>/api/v1/sync/since?seq=&lt;n&gt;</code> over HTTPS, using
-      the coordinator HMAC bearer pattern for auth.</li>
-    <li>Receiver-side apply is idempotent on UUID-keyed rows;
-      conflicts use last-write-wins on <code>event.at</code> and the
-      audit log retains both versions.</li>
-    <li>Deletes ship as tombstones in <code>outbox_events</code>;
-      receivers write a <code>tombstones</code> row and refuse to
-      recreate the UUID.</li>
-    <li>Steady-state latency target: <strong>1–3 s</strong>. Peers
-      are symmetric — no failover procedure.</li>
-  </ul>
 </div>
 
 <div class="v3-card" style="margin-top:1rem">
-  <h3>What will appear on this tab once sync ships</h3>
-  <ul>
-    <li><strong>Peer status</strong> — name, URL, last contact, drift seconds.</li>
-    <li><strong>Replication health</strong> — outbox depth, last successful pull, lag windows.</li>
-    <li><strong>Operator actions</strong> — probe a peer, pause sync,
-      force a reconciliation (super-admin only).</li>
-    <li><strong>Conflict log</strong> — last N LWW resolutions with
-      both pre-images preserved.</li>
+  <h2>Sync configuration</h2>
+  <form method="post" action="{{ url_for('admin_ui.settings_sync_save_submit') }}">
+    <label>
+      Enable sync replicator <span class="badge green" style="font-size:.7rem">live</span>
+      <select name="sync_enabled">
+        <option value="false" {% if not sync_enabled %}selected{% endif %}>Disabled</option>
+        <option value="true" {% if sync_enabled %}selected{% endif %}>Enabled</option>
+      </select>
+      <span class="muted" style="font-size:.85rem">Master toggle. Disabling stops replicator ticks.</span>
+    </label>
+
+    <label>
+      Hub identifier
+      <input type="text" name="hub_id" value="{{ hub_id }}" placeholder="www" required>
+      <span class="muted" style="font-size:.85rem">Used to generate HMAC tokens (e.g., "www", "www2")</span>
+    </label>
+
+    <label>
+      HMAC key (hex)
+      <input type="text" name="hmac_key" value="{{ hmac_key }}" placeholder="64-character hex string">
+      <span class="muted" style="font-size:.85rem">
+        Shared secret for peer authentication. Generate: <code>openssl rand -hex 32</code>.
+        Must match on all hubs in the sync network.
+      </span>
+    </label>
+
+    <hr style="margin:1.5rem 0;border:none;border-top:1px solid #3a3a4a">
+
+    <h3 style="margin-bottom:0.5rem">Peer hubs</h3>
+    <p class="muted" style="margin-bottom:1rem;font-size:.9rem">
+      List of peer hubs to poll for sync events. JSON array format:
+      <code>[{"id": "www2", "url": "https://www2.voipguru.org/rebooter"}]</code>
+    </p>
+    <label>
+      Peer hubs (JSON)
+      <textarea name="peer_hubs" rows="6" placeholder='[{"id": "www2", "url": "https://www2.voipguru.org/rebooter"}]'>{{ peer_hubs }}</textarea>
+      <span class="muted" style="font-size:.85rem">
+        Each peer needs <code>id</code> (unique identifier) and <code>url</code> (base URL without /api/v1).
+      </span>
+    </label>
+
+    <button type="submit" style="margin-top:.5rem">Save sync settings</button>
+  </form>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Sync status</h2>
+  {% if sync_status %}
+    <h3 style="margin-bottom:0.5rem">Local outbox</h3>
+    <ul class="muted">
+      <li><strong>Max sequence:</strong> {{ sync_status.outbox.max_seq }}</li>
+      <li><strong>Total events:</strong> {{ sync_status.outbox.total_events }}</li>
+    </ul>
+
+    <h3 style="margin-top:1rem;margin-bottom:0.5rem">Peer cursors</h3>
+    {% if sync_status.peer_cursors %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Peer</th><th>Last seq</th><th>Updated</th><th>Last error</th></tr></thead>
+        <tbody>
+        {% for cursor in sync_status.peer_cursors %}
+          <tr>
+            <td>{{ cursor.peer_hub_id }}</td>
+            <td>{{ cursor.last_seq }}</td>
+            <td>{{ cursor.updated_at }}</td>
+            <td>
+              {% if cursor.last_error %}
+                <span class="badge red">Error</span> {{ cursor.last_error[:50] }}...
+                <br><span class="muted" style="font-size:.75rem">at {{ cursor.last_error_at }}</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    {% else %}
+      <p class="muted">No peer cursors yet. Enable sync and add peer hubs to start replication.</p>
+    {% endif %}
+  {% else %}
+    <p class="muted">Sync status unavailable. Check logs for errors.</p>
+  {% endif %}
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Documentation</h2>
+  <ul class="muted">
+    <li><strong>RFC-004 Option C</strong>: application-level event-log sync (active-active)</li>
+    <li><strong>Conflict resolution</strong>: last-writer-wins on <code>event.at</code> timestamp</li>
+    <li><strong>Tombstones</strong>: prevent resurrection of deleted entities</li>
+    <li><strong>Idempotent apply</strong>: UUID-keyed rows with LWW; safe to replay events</li>
+    <li><strong>Tables</strong>: <code>outbox_events</code>, <code>sync_cursors</code>, <code>tombstones</code></li>
+    <li><strong>Shipped</strong>: v0.5.48 (B11 Phases 1-7 complete)</li>
   </ul>
-  <p class="muted">
-    Implementation lands after the B1 RBAC slice (RFC-003) ships,
-    because outbox events must carry the new
-    <code>site_id</code>/<code>group_id</code>/<code>device_id</code>
-    scope claims for receiver-side enforcement. Cross-tracked in
-    <code>docs/BACKLOG.md</code> entries <strong>B1</strong>,
-    <strong>B11</strong>, <strong>B15</strong>.
-  </p>
 </div>
 {% endblock %}
