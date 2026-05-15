@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.62] - 2026-05-15
+
+### Added — B17 Ship 4: `host_awake` watchdog probe
+
+Implements "Ship 4" from `docs/notes/2026-05-15-b17-remaining-integrations-design.md` §3.6 — design option (A), a direct watchdog probe, no external-sensor source. The smallest B17 item: an alias on the existing TCP-connect probe.
+
+- **`host_awake` probe kind** (`app/services/watchdog_runtime/_probes.py`): a TCP-connect check — succeeds while the host is reachable (powered on / awake). `port` is optional, defaults to 22 (SSH). No `source_id` — it probes the host directly. A reboot rule using it fires only while the host is OFF — the operator story is "don't power-cycle the office switch while the work laptop is on."
+- Probe-shape reference card added to the rule editor.
+
+### Notes
+- Zero new architecture — `host_awake` reuses `_probe_tcp`; it is a one-line dispatch alias plus docs.
+
 ## [0.5.61] - 2026-05-15
 
 ### Added — B17 Ship 2: inbound-webhook framework + Plex / Jellyfin / iOS Shortcuts
