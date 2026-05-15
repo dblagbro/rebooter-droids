@@ -149,41 +149,81 @@ class WatchdogValidationError(ValueError):
     pass
 
 
-def create_rule(
-    *,
-    name: str,
-    probe: dict,
-    target: dict,
-    action: dict,
-    site_id: str | None = None,
-    description: str | None = None,
-    failure_threshold: int = 3,
-    recovery_threshold: int = 2,
-    window_seconds: int = 60,
-    cooldown_seconds: int = 300,
-    max_retries: int = 3,
-    retry_delay_seconds: int = 60,
-    escalation: dict | None = None,
-    maintenance_windows: list | None = None,
-    created_by_user_id: str | None = None,
-) -> dict:
-    name = (name or "").strip()
-    if not name:
-        raise WatchdogValidationError("name is required")
-    # v0.4.11 (BUG-036): cap to column width before insert.
-    if len(name) > 120:
-        raise WatchdogValidationError("name must be 120 characters or fewer")
-    if not isinstance(probe, dict) or probe.get("kind") not in KNOWN_PROBE_KINDS:
-        raise WatchdogValidationError(
-            f"probe.kind must be one of {KNOWN_PROBE_KINDS}"
-        )
-    # v0.5.9: when probe.kind=='internet' the rule may pin an explicit
-    # outbound-target list. Validate shape so a malformed entry can't
-    # get persisted and silently degrade the runtime to "no targets ⇒
-    # always failure" on the next tick.
-    if probe.get("kind") == "internet" and "targets" in probe:
-        targets = probe.get("targets")
-        if targets is not None:
+# v0.5.34 (BUG-055 fix): per-kind probe-field validation. Called from
+# both `create_rule` and `update_rule` so the JSON-editor + API paths
+# get the same gate the rules-create form UI already enforces via
+# HTML5 `required`/`min`/`max`. Pattern mirrors
+# `services.external_sensors._validate_kind_config()`.
+#
+# Raises `WatchdogValidationError` with an operator-friendly message
+# on bad shape. Returns silently on success.
+#
+# Internet's `targets` list validation (v0.5.9) is folded in here so
+# the previously-duplicated block in create_rule + update_rule
+# collapses to a single source of truth.
+
+_WEATHER_SEVERITIES = ("Minor", "Moderate", "Severe", "Extreme")
+
+
+def _validate_probe(probe: dict) -> None:
+    """Per-kind probe-field validation. The kind-presence + kind-in-
+    canonical check still lives at the call site (because the error
+    message format there carries the full KNOWN_PROBE_KINDS tuple).
+    This helper handles everything *after* "yes, the kind is canonical"."""
+    if not isinstance(probe, dict):
+        raise WatchdogValidationError("probe must be a JSON object")
+    kind = probe.get("kind")
+
+    def _require(field: str, kind_name: str | None = None):
+        val = probe.get(field)
+        if val is None or (isinstance(val, str) and not val.strip()):
+            label = kind_name or kind
+            raise WatchdogValidationError(
+                f"probe.{field} is required when probe.kind={label!r}"
+            )
+
+    def _require_numeric(field: str, *, low: float, high: float):
+        raw = probe.get(field)
+        if raw is None:
+            raise WatchdogValidationError(
+                f"probe.{field} is required when probe.kind={kind!r}"
+            )
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            raise WatchdogValidationError(
+                f"probe.{field} must be numeric (got {type(raw).__name__}: {raw!r})"
+            ) from None
+        if v < low or v > high:
+            raise WatchdogValidationError(
+                f"probe.{field} must be between {low} and {high} (got {v})"
+            )
+        return v
+
+    def _require_int(field: str, *, low: int, high: int):
+        raw = probe.get(field)
+        if raw is None:
+            raise WatchdogValidationError(
+                f"probe.{field} is required when probe.kind={kind!r}"
+            )
+        try:
+            v = int(raw)
+        except (TypeError, ValueError):
+            raise WatchdogValidationError(
+                f"probe.{field} must be an integer (got {type(raw).__name__}: {raw!r})"
+            ) from None
+        if v < low or v > high:
+            raise WatchdogValidationError(
+                f"probe.{field} must be between {low} and {high} (got {v})"
+            )
+        return v
+
+    if kind == "internet":
+        # v0.5.9: optional `targets` list. Empty/absent falls back to
+        # DEFAULT_INTERNET_TARGETS in the runtime; the validator only
+        # rejects bad shapes when the field IS present.
+        if "targets" in probe and probe.get("targets") is not None:
+            targets = probe["targets"]
             if not isinstance(targets, list):
                 raise WatchdogValidationError(
                     "probe.targets must be a list of {host, port} objects"
@@ -212,6 +252,121 @@ def create_rule(
                     raise WatchdogValidationError(
                         f"probe.targets[{i}].port must be between 1 and 65535"
                     )
+        return
+
+    if kind == "ping":
+        _require("host")
+        return
+
+    if kind == "tcp":
+        _require("host")
+        _require_int("port", low=1, high=65535)
+        return
+
+    if kind == "http":
+        url = (probe.get("url") or "").strip()
+        if not url:
+            raise WatchdogValidationError(
+                "probe.url is required when probe.kind='http'"
+            )
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise WatchdogValidationError(
+                "probe.url must use http:// or https:// scheme"
+            )
+        return
+
+    if kind == "dns":
+        _require("hostname")
+        return
+
+    if kind == "gateway":
+        # Per the runtime comment: device-side gateway IP wiring is the
+        # missing piece — no per-rule fields to validate today.
+        return
+
+    if kind == "roku_app_active":
+        _require("source_id")
+        _require("app_name")
+        return
+
+    if kind == "ha_state_is":
+        _require("source_id")
+        _require("entity_id")
+        _require("expected_state")
+        return
+
+    if kind == "weather_alert_active":
+        _require("source_id")
+        sev = (probe.get("min_severity") or "").strip()
+        if sev and sev not in _WEATHER_SEVERITIES:
+            raise WatchdogValidationError(
+                f"probe.min_severity must be one of {_WEATHER_SEVERITIES} (got {sev!r})"
+            )
+        return
+
+    if kind == "ical_event_active":
+        _require("source_id")
+        return
+
+    if kind in ("power_above", "power_below"):
+        _require("device_id")
+        _require_numeric("threshold_w", low=0, high=10000)
+        # window_seconds is optional; default 300 used by runtime.
+        if "window_seconds" in probe:
+            _require_int("window_seconds", low=30, high=86400)
+        return
+
+    if kind == "power_zero_while_on":
+        _require("device_id")
+        if "near_zero_threshold_w" in probe:
+            _require_numeric("near_zero_threshold_w", low=0, high=100)
+        if "window_seconds" in probe:
+            _require_int("window_seconds", low=30, high=86400)
+        return
+
+    # Unknown but kind-was-in-canonical (defensive — shouldn't reach
+    # here because create_rule's KNOWN_PROBE_KINDS gate fires first).
+    # Future kinds that get added to KNOWN_PROBE_KINDS without a
+    # branch here will land in this fallback.
+    raise WatchdogValidationError(
+        f"probe.kind={kind!r} is canonical but has no validator — "
+        f"add a branch in services.watchdog._validate_probe()"
+    )
+
+
+def create_rule(
+    *,
+    name: str,
+    probe: dict,
+    target: dict,
+    action: dict,
+    site_id: str | None = None,
+    description: str | None = None,
+    failure_threshold: int = 3,
+    recovery_threshold: int = 2,
+    window_seconds: int = 60,
+    cooldown_seconds: int = 300,
+    max_retries: int = 3,
+    retry_delay_seconds: int = 60,
+    escalation: dict | None = None,
+    maintenance_windows: list | None = None,
+    created_by_user_id: str | None = None,
+) -> dict:
+    name = (name or "").strip()
+    if not name:
+        raise WatchdogValidationError("name is required")
+    # v0.4.11 (BUG-036): cap to column width before insert.
+    if len(name) > 120:
+        raise WatchdogValidationError("name must be 120 characters or fewer")
+    if not isinstance(probe, dict) or probe.get("kind") not in KNOWN_PROBE_KINDS:
+        raise WatchdogValidationError(
+            f"probe.kind must be one of {KNOWN_PROBE_KINDS}"
+        )
+    # v0.5.34 (BUG-055 fix): per-kind probe-field validation. Replaces
+    # the v0.5.9 internet-only inline validator with a full dispatcher
+    # covering all 13 canonical kinds. Same helper called from
+    # update_rule below for symmetry.
+    _validate_probe(probe)
     if not isinstance(target, dict) or target.get("kind") not in (
         "device", "group", "tag"
     ):
@@ -314,37 +469,8 @@ def update_rule(
         raise WatchdogValidationError(
             f"probe.kind must be one of {KNOWN_PROBE_KINDS}"
         )
-    if probe.get("kind") == "internet" and "targets" in probe:
-        targets = probe.get("targets")
-        if targets is not None:
-            if not isinstance(targets, list):
-                raise WatchdogValidationError(
-                    "probe.targets must be a list of {host, port} objects"
-                )
-            if len(targets) > 8:
-                raise WatchdogValidationError(
-                    "probe.targets accepts at most 8 entries"
-                )
-            for i, t in enumerate(targets):
-                if not isinstance(t, dict):
-                    raise WatchdogValidationError(
-                        f"probe.targets[{i}] must be an object with host + port"
-                    )
-                host = str(t.get("host") or "").strip()
-                if not host:
-                    raise WatchdogValidationError(
-                        f"probe.targets[{i}].host is required"
-                    )
-                try:
-                    port = int(t.get("port") or 0)
-                except (TypeError, ValueError):
-                    raise WatchdogValidationError(
-                        f"probe.targets[{i}].port must be an integer"
-                    )
-                if port < 1 or port > 65535:
-                    raise WatchdogValidationError(
-                        f"probe.targets[{i}].port must be between 1 and 65535"
-                    )
+    # v0.5.34 (BUG-055 fix): same per-kind validator as create_rule.
+    _validate_probe(probe)
     if not isinstance(target, dict) or target.get("kind") not in (
         "device", "group", "tag"
     ):
@@ -479,8 +605,11 @@ def _probe_to_phrase(p: dict) -> str:
         return f"DNS resolve `{p.get('hostname','?')}`"
     if k == "gateway":
         return "ping to the device's LAN gateway"
-    if k == "custom":
-        return f"custom probe `{p.get('name','?')}`"
+    # v0.5.34 (BUG-054 fix): `custom` branch removed — the kind is no
+    # longer in KNOWN_PROBE_KINDS, so an old DB row carrying
+    # `probe.kind='custom'` falls through to the "unknown probe"
+    # generic phrase below (and the runtime returns failure with
+    # reason='unknown probe kind: custom' which surfaces it clearly).
     # v0.5.25 (Phase 2A): external-source probes — render with the
     # source-id and the per-kind match field so the rules-list plain-
     # English sentence is informative even before Phase 2B's form
