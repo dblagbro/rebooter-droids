@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, Index, Integer, Numeric, SmallInteger, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
@@ -27,6 +36,15 @@ class DevicePowerSample(Base):
 
     v_v: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
     i_ma: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # v0.5.66 (P1.3): the CSE7766 firmware clamps measured current below
+    # ~50 mA to zero, so a real standby load reports `i_ma=0` with a
+    # non-zero `p_w`. Firmware 0.1.27+ disambiguates: `i_ma_estimated`
+    # True means `i_ma` was clamped and `i_ma_estimate` holds the
+    # firmware's standby estimate. Consumers MUST NOT read `i_ma=0` as
+    # "no activity" when `i_ma_estimated` is True. Both nullable —
+    # pre-0.1.27 firmware omits them.
+    i_ma_estimated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    i_ma_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
     p_w: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     s_va: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     pf: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
