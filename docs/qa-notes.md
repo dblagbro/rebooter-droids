@@ -4381,3 +4381,92 @@ Reliability notes:
   `0.029 s`.
 - `.69` remains the stable offline control: hub `offline`, while local
   `/`, `/api/status`, and `/api/config` all timed out from this host.
+
+
+---
+
+## 2026-05-15 — post-v0.5.33 regression-sweep observations
+
+### Environment
+
+- Live hub `https://www.voipguru.org/rebooter` on `0.5.33`
+- Fleet: 7 active devices; 0 power samples; 0 external_sensor_sources
+- Firmware team had shipped `0.1.19-dev-central-safe` with the
+  heartbeat-contract expansion (the Phase 3 unblock)
+
+### Notable observations
+
+- **Drift detection works against real `last_reported_config`.**
+  R7 set `desired_config = {"device_name": "Erica's Subwoofer"}`
+  on device `.48` (currently named "Rebooter - renamed test").
+  Drift summary correctly returned
+  `state='drifted', mismatched=['device_name']`. First time the
+  B21 drift codepath has seen real device-reported data. Hub-side
+  absorption of the new firmware heartbeat is partially working
+  "for free" — `reported_config` shows up; richer `central_state`
+  / `recovery_mode` fields still need hub plumbing (Phase 3 proper).
+- **Long-poll concurrency holds at 4-wide.** All 4 returned in
+  ~5.16 s in parallel (cap was 5 s). `gthread` worker × 8 threads
+  gives headroom for the 7-device fleet. Saturation point (8+)
+  untested; theoretically the 9th queues.
+- **`compute_daily_rollups()` is idempotent.** Manual re-run for
+  the same day produced `rollups_written: 1` both times — no
+  IntegrityError because the module-level `UniqueConstraint()`
+  declaration DID bind to the table (confirmed via `\d`:
+  `uq_device_power_rollups_device_day UNIQUE CONSTRAINT, btree
+  (device_id, day_bucket)`). Briefly concerning at code-review;
+  reality fine.
+- **`avg_w` math verified end-to-end.** R4 ingested 5 samples at
+  144.0/145.2/146.4/147.6/148.8 W; rollup returned `avg_w: 146.4`
+  exactly. Numeric→float coercion + SQL `AVG()` correctly drops
+  the Decimal-precision footgun.
+- **CSV export headers correct.** `text/csv; charset=utf-8` +
+  `attachment; filename="rebooter-power-24h.csv"`. 11-column
+  canonical header. Body empty when no samples — expected.
+- **Power probe stale-sample gate works.** R12 ingested a 12-min-old
+  sample; probe with `max_sample_age_seconds=600` correctly returned
+  `failure: reason='stale_sample', sample_age_seconds: 721`. Runtime
+  defends correctly even with bad operator input — the reason
+  BUG-055 is medium, not high.
+
+### Operator-UX edge cases (not bugs per se)
+
+- **`/app/power` empty state is large.** Renders rate-setter form
+  + `0 devices reporting` + "No power samples yet" card —
+  ~2/3 of viewport. Correct per Phase 1B's "no broken card" goal
+  but the steady state today. Consider a collapsed-card variant.
+- **Auto-rebind guardrail UX is silent.** When a device announces
+  with a known MAC but the announcing IP doesn't match
+  `local_ip`, auto-rebind silently doesn't fire. Operator sees
+  nothing about why. Consider an attention item
+  ("auto-rebind candidate but IP mismatch — investigate").
+- **Rules-list event log shows raw `details` JSON keys for unknown
+  probe kinds.** When `_probe_to_phrase` falls through to
+  `unknown probe '{kind}'`, the event row carries the raw
+  `details` dict — Jinja renders as Python repr. Tied to BUG-054.
+
+### Environment quirks worth remembering
+
+- The `data/pg/` directory is owned by the Postgres-user inside
+  the container; `git status` emits a permission warning on it.
+  Harmless but noisy.
+- `docker exec rebooter-droids python -c "…"` runs in a fresh
+  interpreter where `init_engine()` hasn't been called. Anything
+  using `session_scope()` from that path must call
+  `init_engine(load_settings())` first. Documented during R4.
+- The `mac_address` validator accepts hex + `:` `-` `.` space.
+  QA scripts tripped over `"AA:CC:R12:..."` because `R` isn't hex.
+  Use `secrets.token_hex(3).upper()` for synthetic MACs.
+
+### Parallel-session work pending merge
+
+Working tree at sweep end has (not mine to commit):
+- `docs/firmware-apply-config-schema-v01.md` modified (Phase 4C
+  alignment work by firmware-coord session)
+- 5 new `docs/notes/2026-05-14-*.md` — firmware contract +
+  heartbeat-expansion + reported-config + button-verification
+- `docs/notes/2026-05-14-rebooter-48-heartbeat-preview.json`
+- 3 still-empty 0-byte stubs from earlier sessions
+
+Same merge posture as v0.5.24: wait for parallel session to pause
+cleanly, then merge as a versioned ship.

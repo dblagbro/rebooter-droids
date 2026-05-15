@@ -47,7 +47,17 @@ PROBE_KIND_TCP = "tcp"
 PROBE_KIND_HTTP = "http"
 PROBE_KIND_DNS = "dns"
 PROBE_KIND_GATEWAY = "gateway"
-PROBE_KIND_CUSTOM = "custom"
+# v0.5.34 (BUG-054 fix): `PROBE_KIND_CUSTOM` was in KNOWN_PROBE_KINDS
+# since v0.4.0 but the runtime _run_probe dispatcher never had a
+# branch for it — operators could save a rule that failed-perpetually
+# with `reason="unknown probe kind: custom"`. The integration probes
+# (roku/ha/weather/ical) and power probes
+# (power_above/_below/_zero_while_on) are the actual extensibility
+# surface today; the placeholder was never implemented. Removed from
+# canonical list so validation rejects cleanly. The constant itself
+# stays defined as a string-literal alias for any third-party code
+# that imported it, but it's no longer in KNOWN_PROBE_KINDS.
+PROBE_KIND_CUSTOM = "custom"  # deprecated — never had a runtime branch
 # External-source probe kinds (B17 — see `services/external_sensors.py`).
 PROBE_KIND_ROKU_APP_ACTIVE = "roku_app_active"
 PROBE_KIND_HA_STATE_IS = "ha_state_is"
@@ -67,7 +77,6 @@ KNOWN_PROBE_KINDS = (
     PROBE_KIND_HTTP,
     PROBE_KIND_DNS,
     PROBE_KIND_GATEWAY,
-    PROBE_KIND_CUSTOM,
     PROBE_KIND_ROKU_APP_ACTIVE,
     PROBE_KIND_HA_STATE_IS,
     PROBE_KIND_WEATHER_ALERT_ACTIVE,
