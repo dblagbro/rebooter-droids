@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-05-15 |
-| Status | Draft design — engineering implementable, not yet shipped |
+| Status | **P1 SHIPPED v0.5.35** (2026-05-15). P2–P5 implementable per §4. |
 | Owners | rebooter-droids backend/web |
 | Live version | v0.5.34 at `https://www.voipguru.org/rebooter` |
 | Backlog item | `docs/BACKLOG.md` B1 |
@@ -236,7 +236,7 @@ back cleanly. Mapping to the A-tier IDs is in the right column.
 
 | Ship | Version | Lands | A-tier mapping | Reversible? |
 |---|---|---|---|---|
-| **P1 — Decorator + helper foundation, shadow mode wired but inert** | v0.5.35 (or v0.6.0 if operator wants the minor bump) | `scope_required_api` / `scope_required_ui` / `require_can_act_on_*` primitives; `rbac.enforce_mode` runtime setting (default `shadow`); `rbac.shadow_deny` audit action; **two demonstrator routes wired** — `GET /api/v1/admin/devices/<id>` + `POST /api/v1/admin/devices/<id>/commands` (read + write proof). Everything else unchanged. | A2 (partial) | Yes — only two routes use the new pathway; revert is a one-PR back-out. |
+| **P1 — Decorator + helper foundation, shadow mode wired but inert** — ✅ **SHIPPED v0.5.35** (2026-05-15) | v0.5.35 | `scope_required_api` / `scope_required_ui` / `require_can_act_on_*` primitives; `rbac.enforce_mode` runtime setting (default `shadow`); `rbac.shadow_deny` + `rbac.enforce_deny` audit actions; `record_scoped()` choke-point; **two demonstrator routes wired** — `GET /api/v1/admin/devices/<id>` + `POST /api/v1/admin/devices/<id>/commands` (read + write proof). Regression test `tests/qa/test_v0535_rbac_shadow_skeleton.py`. Everything else unchanged. | A2 (partial) | Yes — only two routes use the new pathway; revert is a one-PR back-out. |
 | **P2 — Device.site_id NOT NULL + audit-archive table** | v0.5.36 | Backfill any `Device.site_id IS NULL` to a freshly-created `Default` site (or reuse the operator's first existing site if exactly one exists); flip the column to `NOT NULL` via `_PENDING_COLUMNS`-style `ALTER`. Independently: ship `audit_events_archive` table + `system.audit_retention_days` runtime setting + nightly soft-prune APScheduler tick. | A3 + A9 | Mostly — the NOT NULL flip is one-way without a manual ALTER, but the prune job is feature-flagged and the archive table is additive. |
 | **P3 — Scope-aware list/detail filtering on the four big surfaces** | v0.5.37 | `/app/devices` + `/api/v1/admin/devices` list endpoints filter by `effective_device_ids`. Same for `/app/groups`, `/app/sites`, `/app/history`. Still shadow — filtering happens *only* if `rbac.enforce_mode == enforce`; in shadow we **double-query** (full set and scoped set) and log the diff as `rbac.shadow_diff` rows. | A4 | Yes — pure read-path code; revert is a flag-toggle. |
 | **P4 — Invitations carry scope + admin UI for granting/revoking** | v0.5.38 | `invitations.scope_payload` JSONB column; invite form gains site-multi-select + group/device pickers; redemption flow writes the N concrete `role_bindings` rows. Plus a per-user binding editor at `/app/settings/users/<id>` (super_admin only initially) showing current bindings + add/remove buttons. Per-site members tab on `/app/sites/<id>`. | A5 + A6 + A7 | Mostly — schema column is additive; UI gating uses the existing role decorator so a buggy editor cannot escalate. |
