@@ -45,5 +45,6 @@ from app.blueprints.admin import (  # noqa: E402,F401
     pending_adoption, # v0.4.20
     integrations,    # v0.5.17 (B17 Layer 1 — Roku ECP)
     power,           # v0.5.27 (B16 Phase 1B — fleet /app/power)
+    power_api,       # v0.5.54 (P1.1 — JSON power query API)
     signup_requests, # v0.5.39 (P4b — signup request system)
 )
