@@ -8,9 +8,15 @@ additive (group commands, firmware rollouts, fleet visibility).
 
 ## Live deployment
 
+**Primary (www)**:
 - Admin UI: <https://www.voipguru.org/rebooter/app/>
 - API root: <https://www.voipguru.org/rebooter/api/v1/>
 - Firmware: <https://www.voipguru.org/rebooter/firmware/>
+
+**Secondary (www2)** - Active-active multi-hub sync:
+- Admin UI: <https://www2.voipguru.org/rebooter/app/>
+- API root: <https://www2.voipguru.org/rebooter/api/v1/>
+- Firmware: <https://www2.voipguru.org/rebooter/firmware/>
 
 ## Stack
 

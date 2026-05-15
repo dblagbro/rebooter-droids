@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.50] - 2026-05-15
+
+### Fixed
+- **Device detail UI**: Changed "Send relay_cycle" button text to "Execute power cycle now" to clarify that the button executes an immediate power cycle with the provided parameters, not saving them as defaults for future executions. Resolves user confusion about button behavior in the Power section.
+
+## [0.5.49] - 2026-05-15
+
+### Added — B11 Multi-Hub Sync Phase 7: Settings UI
+
+Final phase of B11 multi-hub sync implementation (RFC-004 Option C). Ships the admin settings UI for configuring sync parameters and viewing sync status.
+
+- **Settings UI** (`templates/settings/sync.html`): Full sync configuration interface with form fields for `sync.enabled` toggle, `hub_id`, `hmac_key` (64-character hex), and `peer_hubs` (JSON array). Includes live sync status dashboard showing outbox stats (max_seq, total_events) and peer cursor table with last_seq, updated_at, and error status for each peer.
+
+- **Settings controller** (`app/blueprints/admin/settings.py`):
+  - `settings_sync_page()` — renders sync UI, fetches live status from `/api/v1/sync/status`
+  - `settings_sync_save_submit()` — validates and persists sync config to `runtime_settings`, validates HMAC key format and peer_hubs JSON structure
+
+- **Documentation section**: In-UI summary of RFC-004 Option C, conflict resolution (last-writer-wins), tombstones, idempotent apply, and table references.
+
+### Notes
+- B11 Phases 1-7 complete. Multi-hub sync fully operational with bidirectional event replication between www and www2 hubs.
+- Default state: `sync.enabled=false`. Operator must configure via `/app/settings/sync` to activate.
+
+## [0.5.48] - 2026-05-15
+
+### Added — B11 Multi-Hub Sync Phase 6: HMAC Authentication & Replicator
+
+Sixth phase of B11 multi-hub sync. Ships HMAC-based peer authentication and the background sync replicator daemon.
+
+- **HMAC authentication** (`app/middleware/sync_auth.py`):
+  - `sync_peer_required` decorator for `/api/v1/sync/*` endpoints
+  - Token format: `hmac-sha256.<hub_id>.<signature>` where signature = HMAC-SHA256(shared_key, hub_id)
+  - Reads `sync.hmac_key` from runtime_settings
+  - Falls back to `admin_required_api` for manual testing
+
+- **Sync replicator** (`app/services/sync_replicator.py`):
+  - `tick()` — main entry point, called every 3s by APScheduler
+  - `_get_peer_hubs()` — reads `sync.peer_hubs` from runtime_settings
+  - `_generate_hmac_bearer_token()` — creates authentication tokens
+  - `_fetch_events_from_peer()` — polls peer's `/api/v1/sync/since` with HMAC auth
+  - `_apply_event_batch()` — applies fetched events and updates sync cursor
+
+- **Scheduler integration** (`app/jobs/scheduler.py`):
+  - Registered `sync_replicator_tick` job with 3-second interval
+  - Runs only when `sync.enabled=true` in runtime_settings
+
+- **API endpoint security**: Changed `/api/v1/sync/since` and `/api/v1/sync/status` from `admin_required_api` to `sync_peer_required` for proper peer authentication.
+
+### Changed
+- Sync API endpoints now require HMAC authentication instead of admin bearer token
+
+## [0.5.47] - 2026-05-15
+
+### Fixed
+- Import error: Corrected decorator import in sync API endpoints from non-existent `require_authenticated` to `admin_required_api`
+
+## [0.5.46] - 2026-05-15
+
+### Added — B11 Multi-Hub Sync Phase 4: Audit Integration
+
+Fourth phase of B11 multi-hub sync. Integrates outbox emission into the audit service for automatic event capture.
+
+- **Audit service integration** (`app/services/audit.py`):
+  - `_should_sync_action()` — filters syncable actions (device/site/group/user create/update/delete/renamed/adopted)
+  - `_emit_outbox_for_scoped_action()` — emits outbox events for syncable mutations, creates tombstones for deletes
+  - Updated `record_scoped()` — added `entity_snapshot` parameter, automatically emits outbox events for syncable actions
+  - Updated `record()` — also emits outbox events for syncable actions (not just scoped path)
+
+### Notes
+- Outbox emission is now automatic for all syncable mutations. No explicit emit calls needed in application code.
+
+## [0.5.45] - 2026-05-15
+
+### Added — B11 Multi-Hub Sync Phases 1-3: Foundation
+
+First three phases of B11 multi-hub sync implementation per RFC-004 Option C. Ships database models, core sync services, and API endpoints for peer-to-peer event replication.
+
+**Phase 1: Database Models** (`app/models/sync.py`):
+- `OutboxEvent` — append-only event log with seq (auto-increment), event_type, entity_type, entity_id, payload (JSON), scope_claims, tombstone_for, and at (timestamp)
+- `SyncCursor` — tracks last_seq per peer_hub_id for replication progress
+- `Tombstone` — prevents resurrection of deleted entities across hubs
+
+**Phase 2: Sync Services** (`app/services/sync.py`):
+- `emit_outbox_event()` — creates OutboxEvent rows
+- `get_sync_cursor()` / `update_sync_cursor()` — manages peer replication progress
+- `is_tombstoned()` / `add_tombstone()` — tombstone management
+- `apply_outbox_event()` — applies incoming events with last-writer-wins conflict resolution
+- `fetch_outbox_events_since()` — queries outbox for `/api/v1/sync/since` endpoint
+- `entity_to_dict()` — converts SQLAlchemy entities to JSON
+
+**Phase 3: Sync API** (`app/blueprints/api/sync.py`):
+- `GET /api/v1/sync/since` — returns events since seq with pagination (next_seq, has_more)
+- `GET /api/v1/sync/status` — returns outbox stats and peer cursor state
+
+### Changed
+- Added `requests>=2.31,<3` dependency for HTTP polling in sync replicator
+
+### Notes
+- Sync is disabled by default. Configuration via Settings UI in Phase 7.
+- LWW conflict resolution uses `event.at` timestamp.
+- Idempotent event application: safe to replay events.
+
 ## [0.5.38] - 2026-05-15
 
 ### Added — B1 RBAC Phase 4a (P4a): Scoped invitations + bindings API
