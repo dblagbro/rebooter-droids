@@ -5,8 +5,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# `snmp` = net-snmp CLI tools (snmpbulkwalk/snmpget) — used by the
+# v0.5.58 SNMP external-sensor poller via subprocess shell-out, the
+# same pattern as the iputils-ping-backed watchdog ping probe.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates iputils-ping \
+        curl ca-certificates iputils-ping snmp \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

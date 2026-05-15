@@ -64,6 +64,24 @@ def settings_integrations_add_submit():
         jwt = (request.form.get("envoy_jwt") or "").strip()
         if jwt:
             config["jwt"] = jwt
+    elif kind == "snmp":
+        version = (request.form.get("snmp_version") or "2c").strip()
+        config["version"] = version
+        if version == "3":
+            config["v3"] = {
+                "user": (request.form.get("snmp_v3_user") or "").strip(),
+                "auth_proto": (request.form.get("snmp_v3_auth_proto") or "SHA").strip(),
+                "auth_key": (request.form.get("snmp_v3_auth_key") or "").strip(),
+                "priv_proto": (request.form.get("snmp_v3_priv_proto") or "AES").strip(),
+                "priv_key": (request.form.get("snmp_v3_priv_key") or "").strip(),
+            }
+        else:
+            config["community"] = (request.form.get("snmp_community") or "").strip()
+        iface_raw = (request.form.get("snmp_interface_filter") or "").strip()
+        if iface_raw:
+            config["interface_filter"] = [
+                s.strip() for s in iface_raw.split(",") if s.strip()
+            ]
     try:
         out = ext_svc.create_source(
             kind=kind,

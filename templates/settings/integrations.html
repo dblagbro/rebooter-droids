@@ -100,6 +100,12 @@
                 {% endif %}
                 {% if pl.day_energy_wh %}· {{ '%.1f'|format(pl.day_energy_wh / 1000.0) }} kWh today{% endif %}
                 {% if pl.reading_type %}<span class="badge" title="Envoy reading source">{{ pl.reading_type }}</span>{% endif %}
+              {% elif s.kind == 'snmp' %}
+                <strong>{{ pl.sys_name or '—' }}</strong>
+                · {{ pl.interface_count or 0 }} interface{{ '' if pl.interface_count == 1 else 's' }}
+                {% if pl.interface_count %}
+                  <span class="badge {{ 'green' if pl.interfaces_up == pl.interface_count else 'amber' }}">{{ pl.interfaces_up or 0 }} up</span>
+                {% endif %}
               {% else %}
                 <span class="muted">sample stored</span>
               {% endif %}
@@ -330,6 +336,97 @@
   </p>
 </div>
 
+{# ── SNMP (router / managed switch) ───────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add a router / managed switch (SNMP)</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <input type="hidden" name="kind" value="snmp">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Office router" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Device IP / host</span>
+      <input type="text" name="host" placeholder="192.168.1.1" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">SNMP port</span>
+      <input type="number" name="port" value="161" min="1" max="65535">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Version</span>
+      <select name="snmp_version">
+        <option value="2c" selected>v2c</option>
+        <option value="3">v3</option>
+      </select>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Community (v2c)</span>
+      <input type="text" name="snmp_community" placeholder="public">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem; min-width:16rem">
+      <span class="muted" style="font-size:.75rem">Interface filter (optional, comma-separated)</span>
+      <input type="text" name="snmp_interface_filter" placeholder="wan, lan1 — blank = all">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+      <input type="number" name="poll_interval_seconds" value="120" min="60" max="3600">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <details style="margin-top:.6rem">
+    <summary class="muted" style="font-size:.85rem; cursor:pointer">SNMP v3 fields (only if Version = v3)</summary>
+    <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap; margin-top:.5rem">
+      <input type="hidden" name="kind" value="snmp">
+      <input type="hidden" name="snmp_version" value="3">
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">Display name</span>
+        <input type="text" name="display_name" placeholder="e.g. Office router" required>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">Device IP / host</span>
+        <input type="text" name="host" placeholder="192.168.1.1" required>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">v3 user</span>
+        <input type="text" name="snmp_v3_user">
+      </label>
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">Auth proto</span>
+        <select name="snmp_v3_auth_proto"><option>SHA</option><option>MD5</option></select>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">Auth key</span>
+        <input type="text" name="snmp_v3_auth_key">
+      </label>
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">Priv proto</span>
+        <select name="snmp_v3_priv_proto"><option>AES</option><option>DES</option></select>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">Priv key</span>
+        <input type="text" name="snmp_v3_priv_key">
+      </label>
+      <label style="display:flex; flex-direction:column; gap:.2rem">
+        <span class="muted" style="font-size:.75rem">Poll interval (s)</span>
+        <input type="number" name="poll_interval_seconds" value="120" min="60" max="3600">
+      </label>
+      <button type="submit" class="btn">Add (v3)</button>
+    </form>
+  </details>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    Polls the standard SNMP IF-MIB interface table (uptime, per-interface
+    link state, 64-bit traffic + error counters). Works with managed
+    switches and prosumer routers — <strong>Ubiquiti UniFi</strong> (enable
+    SNMP v1/v2c in the UniFi Network controller: Settings → System), MikroTik,
+    OpenWrt, pfSense/OPNsense. Community strings + v3 keys are stored
+    encrypted-at-rest and never shown back. Rule probes:
+    <code>snmp_interface_down</code>,
+    <code>snmp_throughput_above</code>/<code>below</code>,
+    <code>snmp_error_rate_above</code>.
+  </p>
+</div>
+
 <div class="v3-card" style="margin-top:1rem">
   <h3>How to use this in a watchdog rule</h3>
   <p>
@@ -364,6 +461,24 @@
     shape — pairs naturally with power monitoring (load) to act on the
     generation-minus-load delta, e.g. "exporting &gt; 3 kW → switch on
     the water heater."
+  </p>
+  <p style="margin-top:1rem">
+    For an SNMP source, watch a router/switch interface — the classic
+    "reboot the modem when the WAN link drops":
+  </p>
+<pre style="overflow:auto; font-size:.8rem; background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px">{
+  "kind": "snmp_interface_down",
+  "source_id": "ext_…",
+  "interface": "wan",
+  "max_sample_age_seconds": 600
+}</pre>
+  <p>
+    The probe fails (rule builds toward its action) when the named
+    interface's link state is not <code>up</code>. Throughput
+    (<code>snmp_throughput_above</code>/<code>below</code>) and error-rate
+    (<code>snmp_error_rate_above</code>) probes compare a rate computed
+    from the last two samples — point the action at the modem's plug for
+    auto-recovery.
   </p>
 </div>
 {% endblock %}

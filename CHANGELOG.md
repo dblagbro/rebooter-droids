@@ -7,9 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Research
+## [0.5.58] - 2026-05-15
 
-- **P2.2 / P2.3 router & managed-switch telemetry — design pass complete.** `docs/notes/2026-05-15-p2-router-switch-telemetry-design.md`. Recommends a single `kind='snmp'` external-sensor integration (router and switch are the same IF-MIB data — the difference is probe-level) using net-snmp CLI shell-out (mirrors the `_probe_ping` precedent; zero new Python deps). Three watchdog probes: `snmp_interface_down`, `snmp_throughput_above/below`, `snmp_error_rate_above`. The one new mechanic is a two-sample counter-delta for rate metrics. ~7–8 h, one version. **Gated on an operator question**: does the site run SNMP-capable gear (managed switch / UniFi / MikroTik / OpenWrt / pfSense)? If only an ISP gateway is present, park P2.2/P2.3.
+### Added — P2.2 / P2.3: Router & managed-switch telemetry (SNMP)
+
+Implements the P2.2/P2.3 design (`docs/notes/2026-05-15-p2-router-switch-telemetry-design.md`) — the operator confirmed SNMP-capable gear on site (Ubiquiti UniFi). Router and switch telemetry are the same IF-MIB data, so both ship as a single `kind='snmp'` external-sensor integration.
+
+- **New `external_sensor_sources` kind `snmp`** (`app/models/external_sensors.py`, `app/services/external_sensors.py`): polls the standard SNMP IF-MIB interface table — `sysName`/`sysUpTime` plus per-interface `oper_status`, 64-bit `ifHCInOctets`/`ifHCOutOctets`, error and discard counters. Config `{version, community | v3:{...}, interface_filter}`; SNMP v2c and v3 (authPriv) both supported.
+
+- **net-snmp CLI shell-out**: `_poll_snmp()` shells out to `snmpbulkwalk`/`snmpget` via `subprocess` — the same pattern the watchdog ping probe uses for `iputils-ping`. Zero new Python dependencies. The `snmp` apt package is added to the Dockerfile.
+
+- **Three watchdog probes** (`app/services/watchdog_runtime/_probes.py`):
+  - `snmp_interface_down` — point-in-time link-state check (the WAN-down detector; pair with a `relay_cycle` on the modem's plug)
+  - `snmp_throughput_above` / `snmp_throughput_below` — bits/sec from the octet-counter delta between the last two samples (`direction` ∈ in/out/total)
+  - `snmp_error_rate_above` — RX+TX error counters per minute (flaky-cable / dying-port detector)
+  - Rate probes use a new `last_two_samples()` helper + `_snmp_counter_delta()` with a counter-reset guard; cold-start (one sample) returns success with `reason=insufficient_history`.
+
+- **Integrations UI**: SNMP add-source form (v2c primary, v3 in an expandable block), per-kind sample summary (`<sys_name> · N interfaces · M up`), and `snmp_*` rule-probe examples. Community strings and v3 keys are redacted in the admin API.
+
+### Notes
+- Works with Ubiquiti UniFi (enable SNMP in the UniFi Network controller), MikroTik, OpenWrt, pfSense/OPNsense, and managed switches. Consumer ISP gateways typically expose no SNMP — accepted limitation.
+- 64-bit HC octet counters are used throughout (32-bit `ifInOctets` wraps in ~34 s at 1 Gbps).
 
 ## [0.5.57] - 2026-05-15
 

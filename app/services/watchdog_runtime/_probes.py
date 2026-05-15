@@ -59,6 +59,12 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_power(probe, kind)
         if kind in ("solar_production_above", "solar_production_below"):
             return _probe_solar(probe, kind)
+        if kind == "snmp_interface_down":
+            return _probe_snmp_interface_down(probe)
+        if kind in ("snmp_throughput_above", "snmp_throughput_below"):
+            return _probe_snmp_throughput(probe, kind)
+        if kind == "snmp_error_rate_above":
+            return _probe_snmp_error_rate(probe)
         if kind == "tcp":
             ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
         elif kind == "http":
@@ -822,3 +828,211 @@ def _probe_solar(probe: dict, kind: str) -> tuple[str, dict]:
         return ("failure" if production_w > threshold else "success"), details
     # solar_production_below
     return ("failure" if production_w < threshold else "success"), details
+
+
+def _probe_snmp_interface_down(probe: dict) -> tuple[str, dict]:
+    """v0.5.58 (P2.2/P2.3): point-in-time link-state probe over an SNMP
+    external sensor source.
+
+    Rule shape:
+        probe = {"kind": "snmp_interface_down",
+                 "source_id": "ext_…",
+                 "interface": "wan",
+                 "max_sample_age_seconds": 600}
+
+    "failure" (builds toward the rule's action) when the named
+    interface's `oper_status` is not `up` — the WAN-down detector.
+    Pair with a `relay_cycle` action on the modem's plug.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    interface = (probe.get("interface") or "").strip()
+    if not source_id or not interface:
+        return "failure", {"reason": "missing source_id / interface"}
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 600)
+    except (TypeError, ValueError):
+        max_age = 600
+
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    interfaces = (sample.get("payload") or {}).get("interfaces") or {}
+    entry = interfaces.get(interface) if isinstance(interfaces, dict) else None
+    if not isinstance(entry, dict):
+        return "failure", {
+            "reason": "interface_not_found",
+            "source_id": source_id,
+            "interface": interface,
+            "sampled_at": sample.get("sampled_at"),
+        }
+    status = entry.get("oper_status")
+    return ("success" if status == "up" else "failure"), {
+        "source_id": source_id,
+        "interface": interface,
+        "oper_status": status,
+        "sampled_at": sample.get("sampled_at"),
+    }
+
+
+def _snmp_pair_interface(probe: dict, default_max_age: int = 600):
+    """Shared front-half of the SNMP rate probes: resolve the source +
+    interface and fetch the (newer, older) sample pair.
+
+    Returns either a ``(outcome, details)`` early-return tuple — caller
+    should return it verbatim — or ``(None, (newer_if, older_if, dt))``
+    when the pair is usable.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    interface = (probe.get("interface") or "").strip()
+    if not source_id or not interface:
+        return ("failure", {"reason": "missing source_id / interface"}), None
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or default_max_age)
+    except (TypeError, ValueError):
+        max_age = default_max_age
+
+    from app.services.external_sensors import last_two_samples
+
+    pair = last_two_samples(source_id, max_age_seconds=max_age)
+    if pair is None:
+        # One sample (cold start) or stale — not actionable. Succeed so a
+        # fresh source doesn't fire a rule before it has history.
+        return ("success", {
+            "reason": "insufficient_history",
+            "source_id": source_id,
+        }), None
+    newer, older = pair
+
+    def _iface(s):
+        ifaces = (s.get("payload") or {}).get("interfaces") or {}
+        return ifaces.get(interface) if isinstance(ifaces, dict) else None
+
+    n_if, o_if = _iface(newer), _iface(older)
+    if not isinstance(n_if, dict) or not isinstance(o_if, dict):
+        return ("failure", {
+            "reason": "interface_not_found",
+            "source_id": source_id,
+            "interface": interface,
+        }), None
+    dt = (newer["sampled_at"] - older["sampled_at"]).total_seconds()
+    if dt <= 0:
+        return ("success", {"reason": "bad_interval", "source_id": source_id}), None
+    return None, (n_if, o_if, dt, newer["sampled_at"])
+
+
+def _snmp_counter_delta(n_if: dict, o_if: dict, field: str) -> int | None:
+    """Monotonic-counter delta; None on a missing reading or a counter
+    reset (newer < older — device reboot / agent restart)."""
+    n, o = n_if.get(field), o_if.get(field)
+    if n is None or o is None:
+        return None
+    delta = n - o
+    return delta if delta >= 0 else None
+
+
+def _probe_snmp_throughput(probe: dict, kind: str) -> tuple[str, dict]:
+    """v0.5.58 (P2.2/P2.3): interface throughput probe — bits/sec from
+    the octet-counter delta between the last two samples.
+
+    Rule shape:
+        probe = {"kind": "snmp_throughput_above" | "snmp_throughput_below",
+                 "source_id": "ext_…",
+                 "interface": "wan",
+                 "direction": "in" | "out" | "total",
+                 "threshold_bps": 1000000,
+                 "max_sample_age_seconds": 600}
+
+    `snmp_throughput_below` is the "link is up but carrying no traffic —
+    likely wedged" signal that bare link-state misses.
+    """
+    direction = (probe.get("direction") or "total").strip().lower()
+    if direction not in ("in", "out", "total"):
+        return "failure", {"reason": "direction must be in / out / total"}
+    try:
+        threshold = float(probe.get("threshold_bps"))
+    except (TypeError, ValueError):
+        return "failure", {"reason": "missing or non-numeric threshold_bps"}
+
+    early, usable = _snmp_pair_interface(probe)
+    if early is not None:
+        return early
+    n_if, o_if, dt, sampled_at = usable
+
+    if direction == "in":
+        octet_delta = _snmp_counter_delta(n_if, o_if, "in_octets")
+    elif direction == "out":
+        octet_delta = _snmp_counter_delta(n_if, o_if, "out_octets")
+    else:
+        d_in = _snmp_counter_delta(n_if, o_if, "in_octets")
+        d_out = _snmp_counter_delta(n_if, o_if, "out_octets")
+        octet_delta = (
+            d_in + d_out if (d_in is not None and d_out is not None) else None
+        )
+    if octet_delta is None:
+        return "success", {
+            "reason": "counter_reset",
+            "source_id": (probe.get("source_id") or "").strip(),
+            "interface": (probe.get("interface") or "").strip(),
+        }
+    bps = octet_delta * 8 / dt
+    details = {
+        "source_id": (probe.get("source_id") or "").strip(),
+        "interface": (probe.get("interface") or "").strip(),
+        "direction": direction,
+        "throughput_bps": round(bps, 1),
+        "threshold_bps": threshold,
+        "interval_seconds": round(dt, 1),
+        "sampled_at": sampled_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if kind == "snmp_throughput_above":
+        return ("failure" if bps > threshold else "success"), details
+    # snmp_throughput_below
+    return ("failure" if bps < threshold else "success"), details
+
+
+def _probe_snmp_error_rate(probe: dict) -> tuple[str, dict]:
+    """v0.5.58 (P2.2/P2.3): interface error-rate probe — RX+TX error
+    counters per minute from the delta between the last two samples.
+    Catches a flaky cable / dying port (the P2.3 per-port story).
+
+    Rule shape:
+        probe = {"kind": "snmp_error_rate_above",
+                 "source_id": "ext_…",
+                 "interface": "lan3",
+                 "threshold_errors_per_min": 10,
+                 "max_sample_age_seconds": 600}
+    """
+    try:
+        threshold = float(probe.get("threshold_errors_per_min"))
+    except (TypeError, ValueError):
+        return "failure", {"reason": "missing or non-numeric threshold_errors_per_min"}
+
+    early, usable = _snmp_pair_interface(probe)
+    if early is not None:
+        return early
+    n_if, o_if, dt, sampled_at = usable
+
+    d_in = _snmp_counter_delta(n_if, o_if, "in_errors")
+    d_out = _snmp_counter_delta(n_if, o_if, "out_errors")
+    if d_in is None or d_out is None:
+        return "success", {
+            "reason": "counter_reset",
+            "source_id": (probe.get("source_id") or "").strip(),
+            "interface": (probe.get("interface") or "").strip(),
+        }
+    errors_per_min = (d_in + d_out) / dt * 60.0
+    details = {
+        "source_id": (probe.get("source_id") or "").strip(),
+        "interface": (probe.get("interface") or "").strip(),
+        "errors_per_min": round(errors_per_min, 2),
+        "threshold_errors_per_min": threshold,
+        "interval_seconds": round(dt, 1),
+        "sampled_at": sampled_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return ("failure" if errors_per_min > threshold else "success"), details
