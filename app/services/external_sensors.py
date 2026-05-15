@@ -860,6 +860,59 @@ def latest_sample(source_id: str, *, max_age_seconds: int = 120) -> dict | None:
         }
 
 
+def ha_entities(source_id: str) -> dict | None:
+    """v0.5.57 (P2.4): Home Assistant entity browser.
+
+    The HA poll already caches every entity in the sample payload; this
+    flattens the most-recent sample into a sorted, browsable list so the
+    operator can discover `entity_id`s (and their current state / unit)
+    for `ha_state_is` / `ha_numeric_*` rules without leaving the hub.
+
+    Returns None if the source does not exist or is not a
+    `home_assistant` kind. An HA source that has never polled returns an
+    empty `entities` list with `sampled_at=None`.
+    """
+    with session_scope() as session:
+        src = session.get(ExternalSensorSource, source_id)
+        if src is None or src.kind != "home_assistant":
+            return None
+        display_name = src.display_name
+        sample_row = session.scalar(
+            select(ExternalSensorSample)
+            .where(ExternalSensorSample.source_id == source_id)
+            .order_by(ExternalSensorSample.sampled_at.desc())
+            .limit(1)
+        )
+        if sample_row is None:
+            return {
+                "source_id": source_id,
+                "display_name": display_name,
+                "sampled_at": None,
+                "entities": [],
+            }
+        payload = sample_row.payload or {}
+        raw = payload.get("entities") if isinstance(payload, dict) else None
+        entities: list[dict] = []
+        for eid, entry in (raw.items() if isinstance(raw, dict) else []):
+            if not isinstance(entry, dict):
+                continue
+            attrs = entry.get("attributes") if isinstance(entry.get("attributes"), dict) else {}
+            entities.append({
+                "entity_id": eid,
+                "friendly_name": attrs.get("friendly_name"),
+                "state": entry.get("state"),
+                "unit": attrs.get("unit_of_measurement"),
+                "last_changed": entry.get("last_changed"),
+            })
+        entities.sort(key=lambda e: e["entity_id"])
+        return {
+            "source_id": source_id,
+            "display_name": display_name,
+            "sampled_at": _iso(sample_row.sampled_at),
+            "entities": entities,
+        }
+
+
 def latest_active_app(source_id: str, *, max_age_seconds: int = 120) -> dict | None:
     """Return the most-recent sample's payload if it's younger than
     `max_age_seconds`. Returns None if no sample, or the sample is

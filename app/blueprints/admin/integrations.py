@@ -158,3 +158,33 @@ def settings_integrations_toggle_submit(source_id: str):
         "info",
     )
     return redirect(url_for("admin_ui.settings_integrations_page"))
+
+
+@admin_ui_bp.get("/settings/integrations/<source_id>/entities")
+@admin_required_ui
+def settings_integrations_ha_entities_page(source_id: str):
+    """v0.5.57 (P2.4): Home Assistant entity browser — lists the
+    entities cached from the source's most-recent poll so the operator
+    can discover `entity_id`s for `ha_state_is` / `ha_numeric_*` rules.
+    Optional `?q=` substring filter on entity_id / friendly_name.
+    """
+    data = ext_svc.ha_entities(source_id)
+    if data is None:
+        flash("Entity browser is only available for Home Assistant sources.", "error")
+        return redirect(url_for("admin_ui.settings_integrations_page"))
+    q = (request.args.get("q") or "").strip().lower()
+    if q:
+        data["entities"] = [
+            e for e in data["entities"]
+            if q in (e.get("entity_id") or "").lower()
+            or q in (e.get("friendly_name") or "").lower()
+        ]
+    return render_template(
+        "settings/integrations_ha_entities.html",
+        **_ctx({
+            "active": "settings",
+            "settings_tab": "integrations",
+            "ha": data,
+            "query": q,
+        }),
+    )
