@@ -14,6 +14,36 @@ from app.models import AuditEvent
 log = logging.getLogger(__name__)
 
 
+def _should_sync_action(action: str, target_type: str | None) -> bool:
+    """Determine if an audit action should emit an outbox event for sync.
+
+    Returns True for create/update/delete actions on syncable entity types
+    (device, site, group, user).
+    """
+    if not target_type:
+        return False
+
+    # Syncable entity types
+    syncable_types = {"device", "site", "group", "user"}
+    if target_type not in syncable_types:
+        return False
+
+    # Syncable action patterns
+    # Include: created, updated, deleted, renamed, adopted, restored
+    # Exclude: command_issued, command_cancelled, etc. (operational events)
+    syncable_verbs = {
+        "created", "updated", "deleted", "renamed",
+        "adopted", "restored", "decommissioned",
+    }
+
+    # Extract verb from action (e.g., "device.created" → "created")
+    if "." not in action:
+        return False
+    verb = action.split(".", 1)[1]
+
+    return verb in syncable_verbs
+
+
 def _emit_outbox_for_scoped_action(
     action: str,
     target_type: str | None,
@@ -89,7 +119,11 @@ def record(
     details: dict | None = None,
     ip: str | None = None,
 ) -> None:
-    """Best-effort: never raise from the audit path."""
+    """Best-effort: never raise from the audit path.
+
+    v0.5.48 (B11 Phase 4): Also emits outbox events for syncable entity
+    mutations (device/site/group/user create/update/delete actions).
+    """
     try:
         evt = AuditEvent(
             at=datetime.now(timezone.utc),
@@ -105,6 +139,16 @@ def record(
             session.add(evt)
     except Exception:
         log.exception("audit emit failed for action=%s target=%s/%s", action, target_type, target_id)
+
+    # v0.5.48 (B11 Phase 4): Emit outbox events for syncable mutations
+    if _should_sync_action(action, target_type):
+        _emit_outbox_for_scoped_action(
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            scope_claim=None,  # Infer from target_type/target_id
+            entity_snapshot=None,  # TODO: pass from callers incrementally
+        )
 
 
 def record_scoped(
