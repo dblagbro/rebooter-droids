@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.53] - 2026-05-15
+
+### Added — P0.3: Recovery-aware config push (Phase 4B) + schema reconciliation (Phase 4C)
+
+Final phase of the P0 work track per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6. Closes the P0 track (absorb the firmware status/recovery/central contract).
+
+**Phase 4B — recovery-aware desired-config re-push:**
+
+- **Transition detection** (`app/services/heartbeats.py`): `record_heartbeat()` now captures the pre-update recovery hot-columns and detects a recovery transition — `last_known_good_restored` newly going true, or `recovery_mode` going true→false (recovery incident closed). Either can leave the device's on-box config diverged from operator intent.
+
+- **Re-push** (`app/services/device_config.py::maybe_push_after_recovery`): on a detected transition, the hub re-asserts `desired_config` via an `apply_config` command (`source="restore"`) and audits `device.recovery_config_pushed` with the trigger (`last_known_good_restored` / `recovery_exit`). Gated on the existing `desired_config.enabled` feature flag — same as restore-after-reflash auto-push, so it stays off until the operator opts in. When the flag is off the transition is logged for observability but no command is enqueued. Best-effort: never raises out of the heartbeat path.
+
+**Phase 4C — `apply_config` schema reconciliation:**
+
+- **`docs/firmware-apply-config-schema-v01.md` rewritten** to match the firmware team's source-backed notes (`docs/notes/2026-05-14-firmware-config-and-reported-schema.md`). The pre-2026-05-15 doc described an aspirational schema the real firmware never implemented (Wi-Fi credentials under `internet`, MQTT under `notifications`, `device.boot_mode`/`led_brightness`/`timezone`). Corrected:
+  - `internet`/`device` are watchdog target/timer config, not Wi-Fi/boot config.
+  - `notifications` is webhook-oriented, not MQTT.
+  - **Support-tier table**: each `ALLOWED_DESIRED_CONFIG_KEYS` entry is marked *validated end-to-end* (only `device_name` today — confirmed drift round-trip) vs. *accepted* (firmware parses it, hub permits it, full drift round-trip not yet individually verified).
+  - The hub's `ALLOWED_DESIRED_CONFIG_KEYS` is confirmed **in agreement** with the firmware's actual `apply_config` top-level keys — no key the firmware cannot parse is accepted.
+- Open firmware ask recorded: per-key `reported_config` honor confirmation gates promoting keys beyond `device_name` to "validated end-to-end" — which is why the auto-push paths stay feature-flagged.
+
+### Notes
+- P0 track complete (P0.1 v0.5.51 + P0.2 v0.5.52 + P0.3 v0.5.53).
+- No schema change in this release — Phase 4B reuses the P0.1 `reported_*` columns.
+
 ## [0.5.52] - 2026-05-15
 
 ### Added — P0.2: Render distinct device states in the UI

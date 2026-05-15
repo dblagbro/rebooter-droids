@@ -91,12 +91,34 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
                 setattr(hb, field, payload[field])
         session.add(hb)
 
+        # v0.5.53 (P0.3 / Phase 4B): capture the pre-update recovery truth
+        # so we can detect a transition once the hot columns are refreshed.
+        prev_recovery_mode = device.reported_recovery_mode
+        prev_lkg_restored = device.reported_last_known_good_restored
+
         # Refresh the Device hot columns for current-truth filtering. Only
         # touch a column when the device actually reported it, so a partial
         # payload never overwrites last-known state with NULL.
         for field in _DEVICE_HOT_FIELDS:
             if field in payload:
                 setattr(device, f"reported_{field}", payload[field])
+
+        # Detect a recovery transition. `last_known_good_restored` newly
+        # going true means the device just re-applied last-known-good
+        # config; exiting recovery mode (true -> false) means a recovery
+        # incident just closed. Either can leave the on-box config diverged
+        # from operator intent — Phase 4B re-asserts desired_config.
+        recovery_trigger: str | None = None
+        if (
+            prev_lkg_restored is not True
+            and device.reported_last_known_good_restored is True
+        ):
+            recovery_trigger = "last_known_good_restored"
+        elif (
+            prev_recovery_mode is True
+            and device.reported_recovery_mode is False
+        ):
+            recovery_trigger = "recovery_exit"
         reconcile_assignment_reported_version(
             session,
             device_id,
@@ -115,6 +137,15 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             device.last_reported_config = reported_cfg
             session.add(device)
         session.flush()
+
+    # v0.5.53 (P0.3 / Phase 4B): after the heartbeat commits, re-assert
+    # desired_config if the device just came through a recovery transition.
+    # Deferred import — device_config transitively pulls in the commands +
+    # audit services. Best-effort: maybe_push_after_recovery never raises.
+    if recovery_trigger is not None:
+        from app.services.device_config import maybe_push_after_recovery
+
+        maybe_push_after_recovery(device_id, trigger=recovery_trigger)
 
     return {"recorded_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
 
