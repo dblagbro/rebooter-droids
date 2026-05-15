@@ -489,4 +489,9 @@ def get_device_detail(device_id: str) -> dict | None:
         out["power_rollups_daily"] = device_power.daily_rollups_for_device(
             device_id, days=14
         )
+        # v0.5.55 (P1.2): real-vs-synthetic sample mix over the last 24h,
+        # for the Power-section data-quality line.
+        out["power_source_breakdown"] = device_power.power_source_breakdown(
+            device_id, window_seconds=24 * 60 * 60
+        )
         return out

@@ -468,15 +468,23 @@ cross-modal query layer.
 - `GET /admin/devices/{device_id}/power-samples` — windowed raw
   samples, newest-first. Query params: `window_seconds` (default
   3600, clamped 60..86400), `limit` (default 720), `channel_id`
-  (default 0). Returns `{device_id, modality, channel_id,
-  window_seconds, sample_count, samples: [...]}`. Each sample carries
-  `source` (`steady` real vs. synthetic fallback), `source_flags`,
-  `is_stale`, and the CSE7766 fields (`v_v`, `i_ma`, `p_w`, `s_va`,
-  `pf`, `hz`, `energy_wh`).
+  (default 0), `source` (optional — restrict to one source, e.g.
+  `steady`). Returns `{device_id, modality, channel_id,
+  window_seconds, source_filter, sample_count, source_breakdown,
+  samples: [...]}`. `source_breakdown` (v0.5.55) counts samples by
+  source over the window — `{total, real, synthetic, by_source}` — so
+  callers never silently merge measured and synthetic telemetry. Each
+  sample carries `source` (`steady`/`burst` real vs. `synthetic`
+  fallback), `source_kind` (`real`/`synthetic`), `source_flags`,
+  `source_flags_decoded` (`{raw, bits_set}`), `is_stale`, and the
+  CSE7766 fields (`v_v`, `i_ma`, `p_w`, `s_va`, `pf`, `hz`,
+  `energy_wh`).
 - `GET /admin/devices/{device_id}/power-rollups` — recent daily
   rollups, newest-first. Query param: `days` (default 7, clamped
   1..365). Returns `{device_id, modality, days, rollup_count,
-  rollups: [...]}` with `avg_w/min_w/max_w/kwh` per day.
+  rollups: [...]}` with `avg_w/min_w/max_w/kwh` per day, plus
+  `synthetic_sample_count` and `is_synthetic_tainted` (v0.5.55 —
+  `null` on rollups computed before P1.2 = quality unknown).
 - `GET /admin/power/summary` — fleet aggregate. Query param:
   `window_seconds` (default 86400; clamped 60..2592000 — supports the
   24h/7d/30d windows). Returns fleet totals (`fleet_avg_w`,

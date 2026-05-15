@@ -54,6 +54,13 @@ class DevicePowerRollup(Base):
     day_bucket: Mapped[datetime] = ts_column(default_now=False, nullable=False)
     computed_at: Mapped[datetime] = ts_column()
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # v0.5.55 (P1.2): how many of `sample_count` were synthetic-fallback
+    # samples (source='synthetic'). Lets consumers flag a rollup day whose
+    # avg/min/max is partly or wholly synthetic rather than real CSE7766
+    # data. Nullable — rollups computed before P1.2 leave it NULL.
+    synthetic_sample_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
 
     # All numeric, all nullable — devices may report power without
     # energy and vice versa.
