@@ -281,7 +281,7 @@
     {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
     <label>relay_cycle — power_off_seconds <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
     <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
-    <button type="submit" class="btn-danger">Send relay_cycle</button>
+    <button type="submit" class="btn-danger">Execute power cycle now</button>
   </form>
 
   <h3 style="margin-top:1.5rem">Hold off</h3>
