@@ -119,6 +119,9 @@
               {% elif s.kind in ('plex', 'jellyfin', 'ios_shortcut') %}
                 {% set ev = pl.event or pl.NotificationType or pl.Event %}
                 last event: <strong>{{ ev or '(received)' }}</strong>
+              {% elif s.kind == 'mqtt' %}
+                last: <code>{{ pl.topic|truncate(40, true, '…') }}</code>
+                = <strong>{{ pl.msg|truncate(30, true, '…') }}</strong>
               {% else %}
                 <span class="muted">sample stored</span>
               {% endif %}
@@ -129,8 +132,8 @@
           {% endif %}
         </td>
         <td style="white-space:nowrap">
-          {# Webhook kinds receive inbound events — there is nothing to poll. #}
-          {% if s.kind not in ('plex', 'jellyfin', 'ios_shortcut') %}
+          {# Webhook + MQTT kinds receive inbound events — nothing to poll. #}
+          {% if s.kind not in ('plex', 'jellyfin', 'ios_shortcut', 'mqtt') %}
           <form method="post" action="{{ url_for('admin_ui.settings_integrations_probe_submit', source_id=s.id) }}" style="display:inline">
             <button type="submit" class="btn-secondary" style="font-size:.8rem">Probe now</button>
           </form>
@@ -486,6 +489,49 @@
     while a movie is playing, so a reboot rule fires only when idle);
     <code>webhook_field_equals</code> (generic — match any JSON field, e.g.
     iOS Shortcut <code>state=home</code>).
+  </p>
+</div>
+
+{# ── MQTT broker subscriber ───────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add an MQTT broker subscriber</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap; align-items:flex-start">
+    <input type="hidden" name="kind" value="mqtt">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Home MQTT" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Broker host</span>
+      <input type="text" name="host" placeholder="192.168.1.10" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Port</span>
+      <input type="number" name="port" value="1883" min="1" max="65535">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem; min-width:18rem">
+      <span class="muted" style="font-size:.75rem">Topics (one per line)</span>
+      <textarea name="mqtt_topics" rows="3" placeholder="sensors/+/state&#10;garage/door/state" required></textarea>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Username (optional)</span>
+      <input type="text" name="mqtt_username">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Password (optional)</span>
+      <input type="password" name="mqtt_password">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    A background subscriber holds an open connection to your broker
+    (e.g. Mosquitto on your Home Assistant host) and records every
+    message on the subscribed topics. Topic filters support MQTT
+    wildcards (<code>+</code>, <code>#</code>). Credentials are stored
+    encrypted-at-rest. Rule probe: <code>mqtt_topic_equals</code>.
+    <strong>Note:</strong> adding or editing an MQTT source takes effect
+    on the next container restart (the subscriber list is read at
+    start-up).
   </p>
 </div>
 

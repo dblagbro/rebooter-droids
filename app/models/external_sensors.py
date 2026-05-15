@@ -35,12 +35,18 @@ EXTERNAL_SOURCE_KINDS = (
     "plex",          # v0.5.61 (B17 Ship 2) — Plex Media Server webhook
     "jellyfin",      # v0.5.61 (B17 Ship 2) — Jellyfin webhook
     "ios_shortcut",  # v0.5.61 (B17 Ship 2) — generic iOS Shortcuts webhook
+    "mqtt",          # v0.5.63 (B17 Ship 3) — MQTT broker subscriber
 )
 
 # v0.5.61 (B17 Ship 2): inbound-webhook kinds. These are NOT polled —
 # the external service POSTs to /api/v1/integrations/webhook/<id>. The
 # poller (`poll_all_due`) skips them; there is no `_poll_<kind>` branch.
 WEBHOOK_KINDS = ("plex", "jellyfin", "ios_shortcut")
+
+# v0.5.63 (B17 Ship 3): long-lived-subscriber kinds. Also NOT polled —
+# a background thread holds an open connection (MQTT broker) and writes
+# samples as messages arrive. `poll_all_due` skips these too.
+SUBSCRIBER_KINDS = ("mqtt",)
 
 # v0.5.60 (P3a / RFC-006): the authoritative source-kind → modality map.
 # RFC-006 Decision 1 makes `modality` the cross-modal query key; §4 picks
@@ -57,6 +63,7 @@ KIND_TO_MODALITY = {
     "plex": "media",
     "jellyfin": "media",
     "ios_shortcut": "automation",
+    "mqtt": "appliance_state",
 }
 
 
