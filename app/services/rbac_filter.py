@@ -280,3 +280,124 @@ def filter_sites_with_shadow_logging(
         )
 
     return unfiltered_rows
+
+
+def filter_audit_with_shadow_logging(
+    base_stmt: Select,
+    session: Session,
+    *,
+    user_id: str | None = None,
+    role_needed: str = "viewer",
+) -> list:
+    """Execute audit query with RBAC filtering based on target resource access.
+
+    Audit events are visible if the user has access to the target resource:
+    - target_type="device" → check effective_device_ids
+    - target_type="site" → check effective_site_ids
+    - target_type="group" → check effective_group_ids
+    - target_type IS NULL or other → always visible (system events, user events, etc.)
+    """
+    from app.models import AuditEvent
+    from app.models.users import ROLE_VIEWER
+
+    if user_id is None:
+        user_id = getattr(g.get("current_user"), "id", None)
+
+    if not user_id:
+        return list(session.scalars(base_stmt))
+
+    if rb._is_super_admin(user_id):
+        return list(session.scalars(base_stmt))
+
+    mode = rb.enforce_mode()
+
+    # Get all scoped resource IDs
+    device_scope = rb.effective_device_ids(user_id, role_needed or ROLE_VIEWER)
+    site_scope = rb.effective_site_ids(user_id, role_needed or ROLE_VIEWER)
+    group_scope = rb.effective_group_ids(user_id, role_needed or ROLE_VIEWER)
+
+    # If all scopes are "ALL", no filtering needed
+    if device_scope == "ALL" and site_scope == "ALL" and group_scope == "ALL":
+        return list(session.scalars(base_stmt))
+
+    # Build scope filter: visible if target is in scope OR target_type is NULL/other
+    from sqlalchemy import and_, or_
+
+    scope_filters = [AuditEvent.target_type.is_(None)]  # System events always visible
+
+    if device_scope != "ALL":
+        scope_filters.append(
+            and_(
+                AuditEvent.target_type == "device",
+                AuditEvent.target_id.in_(device_scope)
+            )
+        )
+    else:
+        # ALL devices visible
+        scope_filters.append(AuditEvent.target_type == "device")
+
+    if site_scope != "ALL":
+        scope_filters.append(
+            and_(
+                AuditEvent.target_type == "site",
+                AuditEvent.target_id.in_(site_scope)
+            )
+        )
+    else:
+        scope_filters.append(AuditEvent.target_type == "site")
+
+    if group_scope != "ALL":
+        scope_filters.append(
+            and_(
+                AuditEvent.target_type == "group",
+                AuditEvent.target_id.in_(group_scope)
+            )
+        )
+    else:
+        scope_filters.append(AuditEvent.target_type == "group")
+
+    # Catch-all for other target types (user, command, etc.) - show them
+    scope_filters.append(
+        AuditEvent.target_type.not_in(("device", "site", "group"))
+    )
+
+    filtered_stmt = base_stmt.where(or_(*scope_filters))
+
+    if mode == "enforce":
+        return list(session.scalars(filtered_stmt))
+
+    # Shadow mode: double-query and log diff
+    unfiltered_rows = list(session.scalars(base_stmt))
+    filtered_rows = list(session.scalars(filtered_stmt))
+
+    unfiltered_ids = {e.id for e in unfiltered_rows}
+    filtered_ids = {e.id for e in filtered_rows}
+    hidden_ids = unfiltered_ids - filtered_ids
+
+    if hidden_ids:
+        user = g.get("current_user")
+        audit_service.record(
+            "rbac.shadow_diff",
+            actor_user_id=user_id,
+            actor_email_snapshot=user.email if user else None,
+            target_type="audit_event",
+            target_id=None,
+            details={
+                "resource_type": "audit_event",
+                "role_needed": role_needed,
+                "total_count": len(unfiltered_ids),
+                "scoped_count": len(filtered_ids),
+                "hidden_count": len(hidden_ids),
+                "device_scope_size": len(device_scope) if isinstance(device_scope, set) else 0,
+                "site_scope_size": len(site_scope) if isinstance(site_scope, set) else 0,
+                "group_scope_size": len(group_scope) if isinstance(group_scope, set) else 0,
+            },
+        )
+        log.info(
+            "RBAC shadow diff: audit list for user %s would hide %d/%d events",
+            user_id,
+            len(hidden_ids),
+            len(unfiltered_ids),
+        )
+
+    return unfiltered_rows
