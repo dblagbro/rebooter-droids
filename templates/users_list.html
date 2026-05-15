@@ -40,6 +40,9 @@
     <td>{{ u.last_login_at or '—' }}</td>
     <td>
       <div class="actions" style="margin:0">
+        {% if current_user.role == 'super_admin' %}
+        <a href="{{ url_for('admin_ui.user_detail_page', user_id=u.id) }}" style="display:inline-block;padding:0.4rem 0.8rem;text-decoration:none">View detail</a>
+        {% endif %}
         {% if current_user.role == 'super_admin' and u.id != current_user.id and u.is_active %}
         <form method="post" action="{{ url_for('admin_ui.deactivate_user_submit', user_id=u.id) }}" data-confirm-message="Deactivate {{ u.email }}? They will be signed out and unable to log in until you re-activate." style="margin:0">
           <button type="submit">Deactivate</button>
