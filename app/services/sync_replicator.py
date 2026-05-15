@@ -3,9 +3,13 @@
 Polls peer hubs' /api/v1/sync/since endpoints, fetches outbox events,
 applies them locally, and updates sync cursors. Runs as an APScheduler
 background job (target: every 3s for steady-state ~1-3s latency).
+
+v0.5.48 (B11 Phase 6): Uses HMAC bearer authentication for peer calls.
 """
 from __future__ import annotations
 
+import hmac
+import hashlib
 import logging
 from typing import Any
 
@@ -16,6 +20,33 @@ from app.services import sync as sync_svc
 from app.services import runtime_settings as rs
 
 log = logging.getLogger(__name__)
+
+
+def _generate_hmac_bearer_token(payload: str) -> str:
+    """Generate an HMAC bearer token for authenticating to peer hubs.
+
+    Token format: "hmac-sha256.<payload>.<signature>"
+    - payload: this hub's identifier (e.g., "www")
+    - signature: hex(HMAC-SHA256(key, payload))
+
+    Returns the full bearer token string.
+    """
+    key_hex = rs.get("sync.hmac_key", default=None)
+    if not key_hex:
+        raise ValueError("sync.hmac_key not configured")
+
+    try:
+        key = bytes.fromhex(key_hex)
+    except (ValueError, TypeError):
+        raise ValueError("Invalid sync.hmac_key format (expected hex)")
+
+    signature = hmac.new(
+        key,
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    return f"hmac-sha256.{payload}.{signature}"
 
 
 def _get_peer_hubs() -> list[dict[str, Any]]:
@@ -47,21 +78,26 @@ def _get_peer_hubs() -> list[dict[str, Any]]:
 
 def _fetch_events_from_peer(
     peer_url: str,
-    peer_token: str,
+    peer_identifier: str,
     since_seq: int,
     limit: int = 100,
 ) -> tuple[list[dict], int, bool]:
     """Fetch outbox events from a peer hub.
+
+    peer_identifier: used to generate HMAC bearer token (e.g., "www")
 
     Returns (events, next_seq, has_more).
 
     On error, returns ([], since_seq, False) and logs the exception.
     """
     try:
+        # Generate HMAC bearer token
+        token = _generate_hmac_bearer_token(peer_identifier)
+
         resp = requests.get(
             f"{peer_url}/api/v1/sync/since",
             params={"seq": since_seq, "limit": limit},
-            headers={"Authorization": f"Bearer {peer_token}"},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )
         resp.raise_for_status()
@@ -143,9 +179,8 @@ def tick() -> dict[str, Any]:
     for peer in peers:
         peer_id = peer.get("id")
         peer_url = peer.get("url")
-        peer_token = peer.get("token")
 
-        if not (peer_id and peer_url and peer_token):
+        if not (peer_id and peer_url):
             log.warning("Peer missing required fields: %r", peer)
             total_stats["errors"] += 1
             continue
@@ -155,9 +190,10 @@ def tick() -> dict[str, Any]:
             with session_scope() as session:
                 last_seq = sync_svc.get_sync_cursor(session, peer_id)
 
-            # Fetch events from peer
+            # Fetch events from peer (using this hub's identifier for HMAC)
+            this_hub_id = rs.get("sync.hub_id", default="www")
             events, next_seq, has_more = _fetch_events_from_peer(
-                peer_url, peer_token, last_seq, limit=100
+                peer_url, this_hub_id, last_seq, limit=100
             )
 
             if events:
