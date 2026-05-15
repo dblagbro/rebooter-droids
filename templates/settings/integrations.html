@@ -113,6 +113,10 @@
           <form method="post" action="{{ url_for('admin_ui.settings_integrations_probe_submit', source_id=s.id) }}" style="display:inline">
             <button type="submit" class="btn-secondary" style="font-size:.8rem">Probe now</button>
           </form>
+          {% if s.kind == 'home_assistant' %}
+            <a class="btn-secondary" style="font-size:.8rem"
+               href="{{ url_for('admin_ui.settings_integrations_ha_entities_page', source_id=s.id) }}">Entities</a>
+          {% endif %}
           <form method="post" action="{{ url_for('admin_ui.settings_integrations_toggle_submit', source_id=s.id) }}" style="display:inline">
             <input type="hidden" name="enabled" value="{{ '0' if s.enabled else '1' }}">
             <button type="submit" class="btn-secondary" style="font-size:.8rem">{{ 'Disable' if s.enabled else 'Enable' }}</button>
