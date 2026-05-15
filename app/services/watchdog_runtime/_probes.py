@@ -69,6 +69,8 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_media_session_active(probe)
         if kind == "webhook_field_equals":
             return _probe_webhook_field_equals(probe)
+        if kind == "mqtt_topic_equals":
+            return _probe_mqtt_topic_equals(probe)
         if kind in ("tcp", "host_awake"):
             # v0.5.62 (B17 Ship 4): `host_awake` is a TCP-connect alias —
             # reachable = the host is powered on / awake. Defaults to
@@ -1167,5 +1169,54 @@ def _probe_webhook_field_equals(probe: dict) -> tuple[str, dict]:
         "field": field,
         "expected": expected,
         "actual": actual_str,
+        "sampled_at": sample.get("sampled_at"),
+    }
+
+
+def _probe_mqtt_topic_equals(probe: dict) -> tuple[str, dict]:
+    """v0.5.63 (B17 Ship 3): MQTT-topic probe over an `mqtt` source.
+
+    Rule shape:
+        probe = {"kind": "mqtt_topic_equals",
+                 "source_id": "ext_…",
+                 "topic": "sensors/door/state",
+                 "expected_value": "open",
+                 "max_sample_age_seconds": 300}
+
+    MQTT messages span many topics under one source, so this resolves
+    the most-recent message on the *named* topic (within the staleness
+    window) and compares it case-insensitively to `expected_value`.
+    **success = match** — e.g. a rule that power-cycles the garage
+    opener when `door/state` last published `open`.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    topic = (probe.get("topic") or "").strip()
+    expected = str(
+        probe.get("expected_value") if probe.get("expected_value") is not None else ""
+    ).strip()
+    if not source_id or not topic:
+        return "failure", {"reason": "missing source_id / topic"}
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 300)
+    except (TypeError, ValueError):
+        max_age = 300
+
+    from app.services.external_sensors import latest_sample_for_topic
+
+    sample = latest_sample_for_topic(source_id, topic, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "no_recent_message",
+            "source_id": source_id,
+            "topic": topic,
+            "max_sample_age_seconds": max_age,
+        }
+    msg = str((sample.get("payload") or {}).get("msg") or "")
+    match = msg.strip().lower() == expected.lower()
+    return ("success" if match else "failure"), {
+        "source_id": source_id,
+        "topic": topic,
+        "expected_value": expected,
+        "actual_value": msg,
         "sampled_at": sample.get("sampled_at"),
     }

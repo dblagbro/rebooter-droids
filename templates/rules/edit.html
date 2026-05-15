@@ -175,6 +175,23 @@
     </p>
   </details>
 
+  {# v0.5.63 (B17 Ship 3): MQTT topic probe. #}
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">mqtt_topic_equals</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "mqtt_topic_equals",
+  "source_id": "ext_…",
+  "topic": "garage/door/state",
+  "expected_value": "open",
+  "max_sample_age_seconds": 300
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Succeeds when the most-recent message on <code>topic</code> (within
+      <code>max_sample_age_seconds</code>) equals <code>expected_value</code>
+      (case-insensitive). Source must be an <code>mqtt</code> integration.
+    </p>
+  </details>
+
   <p class="muted" style="font-size:.85rem; margin-top:.6rem">
     Find your <code>source_id</code>s at
     <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>.

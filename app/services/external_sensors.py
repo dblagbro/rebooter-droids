@@ -33,6 +33,7 @@ from app.models import ExternalSensorSample, ExternalSensorSource
 from app.models.external_sensors import (
     EXTERNAL_SOURCE_KINDS,
     KIND_TO_MODALITY,
+    SUBSCRIBER_KINDS,
     WEBHOOK_KINDS,
 )
 
@@ -71,7 +72,7 @@ def _serialize(row: ExternalSensorSource, *, latest_sample: dict | None = None) 
     }
 
 
-_SECRET_CONFIG_KEYS = ("token", "api_key", "jwt", "community")
+_SECRET_CONFIG_KEYS = ("token", "api_key", "jwt", "community", "password")
 # v0.5.58: SNMPv3 secrets live nested under config.v3.
 _SECRET_V3_KEYS = ("auth_key", "priv_key")
 
@@ -149,7 +150,7 @@ def create_source(
     # Default ports per kind. Kinds that don't need a host (weather,
     # ical, solaredge — cloud; webhook kinds — inbound) skip host/port
     # validation entirely.
-    needs_host = kind in ("roku", "home_assistant", "enphase_envoy", "snmp")
+    needs_host = kind in ("roku", "home_assistant", "enphase_envoy", "snmp", "mqtt")
     if needs_host and not host:
         raise ValueError("host is required for this kind")
     if port is None:
@@ -161,6 +162,8 @@ def create_source(
             port = 80
         elif kind == "snmp":
             port = 161
+        elif kind == "mqtt":
+            port = 1883
         else:
             port = 0
     try:
@@ -254,6 +257,29 @@ def _validate_kind_config(kind: str, config: dict) -> dict:
         jwt = str(config.get("jwt") or "").strip()
         if jwt:
             out["jwt"] = jwt
+        return out
+    if kind == "mqtt":
+        # v0.5.63 (B17 Ship 3): MQTT subscriber. `host`/`port` = broker;
+        # `topics` is the subscribe list; username/password optional.
+        topics_raw = config.get("topics")
+        if isinstance(topics_raw, str):
+            topics_raw = [t.strip() for t in topics_raw.splitlines() if t.strip()]
+        if not isinstance(topics_raw, list) or not topics_raw:
+            raise ValueError(
+                "mqtt config.topics is required (a non-empty list of topic filters)"
+            )
+        topics = [str(t).strip() for t in topics_raw if str(t).strip()]
+        if not topics:
+            raise ValueError("mqtt config.topics must contain at least one topic")
+        out: dict = {"topics": topics}
+        username = str(config.get("username") or "").strip()
+        password = str(config.get("password") or "")
+        if username:
+            out["username"] = username
+        if password:
+            out["password"] = password
+        client_id = str(config.get("client_id") or "").strip()
+        out["client_id"] = client_id or f"rebooter-droids-{secrets.token_hex(4)}"
         return out
     if kind in WEBHOOK_KINDS:
         # v0.5.61 (B17 Ship 2): inbound-webhook kinds. The hub never
@@ -358,6 +384,13 @@ def poll_source(source_id: str) -> dict:
                 "error": "This is a webhook source — it receives inbound "
                          "events and is not polled."
             }
+        if src.kind in SUBSCRIBER_KINDS:
+            # v0.5.63 (B17 Ship 3): MQTT sources receive messages on a
+            # long-lived subscription — nothing to poll.
+            return {
+                "error": "This is an MQTT source — a background subscriber "
+                         "receives messages; it is not polled."
+            }
         src.last_polled_at = now
         try:
             payload = _poll_kind(src)
@@ -419,6 +452,43 @@ def record_webhook_event(source_id: str, payload: dict) -> dict:
     return {"recorded": True, "sampled_at": _iso(now)}
 
 
+def record_mqtt_message(source_id: str, topic: str, msg: str) -> dict:
+    """v0.5.63 (B17 Ship 3): MQTT message sample writer.
+
+    Called by the background MQTT subscriber's on-message callback (in
+    paho's network thread). Appends one `ExternalSensorSample` per
+    message — `payload = {"topic", "msg", "received_at"}` — and stamps
+    `last_polled_at`/`last_success_at`.
+
+    Best-effort: callers (the network-thread callback) must not let an
+    exception escape, so this swallows + logs failures.
+    """
+    now = datetime.now(timezone.utc)
+    try:
+        with session_scope() as session:
+            src = session.get(ExternalSensorSource, source_id)
+            if src is None or src.kind != "mqtt" or not src.enabled:
+                return {"error": "source missing/disabled/not mqtt"}
+            src.last_polled_at = now
+            src.last_success_at = now
+            src.last_error = None
+            session.add(src)
+            session.add(ExternalSensorSample(
+                source_id=src.id,
+                sampled_at=now,
+                payload={
+                    "topic": str(topic)[:400],
+                    "msg": str(msg)[:2000],
+                    "received_at": _iso(now),
+                },
+            ))
+            session.flush()
+        return {"recorded": True}
+    except Exception:
+        log.exception("record_mqtt_message failed for %s topic=%s", source_id, topic)
+        return {"error": "internal error"}
+
+
 def poll_all_due() -> dict:
     """APScheduler entry point. Returns counts for the log line."""
     now = datetime.now(timezone.utc)
@@ -428,9 +498,12 @@ def poll_all_due() -> dict:
             session.scalars(
                 select(ExternalSensorSource).where(
                     ExternalSensorSource.enabled.is_(True),
-                    # v0.5.61: webhook kinds receive inbound events; the
-                    # poll tick must skip them (no `_poll_<kind>` branch).
-                    ExternalSensorSource.kind.not_in(WEBHOOK_KINDS),
+                    # v0.5.61/.63: webhook + subscriber kinds receive
+                    # inbound events; the poll tick skips them (no
+                    # `_poll_<kind>` branch exists for them).
+                    ExternalSensorSource.kind.not_in(
+                        tuple(WEBHOOK_KINDS) + tuple(SUBSCRIBER_KINDS)
+                    ),
                 )
             )
         )
@@ -1235,6 +1308,37 @@ def ha_entities(source_id: str) -> dict | None:
             "sampled_at": _iso(sample_row.sampled_at),
             "entities": entities,
         }
+
+
+def latest_sample_for_topic(
+    source_id: str, topic: str, *, max_age_seconds: int = 300
+) -> dict | None:
+    """v0.5.63 (B17 Ship 3): most-recent MQTT sample for a specific
+    topic under a source.
+
+    MQTT messages span many topics under one source, so the generic
+    `latest_sample()` (newest overall) is not enough. Per the design's
+    first-ship option (a), this filters in Python: scan recent samples
+    within the window for one whose `payload.topic` matches.
+
+    Returns None if no matching message inside `max_age_seconds`.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    with session_scope() as session:
+        rows = session.scalars(
+            select(ExternalSensorSample)
+            .where(
+                ExternalSensorSample.source_id == source_id,
+                ExternalSensorSample.sampled_at >= cutoff,
+            )
+            .order_by(ExternalSensorSample.sampled_at.desc())
+            .limit(500)
+        )
+        for row in rows:
+            payload = row.payload or {}
+            if isinstance(payload, dict) and payload.get("topic") == topic:
+                return {"sampled_at": _iso(row.sampled_at), "payload": payload}
+    return None
 
 
 def latest_active_app(source_id: str, *, max_age_seconds: int = 120) -> dict | None:
