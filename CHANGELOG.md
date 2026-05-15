@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.51] - 2026-05-15
+
+### Added — P0.1: Absorb firmware status/recovery/central heartbeat contract
+
+First phase of the P0 work track per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6. Firmware `0.1.19-dev-central-safe`+ emits a rich status/recovery/central-state contract in the heartbeat payload (see `docs/notes/2026-05-14-firmware-status-and-recovery-contract.md`); the hub previously discarded all of it, collapsing every device into online/offline. This phase persists those fields. UI state rendering follows in P0.2.
+
+- **DeviceHeartbeat history columns** (`app/models/devices.py`): 16 new nullable columns capture the per-heartbeat firmware snapshot — `recovery_mode`, `auto_recovery_triggered`, `last_known_good_restored`, `consecutive_unhealthy_boots`, `in_captive_portal`, `holdoff_remaining_seconds`, `cooldown_remaining_seconds`, `central_enabled`, `central_registered`, `central_state`, `central_device_id`, `central_heartbeat_age_seconds`, `power_analytics_enabled`, `power_chip_type`, `power_sample_rate_hz`, `power_batch_seconds`. These rows are the timeline — they support flap detection ("when did it drop into recovery").
+
+- **Device hot columns** (`app/models/devices.py`): 8 `reported_*` columns hold current truth for fast filtering without a latest-heartbeat join — `reported_recovery_mode`, `reported_auto_recovery_triggered`, `reported_last_known_good_restored`, `reported_consecutive_unhealthy_boots`, `reported_in_captive_portal`, `reported_central_enabled`, `reported_central_registered`, `reported_central_state`. The `reported_` prefix marks them as device-asserted, distinct from the hub-owned `central_management_enabled` (hub intent) and `registration_state` (enrollment lifecycle).
+
+- **Heartbeat ingestion** (`app/services/heartbeats.py`): `record_heartbeat()` copies all 16 fields onto the history row and refreshes the 8 hot columns. Hot columns are only touched when the device actually reports the field — a partial payload or pre-0.1.19 firmware never clobbers last-known truth with NULL.
+
+- **Schema migration** (`app/services/bootstrap.py`): 24 additive nullable columns added via the `_PENDING_COLUMNS` `ADD COLUMN IF NOT EXISTS` pattern. Picked up automatically on container start.
+
+### Notes
+- **The `.69` case**: a device that is healthy and reachable locally but `central_enabled=false` was indistinguishable from "offline." The hub now stores `reported_central_enabled`; P0.2 will render it as "central disabled on device" rather than a false outage.
+- **Backwards compatible**: all columns nullable. Pre-0.1.19 firmware that omits the fields behaves exactly as before.
+
 ## [0.5.50] - 2026-05-15
 
 ### Fixed

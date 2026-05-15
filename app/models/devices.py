@@ -109,6 +109,36 @@ class Device(Base):
         default_now=False, nullable=True
     )
 
+    # v0.5.51 (P0.1): device-self-reported recovery/central truth, refreshed
+    # on every heartbeat. These are "what is it right now" hot columns — they
+    # mirror the firmware fields stored as history on DeviceHeartbeat, and
+    # exist so the devices list + state computation can filter without a
+    # per-device latest-heartbeat join. `reported_` prefix marks them as
+    # device-asserted, distinct from the hub-owned `central_management_enabled`
+    # (hub intent) and `registration_state` (hub-side enrollment lifecycle).
+    # NULL = device has never reported this field (pre-0.1.19 firmware, or
+    # never heartbeated). P0.2 maps these into operator-facing state chips.
+    reported_recovery_mode: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    reported_auto_recovery_triggered: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    reported_last_known_good_restored: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    reported_consecutive_unhealthy_boots: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    reported_in_captive_portal: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    reported_central_enabled: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    reported_central_registered: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    reported_central_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()
 
@@ -211,6 +241,31 @@ class DeviceHeartbeat(Base):
     last_event_at: Mapped[datetime | None] = ts_column(
         default_now=False, nullable=True
     )
+
+    # v0.5.51 (P0.1): richer status/recovery/central truth emitted by
+    # firmware 0.1.19-dev-central-safe+. Per the firmware status contract
+    # (docs/notes/2026-05-14-firmware-status-and-recovery-contract.md), the
+    # heartbeat now carries recovery/central-state fields the hub previously
+    # discarded. All nullable — older firmware that omits a field lands NULL
+    # for that heartbeat. These rows are the *history* (timelines / flap
+    # detection); the matching `reported_*` hot columns on Device hold the
+    # *current* truth for fast filtering. See P0.2 for state rendering.
+    recovery_mode: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    auto_recovery_triggered: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_known_good_restored: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    consecutive_unhealthy_boots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    in_captive_portal: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    holdoff_remaining_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cooldown_remaining_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    central_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    central_registered: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    central_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    central_device_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    central_heartbeat_age_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    power_analytics_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    power_chip_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    power_sample_rate_hz: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    power_batch_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 Index("ix_device_heartbeats_device_received", DeviceHeartbeat.device_id, DeviceHeartbeat.received_at.desc())

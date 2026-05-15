@@ -87,6 +87,36 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # v0.5.38 (B1 RBAC P4): invitations can carry scope bindings that
     # will be granted on redemption. NULL = legacy global role only.
     ("invitations", "scope_payload", "JSONB"),
+    # v0.5.51 (P0.1): absorb the firmware status/recovery/central contract
+    # (firmware 0.1.19-dev-central-safe+). 16 history columns on
+    # device_heartbeats (per-heartbeat snapshot) + 8 hot columns on devices
+    # (current truth for fast filtering). All additive nullable — NULL = the
+    # field was never reported. See docs/notes/2026-05-14-firmware-status-
+    # and-recovery-contract.md.
+    ("device_heartbeats", "recovery_mode", "BOOLEAN"),
+    ("device_heartbeats", "auto_recovery_triggered", "BOOLEAN"),
+    ("device_heartbeats", "last_known_good_restored", "BOOLEAN"),
+    ("device_heartbeats", "consecutive_unhealthy_boots", "INTEGER"),
+    ("device_heartbeats", "in_captive_portal", "BOOLEAN"),
+    ("device_heartbeats", "holdoff_remaining_seconds", "INTEGER"),
+    ("device_heartbeats", "cooldown_remaining_seconds", "INTEGER"),
+    ("device_heartbeats", "central_enabled", "BOOLEAN"),
+    ("device_heartbeats", "central_registered", "BOOLEAN"),
+    ("device_heartbeats", "central_state", "VARCHAR(40)"),
+    ("device_heartbeats", "central_device_id", "VARCHAR(40)"),
+    ("device_heartbeats", "central_heartbeat_age_seconds", "INTEGER"),
+    ("device_heartbeats", "power_analytics_enabled", "BOOLEAN"),
+    ("device_heartbeats", "power_chip_type", "VARCHAR(40)"),
+    ("device_heartbeats", "power_sample_rate_hz", "INTEGER"),
+    ("device_heartbeats", "power_batch_seconds", "INTEGER"),
+    ("devices", "reported_recovery_mode", "BOOLEAN"),
+    ("devices", "reported_auto_recovery_triggered", "BOOLEAN"),
+    ("devices", "reported_last_known_good_restored", "BOOLEAN"),
+    ("devices", "reported_consecutive_unhealthy_boots", "INTEGER"),
+    ("devices", "reported_in_captive_portal", "BOOLEAN"),
+    ("devices", "reported_central_enabled", "BOOLEAN"),
+    ("devices", "reported_central_registered", "BOOLEAN"),
+    ("devices", "reported_central_state", "VARCHAR(40)"),
 )
 
 
