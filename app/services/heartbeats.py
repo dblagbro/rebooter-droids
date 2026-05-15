@@ -8,6 +8,43 @@ from app.db import session_scope
 from app.models import Device, DeviceHeartbeat
 from app.services.deployments import reconcile_assignment_reported_version
 
+# v0.5.51 (P0.1): firmware status/recovery/central fields the heartbeat
+# now carries (firmware 0.1.19-dev-central-safe+). Every field is copied
+# verbatim onto the DeviceHeartbeat history row.
+_HEARTBEAT_STATUS_FIELDS = (
+    "recovery_mode",
+    "auto_recovery_triggered",
+    "last_known_good_restored",
+    "consecutive_unhealthy_boots",
+    "in_captive_portal",
+    "holdoff_remaining_seconds",
+    "cooldown_remaining_seconds",
+    "central_enabled",
+    "central_registered",
+    "central_state",
+    "central_device_id",
+    "central_heartbeat_age_seconds",
+    "power_analytics_enabled",
+    "power_chip_type",
+    "power_sample_rate_hz",
+    "power_batch_seconds",
+)
+
+# Subset that is also mirrored onto Device as `reported_<field>` hot
+# columns — the current-truth fields P0.2 maps into state chips. Only
+# refreshed when the device actually reports the field, so a partial
+# payload (or pre-0.1.19 firmware) never clobbers last-known truth.
+_DEVICE_HOT_FIELDS = (
+    "recovery_mode",
+    "auto_recovery_triggered",
+    "last_known_good_restored",
+    "consecutive_unhealthy_boots",
+    "in_captive_portal",
+    "central_enabled",
+    "central_registered",
+    "central_state",
+)
+
 
 def record_heartbeat(device_id: str, payload: dict) -> dict:
     now = datetime.now(timezone.utc)
@@ -46,7 +83,20 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             last_event_type=payload.get("last_event_type"),
             last_event_at=last_event_dt,
         )
+        # v0.5.51 (P0.1): copy the richer firmware status/recovery/central
+        # fields onto the history row. Missing keys land NULL — that heartbeat
+        # simply didn't carry the field (older firmware or partial payload).
+        for field in _HEARTBEAT_STATUS_FIELDS:
+            if field in payload:
+                setattr(hb, field, payload[field])
         session.add(hb)
+
+        # Refresh the Device hot columns for current-truth filtering. Only
+        # touch a column when the device actually reported it, so a partial
+        # payload never overwrites last-known state with NULL.
+        for field in _DEVICE_HOT_FIELDS:
+            if field in payload:
+                setattr(device, f"reported_{field}", payload[field])
         reconcile_assignment_reported_version(
             session,
             device_id,
