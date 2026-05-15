@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Status | **Draft** (planning-only deliverable; do not implement until firmware-team replies to ASK #2 of 2026-05-10 PM cross-team note) |
+| Status | **Implemented** — Phases 1A–1D shipped v0.5.26–v0.5.32; P1.1–P1.3 data-path follow-through shipped v0.5.54–v0.5.59 (JSON power API, data-quality surfacing, interactive 24h chart). Loaded-power analytics validation still pending a firmware loaded-power capture. See `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6 (P1). |
 | Authors | rebooter-droids design track |
 | Created | 2026-05-10 PM |
 | Companion docs | `docs/BACKLOG.md` B16, `docs/redesign-continuation-plan-v2.md` Tier F |
-| Hardware | Sonoff S31 fleet — metering chip **CSE7766** (confirmed via Tasmota / ESPHome; pending firmware-team confirmation that current builds match) |
+| Hardware | Sonoff S31 fleet — metering chip **CSE7766** (confirmed; real telemetry live on firmware `0.1.25-dev-central-safe`). HLW8032 was an early incorrect assumption. |
 
 > Power-monitoring is a tempting feature precisely because it looks
 > like it could be huge. This doc grounds the ambition: what's

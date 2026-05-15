@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: **2026-05-14 PM** (post v0.5.33).
+Last updated: **2026-05-15 PM** (post v0.5.60).
 
 The canonical "what's still owed" list. Historical B1–B24 entries +
 the firmware-team alignment-plan phases (1A-1D, 2A-2C, 3, 4A-4C, 5,
@@ -10,51 +10,49 @@ captures recent ship history; this doc captures forward intent.
 
 ---
 
-## Current state (2026-05-14 PM)
+## Current state (2026-05-15 PM)
 
-**Live**: `https://www.voipguru.org/rebooter/api/v1/version` →
-`0.5.33`. Today's session shipped v0.5.15 → v0.5.33 — 19 versions —
-covering structural refactor, all B17 integration work, B16 full
-power-monitoring track (Phases 1A through 1D + cost calc + CSV),
-firmware-coord merge, Phase 2A-2C rule/integration alignment,
-Phase 4A drift visibility, and now this doc-cleanup ship.
+**Live**: `0.5.60` on both hubs (www + www2). The 2026-05-15 arc
+shipped v0.5.34 → v0.5.60 — full **B1 RBAC** rollout (P1–P5), **B11**
+multi-hub sync scaffold (phases 1–7), and the entire **hub-team plan
+P0–P3a track**:
 
-### Truly open — operator-decision territory
+- **P0** (v0.5.51–.53) — absorbed the firmware status/recovery/central
+  heartbeat contract: 24 persisted heartbeat fields, distinct device
+  states in the UI, recovery-aware config push, `apply_config` schema
+  reconciliation. (= old Phase 3 + Phase 4B + Phase 4C — all done.)
+- **P1** (v0.5.54–.59) — power data-path: JSON power query API,
+  data-quality surfacing, interactive 24h chart. Loaded-power
+  *validation* still pending a firmware loaded-power capture.
+- **P2** (v0.5.56–.58) — zero-hardware-cost integrations: Solar
+  (SolarEdge + Enphase Envoy), Home Assistant bridge deepening,
+  router/managed-switch SNMP telemetry.
+- **P3a** (v0.5.60) — RFC-006 multimodal-ingest decisions locked;
+  consistent `modality` tagging shipped.
 
-| Item | Size | Blocker |
+### Truly open
+
+| Item | Size | Blocker / status |
 |---|---|---|
-| **B1** RBAC `(user, role, site_id?)` join table + per-resource enforcement | heavy (≥ 1 sprint) | none — operator-deferred behind UX work |
-| **B11** RFC-004 active-active sync replicator (Option C) | largest item on board | gated on **B1** scope claims |
-| **B17 remaining integrations** — MQTT pub/sub, Plex/Jellyfin webhooks, Google Calendar OAuth, Solar (Enphase/SolarEdge), iOS Shortcuts | ~4-6h each, pattern-different from polling-model | none |
-| **B17 Layer 2 — EPG** (TVMaze free / Schedules Direct $25/yr) | ~8-12h | none |
-| **Phase 3 — heartbeat-contract expansion** (recovery/status truth) | medium | **UNBLOCKED 2026-05-14 evening** — firmware team shipped `0.1.19-dev-central-safe` with the contract expansion (see `docs/notes/2026-05-14-firmware-status-and-recovery-contract.md` + `2026-05-14-heartbeat-expansion-and-reported-config-memo.md`). Hub work is now actionable. |
-| **Phase 4B** — recovery-aware drift actions (post-rebind "push desired config now") | small | depends on Phase 3 hub-side absorption of the new heartbeat fields |
-| **Phase 4C** — desired-config schema alignment with firmware-owned config doc + version-gating | small-medium | needs reconciling `docs/firmware-apply-config-schema-v01.md` (modified this session by firmware team) with `ALLOWED_DESIRED_CONFIG_KEYS` in `services/device_config.py` |
-| **Phase 6** — site/home profile + claim-assist groundwork | medium | explicit low-priority per alignment plan |
-| **Phase 2B full structured-form on rules/edit.html** | small-medium | non-trivial Jinja extraction; current ship has reference-card intermediate |
+| **B11** finish `apply_outbox_event()` create/update upsert + LWW | medium | **Tracked debt** — B11 phases 1–7 shipped (v0.5.45–.50) but the applier only handles deletes/tombstones; non-deleted entity state does not converge. Must land **before `sync.enabled=true`** is ever set. See `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §5.1. |
+| **P1.3 loaded-power validation** | small | **Firmware-blocked** — every real CSE7766 sample is no-load (0 W); cost/kWh analytics can't be validated until firmware delivers a known-load capture. |
+| **P3b+** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
+| **B17 remaining integrations** — MQTT pub/sub, Plex/Jellyfin webhooks, Google Calendar OAuth, iOS Shortcuts | ~4–6 h each | none — Solar + HA-deepening done (P2.1/P2.4); these four remain, design in `docs/notes/2026-05-15-b17-remaining-integrations-design.md`. |
+| **B17 Layer 2 — EPG** (TVMaze free / Schedules Direct $25/yr) | ~8–12 h | none — design in `docs/notes/2026-05-15-b17-layer2-epg-design.md`. |
+| **Phase 6** — site/home profile + claim-assist groundwork | medium | explicit low-priority per alignment plan. |
+| **Phase 2B** full structured-form on `rules/edit.html` | small-medium | non-trivial Jinja extraction; current ship has a reference-card intermediate. |
 
-### Operator-decision research items (next-up per operator 2026-05-14)
+### Firmware-team asks (open)
 
-The operator flagged these four for explicit plan + research after
-the v0.5.32/.33 ships:
-
-- **B1 RBAC** — heavy, gates B11; need a fresh research pass on
-  RFC-003 §RBAC redlines vs the schema we already have
-  (`role_bindings` table + `(user, role, site_id?)` precedent in
-  `app/services/role_bindings.py`).
-- **B11 multi-hub sync (RFC-004 Option C)** — research the outbox-
-  event shape; pick a deployment topology; estimate gunicorn worker
-  + Postgres pool impact under steady-state replication.
-- **B17 remaining integrations** — pick which adjacent integrations
-  the operator actually wants from the candidate list (MQTT / Plex
-  / Google Cal / Solar / iOS Shortcuts). Each is its own pattern.
-- **B17 Layer 2 EPG** — research TVMaze API depth + Schedules Direct
-  channel coverage for the operator's region; pick provider; design
-  the `external_epg_cache` table + `epg_show_airing` probe.
-
-The operator's exact phrasing 2026-05-14: "next up we plan and
-research the B1 RBAC, B11 sync, B17 remaining and B17 layer 2 epg".
-This is the next session's research charter.
+- **`source_flags` bit dictionary** — so the hub can name power-sample
+  flag bits (P1.2 surfaces raw bits only).
+- **Frame counts in the heartbeat** — `power_valid/invalid_frame_count`
+  are on `/api/status` but not the heartbeat; the hub can't chart UART
+  health until they are.
+- **G2 cross-device time-sync measurement** — gates RFC-006 Decision 6
+  (tight-window multimodal analytics).
+- **`.69` device** — on firmware `0.1.17-dev-central` (pre-0.1.19);
+  needs updating before the hub can show its true central state.
 
 ### Ops items (no code work — operator-actionable any time)
 
@@ -90,7 +88,8 @@ This is the next session's research charter.
 - ✅ **B8** Schedules primitive — v0.4.8
 - ✅ **B9** Rule advanced JSON editor — v0.4.9
 - ✅ **B10** RFC-003 redlines #1-4 — closed 2026-05-10
-- ✅ **B11** RFC-004 architecture pick (Option C) — closed 2026-05-10; implementation still pending (see open section above)
+- ✅ **B11** RFC-004 multi-hub sync — architecture pick closed 2026-05-10; **phases 1–7 implemented v0.5.45–.50** (outbox model, emission, replicator daemon, HMAC peer auth, sync settings UI). Scaffold only — `apply_outbox_event()` create/update upsert + LWW is still a stub (see "Truly open" above); `sync.enabled=false` by default.
+- ✅ **B1** RBAC — **fully shipped 2026-05-15**, all phases P1–P5 (v0.5.35–v0.5.44): `role_bindings` join table, scope-aware list filtering, scoped invitations + bindings API, admin UI, enforce-mode toggle.
 - ✅ **B12** RFC-005 redlines — closed 2026-05-10 (firmware-side ownership)
 - ✅ **B13** Status-inbox watchdog.firing items — v0.4.7
 - ✅ **B14** Bulk-action audit log — v0.4.9
