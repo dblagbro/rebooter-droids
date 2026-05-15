@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block title %}HA entities — {{ ha.display_name }} - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <p><a href="{{ url_for('admin_ui.settings_integrations_page') }}">← Integrations</a></p>
+  <h2>Home Assistant entities — {{ ha.display_name }}</h2>
+  <p class="muted" style="margin-top:0">
+    Entities cached from the most-recent poll
+    {% if ha.sampled_at %}({{ ha.sampled_at }}){% else %}<strong>— source has not polled yet</strong>{% endif %}.
+    Copy an <code>entity_id</code> into a watchdog rule probe:
+    <code>ha_state_is</code> (string match) or
+    <code>ha_numeric_above</code> / <code>ha_numeric_below</code>
+    (numeric threshold — optionally against an <code>attribute</code>).
+  </p>
+
+  <form method="get" action="{{ url_for('admin_ui.settings_integrations_ha_entities_page', source_id=ha.source_id) }}" class="actions" style="margin-bottom:1rem">
+    <input type="text" name="q" value="{{ query }}" placeholder="filter by entity_id or name"
+           style="min-width:18rem">
+    <button type="submit" class="btn-secondary">Filter</button>
+    {% if query %}
+      <a class="btn-secondary" href="{{ url_for('admin_ui.settings_integrations_ha_entities_page', source_id=ha.source_id) }}">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if ha.entities %}
+    <p class="muted" style="font-size:.85rem">{{ ha.entities|length }} entit{{ 'y' if ha.entities|length == 1 else 'ies' }}{% if query %} matching “{{ query }}”{% endif %}.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>entity_id</th><th>Name</th><th>State</th><th>Unit</th><th>Last changed</th></tr></thead>
+      <tbody>
+      {% for e in ha.entities %}
+        <tr>
+          <td><code>{{ e.entity_id }}</code></td>
+          <td>{{ e.friendly_name or '—' }}</td>
+          <td>{{ e.state if e.state is not none else '—' }}</td>
+          <td>{{ e.unit or '' }}</td>
+          <td class="muted" style="font-size:.8rem">{{ e.last_changed or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="muted">
+      {% if query %}
+        No entities match “{{ query }}”.
+      {% elif not ha.sampled_at %}
+        No sample yet — use “Probe now” on the Integrations page to poll
+        this source, then reload.
+      {% else %}
+        The last poll returned no entities.
+      {% endif %}
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

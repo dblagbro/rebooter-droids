@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.57] - 2026-05-15
+
+### Added — P2.4: Home Assistant bridge deepening
+
+Fourth phase of the P2 work track per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6. The HA poll already caches every entity in each sample; P2.4 makes that data genuinely usable — numeric rules and entity discovery — at near-zero marginal cost.
+
+- **Numeric HA probes** (`app/services/watchdog_runtime/_probes.py`): `ha_numeric_above` / `ha_numeric_below` — `_probe_ha_numeric()` reads an HA entity's `state` (or an optional `attribute`, e.g. `climate.*` → `current_temperature`), coerces to float, and compares to `threshold`. Mirrors the `power_above`/`power_below` semantics. The string-only `ha_state_is` couldn't express "freezer sensor > -10 °C" — most HA sensors are numeric, so this is the real functional gap closed.
+
+- **HA entity browser** (`ha_entities()` + `GET /app/settings/integrations/<id>/entities`): flattens the most-recent HA sample into a sorted, browsable table — `entity_id`, friendly name, state, unit, last-changed — with an optional `?q=` substring filter. Lets the operator discover `entity_id`s for rules without leaving the hub. Linked from the Integrations page ("Entities" action, HA sources only).
+
+### Notes
+- No schema change — both the poll cache and the entity data already exist; P2.4 is pure read/probe surface.
+- The numeric probe's `attribute` field is optional; omit it to read the entity's primary `state`.
+
 ## [0.5.56] - 2026-05-15
 
 ### Added — P2.1: Solar integration (SolarEdge cloud + Enphase Envoy local)

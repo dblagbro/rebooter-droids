@@ -49,6 +49,8 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_roku_app_active(probe)
         if kind == "ha_state_is":
             return _probe_ha_state_is(probe)
+        if kind in ("ha_numeric_above", "ha_numeric_below"):
+            return _probe_ha_numeric(probe, kind)
         if kind == "weather_alert_active":
             return _probe_weather_alert_active(probe)
         if kind == "ical_event_active":
@@ -384,6 +386,95 @@ def _probe_ha_state_is(probe: dict) -> tuple[str, dict]:
         "last_changed": entry.get("last_changed"),
         "sampled_at": sample.get("sampled_at"),
     }
+
+
+def _probe_ha_numeric(probe: dict, kind: str) -> tuple[str, dict]:
+    """v0.5.57 (P2.4): numeric-threshold probe over a Home Assistant
+    entity — the deepening of the string-only `ha_state_is`.
+
+    Rule shape:
+        probe = {"kind": "ha_numeric_above" | "ha_numeric_below",
+                 "source_id": "ext_…",
+                 "entity_id": "sensor.freezer_temp",
+                 "attribute": null,        # optional — read this
+                                           # attribute instead of `state`
+                 "threshold": -10,
+                 "max_sample_age_seconds": 120}
+
+    The HA poll already caches every entity's `state` + `attributes`;
+    this probe makes the numeric ones (temperature, humidity, battery %,
+    power …) usable for rules. Many HA entities carry the real value in
+    an attribute (e.g. `climate.*` → `current_temperature`), so
+    `attribute` optionally redirects the read.
+
+    Semantics mirror `power_above`/`power_below` — "failure" (builds
+    toward firing the action) on the actionable condition:
+    - ha_numeric_above → fails when value > threshold
+    - ha_numeric_below → fails when value < threshold
+    Non-numeric / missing readings fail with an explanatory `reason`.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    entity_id = (probe.get("entity_id") or "").strip()
+    if not source_id or not entity_id:
+        return "failure", {"reason": "missing source_id / entity_id"}
+    attribute = (probe.get("attribute") or "").strip() or None
+    try:
+        threshold = float(probe.get("threshold"))
+    except (TypeError, ValueError):
+        return "failure", {"reason": "missing or non-numeric threshold"}
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 60)
+    except (TypeError, ValueError):
+        max_age = 60
+
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    entities = (payload.get("entities") or {}) if isinstance(payload, dict) else {}
+    entry = entities.get(entity_id) if isinstance(entities, dict) else None
+    if not isinstance(entry, dict):
+        return "failure", {
+            "reason": "entity_not_found",
+            "source_id": source_id,
+            "entity_id": entity_id,
+            "sampled_at": sample.get("sampled_at"),
+        }
+    if attribute:
+        raw = (entry.get("attributes") or {}).get(attribute)
+    else:
+        raw = entry.get("state")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return "failure", {
+            "reason": "non_numeric_reading",
+            "source_id": source_id,
+            "entity_id": entity_id,
+            "attribute": attribute,
+            "raw_value": raw,
+            "sampled_at": sample.get("sampled_at"),
+        }
+
+    details = {
+        "source_id": source_id,
+        "entity_id": entity_id,
+        "attribute": attribute,
+        "value": value,
+        "threshold": threshold,
+        "last_changed": entry.get("last_changed"),
+        "sampled_at": sample.get("sampled_at"),
+    }
+    if kind == "ha_numeric_above":
+        return ("failure" if value > threshold else "success"), details
+    # ha_numeric_below
+    return ("failure" if value < threshold else "success"), details
 
 
 def _probe_weather_alert_active(probe: dict) -> tuple[str, dict]:
