@@ -207,7 +207,13 @@
         <div class="muted">no real-power reading</div>
       {% endif %}
       {% if lps.v_v is not none %}<div>{{ '%.1f'|format(lps.v_v) }} <span class="muted">V</span></div>{% endif %}
-      {% if lps.i_ma is not none %}<div>{{ lps.i_ma }} <span class="muted">mA</span></div>{% endif %}
+      {# v0.5.66 (P1.3): firmware clamps sub-50 mA current to 0 — show
+         the standby estimate so `0 mA` isn't misread as "no load". #}
+      {% if lps.i_ma_estimated %}
+        <div title="measured current is clamped below ~50 mA — this is the firmware standby estimate">~{{ lps.i_ma_estimate if lps.i_ma_estimate is not none else 0 }} <span class="muted">mA (est)</span></div>
+      {% elif lps.i_ma is not none %}
+        <div>{{ lps.i_ma }} <span class="muted">mA</span></div>
+      {% endif %}
       {% if lps.pf is not none %}<div>pf {{ '%.3f'|format(lps.pf) }}</div>{% endif %}
       {% if lps.hz is not none %}<div>{{ '%.2f'|format(lps.hz) }} <span class="muted">Hz</span></div>{% endif %}
       {% if lps.s_va is not none %}<div>{{ '%.1f'|format(lps.s_va) }} <span class="muted">VA</span></div>{% endif %}

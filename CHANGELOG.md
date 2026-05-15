@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.66] - 2026-05-15
+
+### Added — P1.3: low-load current semantics
+
+Completes P1.3's loaded-power half. The firmware team's `2026-05-15-power-capture-and-g2-progress.md` confirmed real loaded telemetry is now flowing from field devices (`.30` ~5 W, `.225` ~0–2 W) — the old "no non-zero data" blocker is gone — but surfaced a correctness wrinkle: the CSE7766 firmware clamps measured current below ~50 mA to zero, so a real standby load uploads `i_ma=0` with a non-zero `p_w`. Firmware 0.1.27+ added estimated-current fields to disambiguate.
+
+- **Two new `device_power_samples` columns** — `i_ma_estimated` (bool) + `i_ma_estimate` (int mA), both nullable, added via `_PENDING_COLUMNS`. When `i_ma_estimated` is true the firmware clamped the reading and `i_ma_estimate` carries the standby estimate.
+- **Ingestion** (`events.py::ingest_power_samples`): reads the new fields. The exact upload-row key is being confirmed with the firmware team — the hub accepts the short `i_ma_*` form and the firmware's published `power_*` status names (first match wins); see `docs/notes/2026-05-15-to-firmware-current-semantics.md`.
+- **Surfaced** in the power-samples API (`i_ma_estimated`/`i_ma_estimate`) and the device-detail power card — a clamped reading renders `~20 mA (est)` instead of a misleading `0 mA`.
+- **Consumer rule**: `i_ma=0` must not be read as "no activity" when `i_ma_estimated` is true. The `power_zero_while_on` watchdog probe already keys on watts (`avg_w`), not current — no logic change needed there.
+
+### Notes
+- Backward-compatible — pre-0.1.27 firmware omits the fields; columns stay NULL and behavior is unchanged.
+- P1.3's interactive 24h chart shipped earlier (v0.5.59). With this release P1.3 is complete bar the firmware confirming the exact upload-row key name.
+- RFC-006 Decision 6 (G2 cross-device timing) remains blocked — firmware shipped the `wall_clock_unix_ms` instrumentation but the measurement run is still pending.
+
 ## [0.5.65] - 2026-05-15
 
 ### Changed — incremental architectural refactor (behavior-preserving)

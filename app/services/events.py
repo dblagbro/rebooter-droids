@@ -67,6 +67,28 @@ def _as_float(value, field: str) -> float | None:
         raise ValueError(f"{field} must be numeric")
 
 
+def _as_bool(value) -> bool | None:
+    """Lenient bool coercion — JSON `true`/`false`, 0/1, or a string.
+    None passes through (field absent)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _first(raw: dict, *keys):
+    """First present (non-None) value among `keys` — used where the
+    firmware upload-row key for a field is still being pinned down."""
+    for k in keys:
+        v = raw.get(k)
+        if v is not None:
+            return v
+    return None
+
+
 def ingest_power_samples(device_id: str, samples: list[dict]) -> int:
     if not samples:
         return 0
@@ -94,6 +116,23 @@ def ingest_power_samples(device_id: str, samples: list[dict]) -> int:
             if source_flags < 0:
                 raise ValueError("source_flags must be >= 0")
 
+            # v0.5.66 (P1.3): low-load current semantics (firmware
+            # 0.1.27+). The firmware clamps measured current below
+            # ~50 mA to zero, so a real standby load uploads `i_ma=0`
+            # with an `i_ma_estimated` flag + an `i_ma_estimate`. We
+            # accept the short `i_ma_*` upload keys and the firmware's
+            # published `power_*` status-field names — see the firmware
+            # note `docs/notes/2026-05-15-to-firmware-current-semantics.md`.
+            i_ma_estimated = _as_bool(
+                _first(raw, "i_ma_estimated", "power_current_estimated",
+                       "current_estimated")
+            )
+            i_ma_estimate = _as_int(
+                _first(raw, "i_ma_estimate", "power_estimated_current_ma",
+                       "estimated_current_ma"),
+                "i_ma_estimate",
+            )
+
             row = DevicePowerSample(
                 device_id=device_id,
                 channel_id=channel_id,
@@ -106,6 +145,8 @@ def ingest_power_samples(device_id: str, samples: list[dict]) -> int:
                 source_flags=source_flags,
                 v_v=_as_float(raw.get("v_v"), "v_v"),
                 i_ma=_as_int(raw.get("i_ma"), "i_ma"),
+                i_ma_estimated=i_ma_estimated,
+                i_ma_estimate=i_ma_estimate,
                 p_w=_as_float(raw.get("p_w"), "p_w"),
                 s_va=_as_float(raw.get("s_va"), "s_va"),
                 pf=_as_float(raw.get("pf"), "pf"),

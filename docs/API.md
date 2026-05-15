@@ -478,7 +478,10 @@ cross-modal query layer.
   fallback), `source_kind` (`real`/`synthetic`), `source_flags`,
   `source_flags_decoded` (`{raw, bits_set}`), `is_stale`, and the
   CSE7766 fields (`v_v`, `i_ma`, `p_w`, `s_va`, `pf`, `hz`,
-  `energy_wh`).
+  `energy_wh`). v0.5.66: `i_ma_estimated` + `i_ma_estimate` — when
+  `i_ma_estimated` is true the firmware clamped a sub-50 mA standby
+  load to `i_ma=0`; `i_ma_estimate` carries the estimate (do not read
+  `i_ma=0` as "no activity").
 - `GET /admin/devices/{device_id}/power-rollups` — recent daily
   rollups, newest-first. Query param: `days` (default 7, clamped
   1..365). Returns `{device_id, modality, days, rollup_count,
