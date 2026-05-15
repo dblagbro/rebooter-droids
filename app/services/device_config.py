@@ -292,6 +292,64 @@ def push_desired_config(
     }
 
 
+def maybe_push_after_recovery(device_id: str, *, trigger: str) -> dict:
+    """v0.5.53 (P0.3 / Phase 4B): recovery-aware desired-config re-push.
+
+    Called from the heartbeat path when a device reports a recovery
+    transition — either it just restored last-known-good config, or it
+    exited recovery mode. Either way the device's on-box config may have
+    diverged from the operator's intent, so the hub re-asserts
+    `desired_config`.
+
+    `trigger` is one of `"last_known_good_restored"` | `"recovery_exit"`
+    (recorded in the audit detail).
+
+    Gated on the `desired_config.enabled` feature flag exactly like the
+    restore-after-reflash auto-push — this is an automatic path, so it
+    stays off until the operator opts in. When the flag is off the
+    transition is logged (observability) but no command is enqueued.
+
+    Best-effort: never raises out of the heartbeat call site.
+    """
+    try:
+        cfg = get_desired_config(device_id)
+        if not cfg:
+            return {"pushed": False, "reason": "no desired_config set"}
+        if not is_feature_enabled():
+            log.info(
+                "recovery transition for %s (trigger=%s) — desired_config "
+                "push skipped, feature flag off",
+                device_id, trigger,
+            )
+            return {"pushed": False, "reason": "feature disabled"}
+
+        result = push_desired_config(
+            device_id, source="restore", issued_by_user_id=None
+        )
+        if result.get("enqueued"):
+            from app.services import audit
+
+            audit.record(
+                "device.recovery_config_pushed",
+                target_type="device",
+                target_id=device_id,
+                details={
+                    "trigger": trigger,
+                    "command_id": result.get("command_id"),
+                    "pushed_fields": sorted(cfg.keys()),
+                },
+            )
+            log.info(
+                "recovery transition for %s (trigger=%s) — pushed "
+                "desired_config, command %s",
+                device_id, trigger, result.get("command_id"),
+            )
+        return {"pushed": bool(result.get("enqueued")), **result}
+    except Exception:
+        log.exception("maybe_push_after_recovery failed for %s", device_id)
+        return {"pushed": False, "reason": "internal error"}
+
+
 def is_feature_enabled() -> bool:
     """Feature gate. `desired_config.enabled` runtime_setting controls
     whether automatic push paths (restore-after-reflash auto-push,
