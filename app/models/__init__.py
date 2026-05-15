@@ -44,3 +44,8 @@ from app.models.external_sensors import (  # noqa: E402,F401
     ExternalSensorSample,
     ExternalSensorSource,
 )
+from app.models.sync import (  # noqa: E402,F401
+    OutboxEvent,
+    SyncCursor,
+    Tombstone,
+)
