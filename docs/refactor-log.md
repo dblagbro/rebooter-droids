@@ -17,6 +17,103 @@ Append-only journal of structural changes. Newest at top. Format:
 
 ---
 
+## 2026-05-15 — oversized-service split: external_sensors + watchdog probes
+
+- **Branch:** `main` (single atomic commit)
+- **Releases included:** v0.5.65
+- **Scope:** moderate, behavior-preserving refactor — the two service
+  files that ballooned during the B16/B17 integration arc split into
+  cohesive modules. Pure re-organization; zero behavior change.
+- **Why:** across v0.5.50–v0.5.64 the session added 7 integration
+  kinds and ~13 watchdog probes, all into two files. They reached
+  1369 and 1265 LOC — 5.5× and ~5× the soft limits — and every new
+  integration made them worse. Highest-value targets per the
+  maintainability/dev-speed lens.
+- **Key changes:**
+  - `app/services/external_sensors.py` (1369 LOC) →
+    `app/services/external_sensors/` subpackage:
+    - `__init__.py` — public API re-exports (13 functions + `_iso`);
+      every `from app.services.external_sensors import …` and
+      `from app.services import external_sensors as ext_svc` site
+      keeps resolving (5 importer sites).
+    - `_common.py` — `_iso`, `ROKU_DEFAULT_PORT` — dependency-free
+      shared leaf.
+    - `_crud.py` — source registry: `create_source`, `list_sources`,
+      `set_enabled`, `delete_source`, `_validate_kind_config`,
+      `_serialize`, `_redact_config`.
+    - `_pollers.py` — `poll_source`, `poll_all_due`, `_poll_kind` +
+      all `_poll_<kind>` (roku/HA/weather/iCal/solar×2/SNMP) + SNMP
+      CLI helpers + poll constants/OIDs/regexes.
+    - `_inbound.py` — `record_webhook_event`, `record_mqtt_message`.
+    - `_query.py` — `latest_sample`, `latest_sample_for_topic`,
+      `last_two_samples`, `ha_entities`, `latest_active_app`.
+  - `app/services/watchdog_runtime/_probes.py` (1265 LOC) → split:
+    - `_probes.py` keeps `run_probe()` + the core network probes
+      (internet/ping/tcp/http/dns + the tcp/host_awake/gateway inline
+      dispatch). ~340 LOC.
+    - `_probes_integrations.py` — the 14 sensor-backed probes
+      (roku/HA×2/weather/iCal/power/solar/SNMP×3/media/webhook/MQTT/
+      EPG) + their helpers + token constants. ~983 LOC.
+- **Architectural decisions:**
+  - **Slice by the axis the domain varies along.** `external_sensors`
+    was sliced by *ingestion shape* (`_crud` / `_pollers` / `_inbound`
+    / `_query`), not the `devices/`-style read/write split — because
+    poll vs. webhook vs. subscriber is the real axis of variation.
+    The subpackage convention explicitly allows whatever cohesive
+    slices a domain needs; documented in `architecture.md`
+    §"Service subpackages".
+  - **A dependency-free `_common.py` leaf is fine.** `_iso` is used by
+    all four other slices; a tiny shared leaf is not over-
+    fragmentation — it is what stops the slices importing each other.
+  - **One-directional module-level import is allowed where no cycle is
+    possible.** `_probes.py` imports `_probes_integrations` at module
+    level; the latter imports nothing back (its service imports are
+    all deferred). Cleaner than a deferred import when the DAG is
+    provably acyclic. Documented alongside the deferred-import rule.
+  - **`docs/design.md` created** — was missing; now holds the design
+    rationale (local-first contract, the three ingestion shapes, the
+    modality model) that `architecture.md` (structure) and the RFCs
+    (point decisions) did not centralize.
+- **Files impacted:**
+  - 1 service file deleted, 6 created (the `external_sensors/`
+    subpackage)
+  - 1 probe file rewritten + 1 created (`_probes_integrations.py`)
+  - 0 blueprint/template/scheduler changes — public import paths
+    preserved end-to-end
+  - 3 docs: `architecture.md` (source-layout tree + subpackage
+    convention), `refactor-log.md` (this entry), `design.md` (new)
+- **Risks:**
+  - Import-path breakage was the main risk; mitigated by re-exporting
+    every externally-referenced symbol at each `__init__.py` and
+    verified with a full `create_app()` smoke test in the built image
+    (8 blueprints register; all 13 `external_sensors` re-exports +
+    `run_probe` + the integration probes resolve).
+  - `_probes.py`→`_probes_integrations.py` module-level import: safe
+    today (one-directional, acyclic). A future integration probe that
+    imports `_probes` at module load would reintroduce a cycle —
+    keep integration-probe service imports deferred.
+- **Remaining technical debt / not done:**
+  - `services/device_power.py` (723 LOC) — cohesive single-domain;
+    splittable along serialize / query / rollup / fleet-summary if it
+    grows further.
+  - `services/watchdog.py` (696 LOC), `blueprints/admin/rules.py`
+    (645), `settings.py` (596), `devices_ui.py` (563) — over the soft
+    limits but only ~1.2–1.4×, far below the two outliers just fixed.
+  - The probe-shape reference card in `templates/rules/edit.html`
+    documents only ~7 of the ~25 probe kinds — stale; backfill.
+  - Underscore-prefixed cross-module helpers (flagged in the
+    2026-05-14 entry) still un-promoted.
+- **Next recommended targets:**
+  1. `blueprints/admin/rules.py` (645 LOC) — split the JSON-API
+     handlers from the UI handlers, or extract the probe-shape
+     reference into a partial; ~1.3× the limit.
+  2. `blueprints/admin/settings.py` (596) + `devices_ui.py` (563) —
+     same over-limit class; revisit together.
+  3. `services/device_power.py` (723) — split when the P1/P3 power
+     work next extends it.
+
+---
+
 ## 2026-05-14 — service subpackages: devices + watchdog_runtime
 
 - **Branch:** `main` (single atomic commit)
