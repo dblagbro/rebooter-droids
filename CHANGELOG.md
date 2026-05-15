@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.52] - 2026-05-15
+
+### Added — P0.2: Render distinct device states in the UI
+
+Second phase of the P0 work track per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6. Consumes the firmware truth persisted in P0.1 (v0.5.51) to replace the online/offline collapse with explicit, actionable device states. This is the visible fix for the `.69` confusion.
+
+- **New device states** (`app/services/devices/_serialize.py::_derive_central_status`): the device-self-reported `reported_*` truth is now consulted *before* heartbeat freshness — a device with a real reason it went quiet shows that reason. New states, mapped per the firmware status contract (`docs/notes/2026-05-14-firmware-status-and-recovery-contract.md` §4):
+  - **central disabled on device** (`central_disabled`) — `reported_central_enabled=false`. The device's own config has central off; it may be healthy on the LAN. **This is the `.69` fix** — previously indistinguishable from offline.
+  - **recovery mode** (`recovery_mode`) — `reported_recovery_mode=true`. Device is alive in recovery; reason notes consecutive-unhealthy-boot count.
+  - **rebind needed** (`rebind_needed`) — `reported_central_state` ∈ {`registered_no_token`, `awaiting_register_no_token`, `reauth_required`}.
+  - **transport stale** — extended: an offline device whose last `central_state` was a `*_transport_failed` value is now distinguished from a plain stale device.
+
+- **Severity in the service layer**: `_derive_central_status()` now returns a `badge_class` (`green`/`amber`/`red`/`""`). Templates render a single chip from it instead of re-deriving severity. The three duplicated 8-line `if/elif` badge blocks (devices list ×2, device detail ×1) collapse to one-liners.
+
+- **Device detail — "Device-reported status" block** (`templates/device_detail.html`): the Overview now shows `central_enabled`, `central_registered`, `central_state`, `recovery_mode`, boot counts, and captive-portal/recovery flags when the device runs firmware 0.1.19+ (older firmware leaves it hidden).
+
+- **`reported_*` fields in serialization** (`serialize_device()`): the 8 device-self-reported hot columns are now in the device dict for API consumers and templates.
+
+- **Consistency fix**: the devices-list path now passes `latest_health_state` to `_derive_central_status()`, so the `attention` (registered-but-unhealthy) state surfaces in the list, not only on detail.
+
+### Notes
+- **Backwards compatible**: devices on pre-0.1.19 firmware (NULL `reported_*`) fall through to the existing online/offline/stale logic unchanged.
+- State priority: hub intent (`local_only`) → device-reported truth (central disabled / recovery / rebind) → firmware-upgrade mismatch → heartbeat freshness → health.
+
 ## [0.5.51] - 2026-05-15
 
 ### Added — P0.1: Absorb firmware status/recovery/central heartbeat contract
