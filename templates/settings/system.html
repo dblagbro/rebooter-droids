@@ -34,6 +34,22 @@
       <input type="number" name="enrollment_token_ttl_seconds" value="{{ system.enrollment_token_ttl_seconds or '' }}" placeholder="86400 (1 day)">
       {% if system.overrides.enrollment_token_ttl_seconds %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
     </label>
+
+    <hr style="margin:1.5rem 0;border:none;border-top:1px solid #3a3a4a">
+
+    <h3 style="margin-bottom:0.5rem">RBAC Enforcement Mode <span class="badge green" style="font-size:.7rem">live</span></h3>
+    <p class="muted" style="margin-bottom:1rem;font-size:.9rem">
+      Controls scope-based access control. <strong>Shadow mode</strong> (default): unauthorized access is logged but allowed.
+      <strong>Enforce mode</strong>: unauthorized access returns 403. Currently applies to {{ 2 }} demonstrator routes with scope decorators.
+    </p>
+    <label>Enforce mode
+      <select name="rbac_enforce_mode">
+        <option value="shadow" {% if rbac.enforce_mode == 'shadow' %}selected{% endif %}>shadow (log only)</option>
+        <option value="enforce" {% if rbac.enforce_mode == 'enforce' %}selected{% endif %}>enforce (block unauthorized)</option>
+      </select>
+      {% if rbac.is_override %}<span class="muted" style="font-size:.75rem">(DB override)</span>{% else %}<span class="muted" style="font-size:.75rem">(env-var fallback)</span>{% endif %}
+    </label>
+
     <button type="submit" style="margin-top:.5rem">Save system settings</button>
   </form>
   <form method="post" action="{{ url_for('admin_ui.settings_system_clear_submit') }}" style="margin-top:1rem"
