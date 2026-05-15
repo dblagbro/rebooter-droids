@@ -133,6 +133,12 @@ def _serialize_sample(s: DevicePowerSample, *, now: datetime | None = None) -> d
         "source_flags_decoded": decode_source_flags(s.source_flags),
         "v_v": _f(s.v_v),
         "i_ma": s.i_ma,
+        # v0.5.66 (P1.3): when `i_ma_estimated` is True the firmware
+        # clamped measured current to 0 for a sub-50 mA standby load —
+        # `i_ma_estimate` carries the estimate. Consumers must not read
+        # `i_ma == 0` as "no activity" in that case.
+        "i_ma_estimated": s.i_ma_estimated,
+        "i_ma_estimate": s.i_ma_estimate,
         "p_w": _f(s.p_w),
         "s_va": _f(s.s_va),
         "pf": _f(s.pf),
