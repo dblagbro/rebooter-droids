@@ -25,6 +25,47 @@ def list_sites_page():
     return render_template("sites_list.html", **_ctx({"sites": sites}))
 
 
+@admin_ui_bp.get("/sites/<site_id>")
+@admin_required_ui
+def site_detail_page(site_id: str):
+    """v0.5.43 (P4b): Site detail page with members tab showing users with bindings."""
+    from app.services import role_bindings as rb
+    from app.services.users import list_users
+    from app.services.devices import list_devices
+
+    sites = svc_list_sites()
+    site = next((s for s in sites if s["id"] == site_id), None)
+    if not site:
+        abort(404)
+
+    # Get all bindings for this site
+    bindings = rb.list_for_scope(scope_type="site", scope_id=site_id)
+
+    # Get user details for each binding
+    all_users = {u["id"]: u for u in list_users()}
+    members = []
+    for b in bindings:
+        user = all_users.get(b.user_id)
+        if user:
+            members.append({
+                "user": user,
+                "binding": b,
+            })
+
+    # Get devices at this site
+    all_devices = list_devices()
+    site_devices = [d for d in all_devices if d.get("site_id") == site_id]
+
+    return render_template(
+        "site_detail.html",
+        **_ctx({
+            "site": site,
+            "members": members,
+            "devices": site_devices,
+        }),
+    )
+
+
 @admin_ui_bp.post("/sites")
 @admin_required_ui
 def create_site_submit():
