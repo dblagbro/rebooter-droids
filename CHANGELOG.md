@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.35] - 2026-05-15
+
+### Added — B1 RBAC Phase 1 (P1): shadow-mode scope-check foundation
+
+First implementable slice of the B1 RBAC rollout, per the design doc
+`docs/notes/2026-05-15-b1-rbac-design.md` §4 (P1). The `role_bindings`
+table + resolver shipped in v0.5.0/.1; this ship wires those resolvers
+into an *enforcement pathway* that runs in **shadow mode** by default —
+the legacy `role_required_*` decorators stay authoritative, and a scope
+miss is only logged, never blocked.
+
+- **Scope-check helpers** (`app/services/role_bindings.py`):
+  `require_can_act_on_device` / `_site` / `_group`. Each consults the
+  caller's effective scope; on a miss it emits an audit row
+  (`rbac.shadow_deny` in shadow mode, `rbac.enforce_deny` in enforce
+  mode) and, in enforce mode only, raises `RbacScopeDenied`. New
+  `effective_group_ids` / `can_act_on_group` resolvers complete the
+  device/site/group set. A `super_admin` is always exempt
+  (RFC-003 §9.0 escape hatch) — exempt via either the legacy
+  `users.role` column or a global super_admin binding.
+- **`rbac.enforce_mode` runtime setting** — `{"shadow","enforce"}`,
+  default `shadow`. Toggling it is the entire A8 cut-over: no redeploy,
+  no code branch. `enforce_mode()` reads it live.
+- **`scope_required_api` / `scope_required_ui` decorators**
+  (`app/middleware/admin_auth.py`) — pair below a `role_required_*`
+  decorator; check the caller's bindings against the resource id in the
+  route URL. Declarative `scope=` + `id_kwarg=` form (the predictable
+  URL-id case the design doc earmarks for decorators). `scope_required_ui`
+  ships now for the P3 list/detail work but is not yet wired to a route.
+- **`record_scoped()` choke-point** (`app/services/audit.py`) — wraps
+  `record()` and folds a `scope_claim` into the audit details. Today a
+  thin wrapper; it is the single seam B11 multi-hub sync (RFC-004
+  Option C) will append `outbox_events` from, so every per-resource
+  mutation routed through it is B11-ready without a second sweep.
+- **Two demonstrator routes wired** (`app/blueprints/admin/devices_api.py`):
+  `GET /api/v1/admin/devices/<id>` (read, `ROLE_VIEWER`) and
+  `POST /api/v1/admin/devices/<id>/commands` (write, `ROLE_OPERATOR`).
+  The command route's audit row now flows through `record_scoped()`.
+- **Regression test** — `tests/qa/test_v0535_rbac_shadow_skeleton.py`:
+  super_admin never shadow-denies; a no-binding user is shadow-logged
+  but not blocked; the command audit row carries its `scope_claim`;
+  legacy auth is unchanged.
+
+Everything else is untouched — only the two demonstrator routes use the
+new pathway, so a rollback is a one-PR back-out. P2–P5 follow per the
+design doc; the enforce flip (P5b) is gated on a ≥7-day clean shadow
+soak.
+
 ## [0.5.34] - 2026-05-15
 
 ### Fixed — BUG-054: `custom` probe-kind dropped from canonical list

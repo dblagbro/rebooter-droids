@@ -137,6 +137,15 @@ SYSTEM_KEYS = (
     ("system.enrollment_token_ttl_seconds", "REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS"),
 )
 
+# v0.5.35 (B1 RBAC Phase 1): RBAC keys. `rbac.enforce_mode` is one of
+# {"shadow", "enforce"} — default "shadow" (absence of a DB row).
+# Toggled live from the System tab during the A8 cut-over; consumed by
+# app/services/role_bindings.py::enforce_mode(). Listed here only for
+# discoverability — the RBAC service reads it directly via get().
+RBAC_KEYS = (
+    ("rbac.enforce_mode", "REBOOTER_RBAC_ENFORCE_MODE"),
+)
+
 
 def smtp_config() -> dict:
     """Returns the live SMTP config the email service should use.
