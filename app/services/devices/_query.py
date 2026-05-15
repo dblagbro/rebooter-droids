@@ -260,7 +260,12 @@ def list_devices(
             ).where(GroupMembership.group_id == group_id)
 
         stmt = stmt.order_by(Device.created_at.desc())
-        rows = list(session.scalars(stmt))
+
+        # v0.5.37 (B1 RBAC Phase 3): Apply scope-based filtering.
+        # In shadow mode, logs what WOULD be hidden; in enforce mode, actually filters.
+        from app.services.rbac_filter import filter_devices_with_shadow_logging
+        rows = filter_devices_with_shadow_logging(stmt, session)
+
         device_ids = [d.id for d in rows]
         assignments_by_device = _active_assignments_by_device(session, device_ids)
         heartbeats_by_device = _latest_heartbeat_by_device(session, device_ids)
