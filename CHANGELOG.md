@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.54] - 2026-05-15
+
+### Added — P1.1: JSON power query API
+
+First phase of the P1 work track (power telemetry data-path follow-through) per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6. The power-telemetry query functions in `app/services/device_power.py` previously fed only server-rendered admin pages — there was no JSON surface. P1.1 adds read-only API endpoints over them.
+
+- **New endpoints** (`app/blueprints/admin/power_api.py`, all under `/api/v1/admin`):
+  - `GET /devices/<id>/power-samples` — windowed raw samples (params: `window_seconds`, `limit`, `channel_id`)
+  - `GET /devices/<id>/power-rollups` — recent daily rollups (param: `days`)
+  - `GET /power/summary` — fleet aggregate (param: `window_seconds`; supports 24h/7d/30d)
+
+- **RBAC**: per-device endpoints are `admin_required_api` + `scope_required_api(ROLE_VIEWER, scope="device")` — same posture as `GET /devices/<id>`. The fleet summary is `admin_required_api` only, matching the un-scope-filtered fleet `/app/power` page; per-device scope-filtering of the fleet summary is a tracked follow-up.
+
+- **Modality-tagged envelope**: every response payload carries `"modality": "power"` and an explicit window descriptor. Per the hub-team plan §6 (P3), this is the seam the future cross-modal query layer reuses — tagging the envelope now means a second modality can be added without reshaping these responses.
+
+- **Path note**: the fleet endpoint is `/api/v1/admin/power/summary` (consistent with the `admin_api` namespace) rather than the plan's indicative `/api/v1/power/summary`.
+
+- Documented in `docs/API.md` (new "Power telemetry" section).
+
+### Notes
+- Read-only; no schema change. Unknown `device_id` → `404 device_unknown`.
+- P1.2 (data-quality surfacing) and P1.3 (loaded-power validation, gated on a firmware loaded-power capture) follow.
+
 ## [0.5.53] - 2026-05-15
 
 ### Added — P0.3: Recovery-aware config push (Phase 4B) + schema reconciliation (Phase 4C)
