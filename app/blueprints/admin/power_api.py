@@ -55,25 +55,38 @@ def get_device_power_samples(device_id: str):
     """Windowed raw power samples for one device, newest-first.
 
     Query params: `window_seconds` (default 3600, clamped 60..86400 by
-    the service), `limit` (default 720), `channel_id` (default 0).
+    the service), `limit` (default 720), `channel_id` (default 0),
+    `source` (optional — restrict to one source, e.g. `steady`).
+
+    v0.5.55 (P1.2): each sample carries `source_kind` (real/synthetic)
+    and `source_flags_decoded`; the response includes a
+    `source_breakdown` over the full window so a caller never silently
+    merges real and synthetic telemetry.
     """
     if not _device_exists(device_id):
         return err("device_unknown", "Device not found.", status=404)
     window_seconds = _int_arg("window_seconds", device_power.RECENT_WINDOW_DEFAULT_SECONDS)
     limit = _int_arg("limit", 720)
     channel_id = _int_arg("channel_id", 0)
+    source = request.args.get("source") or None
     samples = device_power.recent_samples(
         device_id,
         channel_id=channel_id,
         window_seconds=window_seconds,
         limit=limit,
+        source=source,
+    )
+    breakdown = device_power.power_source_breakdown(
+        device_id, channel_id=channel_id, window_seconds=window_seconds
     )
     return ok({
         "device_id": device_id,
         "modality": "power",
         "channel_id": channel_id,
         "window_seconds": window_seconds,
+        "source_filter": source,
         "sample_count": len(samples),
+        "source_breakdown": breakdown,
         "samples": samples,
     })
 

@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 
 from app.db import session_scope
 from app.models import Device, DevicePowerRollup, DevicePowerSample
@@ -34,6 +34,36 @@ from app.models import Device, DevicePowerRollup, DevicePowerSample
 MAX_FRESH_SAMPLE_AGE_SECONDS = 300  # 5 min — beyond this, surface as stale
 RECENT_WINDOW_DEFAULT_SECONDS = 60 * 60  # 1 h — Device-detail recent series
 RECENT_WINDOW_MAX_SECONDS = 24 * 60 * 60  # 24 h — Device-detail upper cap
+
+# v0.5.55 (P1.2): power-sample `source` taxonomy. `steady`/`burst` are
+# real CSE7766 measurements; `synthetic` is the firmware fallback emitted
+# when no fresh real reading was available. The hub must never silently
+# average real + synthetic data — so every serialized sample is tagged
+# `source_kind` and query surfaces carry a per-source breakdown.
+REAL_POWER_SOURCES = frozenset({"steady", "burst"})
+
+
+def decode_source_flags(flags: int | None) -> dict:
+    """Decode the integer `source_flags` bitfield into its set bit
+    indices.
+
+    The *semantics* of each bit are firmware-owned and not yet published
+    (tracked as a P1.2 firmware ask — see the CHANGELOG entry for
+    v0.5.55). Until the firmware team ships a bit dictionary the hub
+    surfaces the raw value plus which bit positions are set, so the
+    field is at least inspectable rather than an opaque integer.
+    """
+    raw = int(flags or 0)
+    if raw < 0:
+        raw = 0
+    bits = [i for i in range(raw.bit_length()) if raw & (1 << i)]
+    return {"raw": raw, "bits_set": bits}
+
+
+def source_kind(source: str | None) -> str:
+    """`real` = measured off the CSE7766 (`steady`/`burst`);
+    `synthetic` = firmware fallback when no fresh real reading existed."""
+    return "real" if source in REAL_POWER_SOURCES else "synthetic"
 
 # v0.5.30: operator-set $/kWh used by the cost-calc widget on /app/power +
 # Device-detail. NULL/unset → cost rendering hidden cleanly.
@@ -96,7 +126,9 @@ def _serialize_sample(s: DevicePowerSample, *, now: datetime | None = None) -> d
             age_seconds is not None and age_seconds > MAX_FRESH_SAMPLE_AGE_SECONDS
         ),
         "source": s.source,
+        "source_kind": source_kind(s.source),
         "source_flags": s.source_flags,
+        "source_flags_decoded": decode_source_flags(s.source_flags),
         "v_v": _f(s.v_v),
         "i_ma": s.i_ma,
         "p_w": _f(s.p_w),
@@ -176,6 +208,7 @@ def recent_samples(
     channel_id: int = 0,
     window_seconds: int = RECENT_WINDOW_DEFAULT_SECONDS,
     limit: int = 720,
+    source: str | None = None,
 ) -> list[dict]:
     """Raw sample window for the Device-detail Power tab.
 
@@ -183,6 +216,9 @@ def recent_samples(
     upper bound — at 1 Hz cadence a 24h window is 86400 rows, way more
     than we want to render. Default 720 ≈ 1 sample per minute over a
     12-hour window.
+
+    v0.5.55 (P1.2): `source` optionally restricts to one `source` value
+    (e.g. `steady` to exclude synthetic fallback samples).
     """
     if not device_id:
         return []
@@ -190,19 +226,57 @@ def recent_samples(
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(seconds=win)
     with session_scope() as session:
+        stmt = select(DevicePowerSample).where(
+            DevicePowerSample.device_id == device_id,
+            DevicePowerSample.channel_id == channel_id,
+            DevicePowerSample.sampled_at >= cutoff,
+        )
+        if source:
+            stmt = stmt.where(DevicePowerSample.source == source)
         rows = list(
             session.scalars(
-                select(DevicePowerSample)
+                stmt.order_by(DevicePowerSample.sampled_at.desc()).limit(int(limit))
+            )
+        )
+        return [_serialize_sample(r, now=now) for r in rows]
+
+
+def power_source_breakdown(
+    device_id: str,
+    *,
+    channel_id: int = 0,
+    window_seconds: int = RECENT_WINDOW_DEFAULT_SECONDS,
+) -> dict:
+    """Count of samples by `source` over the window.
+
+    v0.5.55 (P1.2): the data-quality primitive — lets the UI/API show
+    how much of a window is real vs. synthetic telemetry instead of
+    silently averaging the two. Cheap SQL `GROUP BY source` count.
+    """
+    win = max(60, min(int(window_seconds or RECENT_WINDOW_DEFAULT_SECONDS), 30 * 24 * 60 * 60))
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=win)
+    by_source: dict[str, int] = {}
+    if device_id:
+        with session_scope() as session:
+            for src, n in session.execute(
+                select(DevicePowerSample.source, func.count(DevicePowerSample.id))
                 .where(
                     DevicePowerSample.device_id == device_id,
                     DevicePowerSample.channel_id == channel_id,
                     DevicePowerSample.sampled_at >= cutoff,
                 )
-                .order_by(DevicePowerSample.sampled_at.desc())
-                .limit(int(limit))
-            )
-        )
-        return [_serialize_sample(r, now=now) for r in rows]
+                .group_by(DevicePowerSample.source)
+            ):
+                by_source[src] = int(n or 0)
+    total = sum(by_source.values())
+    real = sum(n for s, n in by_source.items() if s in REAL_POWER_SOURCES)
+    return {
+        "window_seconds": win,
+        "total": total,
+        "real": real,
+        "synthetic": total - real,
+        "by_source": by_source,
+    }
 
 
 # ── Fleet summary (used by Phase 1B /app/power) ──────────────────────────
@@ -348,10 +422,19 @@ def _serialize_rollup(r: DevicePowerRollup) -> dict:
             return float(v)
         except (TypeError, ValueError):
             return None
+    synthetic = r.synthetic_sample_count
+    total = r.sample_count or 0
     return {
         "device_id": r.device_id,
         "day_bucket": _iso(r.day_bucket),
-        "sample_count": r.sample_count,
+        "sample_count": total,
+        # v0.5.55 (P1.2): synthetic portion of the day. `synthetic_sample_count`
+        # is NULL on rollups computed before P1.2 — surfaced as None so the UI
+        # can show "quality unknown" rather than a false "0 synthetic".
+        "synthetic_sample_count": synthetic,
+        "is_synthetic_tainted": (
+            bool(synthetic) if synthetic is not None else None
+        ),
         "avg_w": _f(r.avg_w),
         "min_w": _f(r.min_w),
         "max_w": _f(r.max_w),
@@ -473,6 +556,14 @@ def compute_daily_rollups(*, day: datetime | None = None) -> dict:
                 select(
                     DevicePowerSample.device_id.label("device_id"),
                     func.count(DevicePowerSample.id).label("sample_count"),
+                    # v0.5.55 (P1.2): how many of the day's samples were
+                    # synthetic fallback rather than real CSE7766 data.
+                    func.sum(
+                        case(
+                            (DevicePowerSample.source == "synthetic", 1),
+                            else_=0,
+                        )
+                    ).label("synthetic_sample_count"),
                     func.avg(DevicePowerSample.p_w).label("avg_w"),
                     func.min(DevicePowerSample.p_w).label("min_w"),
                     func.max(DevicePowerSample.p_w).label("max_w"),
@@ -501,20 +592,23 @@ def compute_daily_rollups(*, day: datetime | None = None) -> dict:
                 stmt = text(
                     "INSERT OR REPLACE INTO device_power_rollups "
                     "(device_id, day_bucket, computed_at, sample_count, "
-                    " avg_w, min_w, max_w, kwh) "
+                    " synthetic_sample_count, avg_w, min_w, max_w, kwh) "
                     "VALUES (:device_id, :day_bucket, :computed_at, "
-                    " :sample_count, :avg_w, :min_w, :max_w, :kwh)"
+                    " :sample_count, :synthetic_sample_count, "
+                    " :avg_w, :min_w, :max_w, :kwh)"
                 )
             else:
                 stmt = text(
                     "INSERT INTO device_power_rollups "
                     "(device_id, day_bucket, computed_at, sample_count, "
-                    " avg_w, min_w, max_w, kwh) "
+                    " synthetic_sample_count, avg_w, min_w, max_w, kwh) "
                     "VALUES (:device_id, :day_bucket, :computed_at, "
-                    " :sample_count, :avg_w, :min_w, :max_w, :kwh) "
+                    " :sample_count, :synthetic_sample_count, "
+                    " :avg_w, :min_w, :max_w, :kwh) "
                     "ON CONFLICT (device_id, day_bucket) DO UPDATE SET "
                     " computed_at = EXCLUDED.computed_at, "
                     " sample_count = EXCLUDED.sample_count, "
+                    " synthetic_sample_count = EXCLUDED.synthetic_sample_count, "
                     " avg_w = EXCLUDED.avg_w, "
                     " min_w = EXCLUDED.min_w, "
                     " max_w = EXCLUDED.max_w, "
@@ -525,6 +619,7 @@ def compute_daily_rollups(*, day: datetime | None = None) -> dict:
                 "day_bucket": day,
                 "computed_at": now,
                 "sample_count": int(row.sample_count or 0),
+                "synthetic_sample_count": int(row.synthetic_sample_count or 0),
                 "avg_w": float(row.avg_w) if row.avg_w is not None else None,
                 "min_w": float(row.min_w) if row.min_w is not None else None,
                 "max_w": float(row.max_w) if row.max_w is not None else None,
