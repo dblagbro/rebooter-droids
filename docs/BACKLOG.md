@@ -1,13 +1,146 @@
 # Backlog
 
-Last updated: **2026-05-09 PM** (post v0.4.9).
+Last updated: **2026-05-14 PM** (post v0.5.33).
 
-This is the canonical, ordered backlog for what comes next on
-rebooter-droids. The pause-state doc captures recent history; this
-doc captures what *is still owed*.
+The canonical "what's still owed" list. Historical B1–B24 entries +
+the firmware-team alignment-plan phases (1A-1D, 2A-2C, 3, 4A-4C, 5,
+6) are all tracked here. Pause-state memory at
+`~/.claude/projects/-home-dblagbro/memory/project_rebooter_droids_pause_state_*.md`
+captures recent ship history; this doc captures forward intent.
 
-For redline-gated items (RFCs awaiting operator decisions) see
-**§ Awaiting redline** at the bottom.
+---
+
+## Current state (2026-05-14 PM)
+
+**Live**: `https://www.voipguru.org/rebooter/api/v1/version` →
+`0.5.33`. Today's session shipped v0.5.15 → v0.5.33 — 19 versions —
+covering structural refactor, all B17 integration work, B16 full
+power-monitoring track (Phases 1A through 1D + cost calc + CSV),
+firmware-coord merge, Phase 2A-2C rule/integration alignment,
+Phase 4A drift visibility, and now this doc-cleanup ship.
+
+### Truly open — operator-decision territory
+
+| Item | Size | Blocker |
+|---|---|---|
+| **B1** RBAC `(user, role, site_id?)` join table + per-resource enforcement | heavy (≥ 1 sprint) | none — operator-deferred behind UX work |
+| **B11** RFC-004 active-active sync replicator (Option C) | largest item on board | gated on **B1** scope claims |
+| **B17 remaining integrations** — MQTT pub/sub, Plex/Jellyfin webhooks, Google Calendar OAuth, Solar (Enphase/SolarEdge), iOS Shortcuts | ~4-6h each, pattern-different from polling-model | none |
+| **B17 Layer 2 — EPG** (TVMaze free / Schedules Direct $25/yr) | ~8-12h | none |
+| **Phase 3 — heartbeat-contract expansion** (recovery/status truth) | medium | **UNBLOCKED 2026-05-14 evening** — firmware team shipped `0.1.19-dev-central-safe` with the contract expansion (see `docs/notes/2026-05-14-firmware-status-and-recovery-contract.md` + `2026-05-14-heartbeat-expansion-and-reported-config-memo.md`). Hub work is now actionable. |
+| **Phase 4B** — recovery-aware drift actions (post-rebind "push desired config now") | small | depends on Phase 3 hub-side absorption of the new heartbeat fields |
+| **Phase 4C** — desired-config schema alignment with firmware-owned config doc + version-gating | small-medium | needs reconciling `docs/firmware-apply-config-schema-v01.md` (modified this session by firmware team) with `ALLOWED_DESIRED_CONFIG_KEYS` in `services/device_config.py` |
+| **Phase 6** — site/home profile + claim-assist groundwork | medium | explicit low-priority per alignment plan |
+| **Phase 2B full structured-form on rules/edit.html** | small-medium | non-trivial Jinja extraction; current ship has reference-card intermediate |
+
+### Operator-decision research items (next-up per operator 2026-05-14)
+
+The operator flagged these four for explicit plan + research after
+the v0.5.32/.33 ships:
+
+- **B1 RBAC** — heavy, gates B11; need a fresh research pass on
+  RFC-003 §RBAC redlines vs the schema we already have
+  (`role_bindings` table + `(user, role, site_id?)` precedent in
+  `app/services/role_bindings.py`).
+- **B11 multi-hub sync (RFC-004 Option C)** — research the outbox-
+  event shape; pick a deployment topology; estimate gunicorn worker
+  + Postgres pool impact under steady-state replication.
+- **B17 remaining integrations** — pick which adjacent integrations
+  the operator actually wants from the candidate list (MQTT / Plex
+  / Google Cal / Solar / iOS Shortcuts). Each is its own pattern.
+- **B17 Layer 2 EPG** — research TVMaze API depth + Schedules Direct
+  channel coverage for the operator's region; pick provider; design
+  the `external_epg_cache` table + `epg_show_airing` probe.
+
+The operator's exact phrasing 2026-05-14: "next up we plan and
+research the B1 RBAC, B11 sync, B17 remaining and B17 layer 2 epg".
+This is the next session's research charter.
+
+### Ops items (no code work — operator-actionable any time)
+
+- **www2 firmware mirror sync** to `0.1.18-dev-central-safe` +
+  `0.1.19-dev-central-safe`. SSH access was unblocked earlier in
+  the session; can run any time (~10 min).
+- **`.225` / `.69` reflash** — held for firmware-team bench
+  testing. Resume when firmware team is done.
+
+---
+
+## Shipped — what's CLOSED
+
+### Pre-v0.5.x baseline (B1-B14)
+- ✅ **B2** Admin invite email (30-day TTL) — v0.4.1+
+- ✅ **B3** Password-reset UI — v0.4.1
+- ✅ **B4** SMTP via runtime_settings — v0.4.25
+- ✅ **B5** Get-devices-online firmware coord — closed 2026-05-14
+- ✅ **B6** Watchdog probe runtime — v0.4.2
+  - ✅ B6.1 native ICMP ping — v0.5.13
+  - ⏳ B6.2 gateway probe — pending device-side gateway in heartbeat
+  - ⏳ B6.3 tag-as-target — needs device_tags primitive
+  - ✅ B6 status-inbox attention — v0.4.7
+- ✅ **B7** Maintenance windows + portal-wide mode — v0.4.7
+- ✅ **B8** Schedules primitive — v0.4.8
+- ✅ **B9** Rule advanced JSON editor — v0.4.9
+- ✅ **B10** RFC-003 redlines #1-4 — closed 2026-05-10
+- ✅ **B11** RFC-004 architecture pick (Option C) — closed 2026-05-10; implementation still pending (see open section above)
+- ✅ **B12** RFC-005 redlines — closed 2026-05-10 (firmware-side ownership)
+- ✅ **B13** Status-inbox watchdog.firing items — v0.4.7
+- ✅ **B14** Bulk-action audit log — v0.4.9
+
+### Mid-cycle B15-B24 (filed + closed 2026-05-09 → 2026-05-14)
+- ✅ **B15** Settings → Sync tab content — v0.5.16
+- ✅ **B16** Power-usage monitoring full track — see B16 detail below
+- ✅ **B17 Layer 1 — Roku ECP** — v0.5.17; adjacent (HA + Weather + iCal) v0.5.23
+- ✅ **B18** Inline on/off toggle on devices list — v0.5.14
+- ✅ **B19** Firmware-scan content-change detection — v0.5.13
+- ✅ **B20** MAC-dupe restore-vs-fresh adoption — v0.5.7 (schema/UI) + 2026-05-14 (live cleanup confirmed)
+- ✅ **B21** Desired-config blob + drift detection + push-on-restore — v0.5.22 (auto-push feature-flagged off; manual push always fires)
+- ✅ **B22** Scanned-release download_url hotfix — v0.5.11
+- ✅ **B23** Split offline into transport_stale / central_stale / etc. — v0.5.12
+- ✅ **B24** Rename → apply_config.device_name push — v0.5.12
+
+### B16 power-monitoring track (full close)
+| Phase | Ship |
+|---|---|
+| 1A — live last-sample + watts chip | v0.5.26 |
+| 1B — `/app/power` fleet page | v0.5.27 |
+| 1C — daily rollups + sparkline + fleet timeseries | v0.5.29 |
+| 1C cost calc + CSV export | v0.5.30 |
+| 1D — power-targeted watchdog probe kinds | v0.5.32 |
+
+### Firmware-team alignment plan (post-v0.5.24-merge)
+| Phase | Ship | Notes |
+|---|---|---|
+| 2A — probe-kind contract canonicalization | v0.5.25 | makes integration probes usable from API + JSON editor |
+| 2B — per-kind form fields | v0.5.28 | rules-create form |
+| 2B edit-reference card | v0.5.30 | rules-edit page (intermediate; full structured form deferred) |
+| 2C — event-detail polish + integration-source health | v0.5.30 | |
+| 3 — heartbeat-contract expansion | **open**, unblocked 2026-05-14 PM | firmware now emits the new fields |
+| 4A — drift visibility | v0.5.31 | devices-list chip + status-page attention items |
+| 4B — recovery-aware drift actions | **open** | depends on Phase 3 hub absorption |
+| 4C — schema alignment | **open** | needs firmware schema doc reconciliation |
+| 5 — docs/backlog cleanup | v0.5.33 (this ship) | this very edit |
+| 6 — site/home profile + claim-assist | **open** | explicitly low-priority |
+
+### Structural refactors
+- ✅ admin blueprint split — v0.2.6
+- ✅ service subpackages (`services/devices/` + `services/watchdog_runtime/`) — v0.5.15
+- ✅ underscore-helper public-rename + alias drop — v0.5.18 / v0.5.21
+
+---
+
+## How to consume this list
+
+1. **Check § Truly open above** — that's the live priority view.
+2. **Check § Operator-decision research items** for the next session's
+   charter (B1 / B11 / B17 / EPG).
+3. **Check § Ops items** for anything operator-actionable today
+   (mirror sync, bench reflash).
+4. For shipped items see `CHANGELOG.md` (per-version detail) or
+   `docs/refactor-log.md` (structural changes only).
+5. Everything below this point is the historical detailed B1-B24
+   entries — retained for context but no longer the operator's
+   priority view.
 
 ---
 
