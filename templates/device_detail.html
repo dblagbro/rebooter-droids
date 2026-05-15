@@ -10,15 +10,8 @@
     · {{ device.hardware_model or 'unknown model' }}
     · firmware {{ device.firmware_version or '—' }}
     {% if device.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
-    {% if device.central_status == 'transport_stale' %}
-      <span class="badge amber" title="{{ device.central_status_reason }}">transport stale</span>
-    {% elif device.central_status == 'upgrade_pending' %}
-      <span class="badge amber" title="{{ device.central_status_reason }}">upgrade pending</span>
-    {% elif device.central_status in ('attention', 'central_stale') %}
-      <span class="badge red" title="{{ device.central_status_reason }}">{{ device.central_status_label }}</span>
-    {% else %}
-      <span class="badge" title="{{ device.central_status_reason }}">{{ device.central_status_label }}</span>
-    {% endif %}
+    {# v0.5.52 (P0.2): severity from service-derived central_status_class. #}
+    <span class="badge {{ device.central_status_class }}" title="{{ device.central_status_reason }}">{{ device.central_status_label }}</span>
     {% if device.is_protected %}
       <span class="badge red" title="power commands require explicit override">🔒 protected</span>
     {% endif %}
@@ -60,6 +53,28 @@
       <li>uptime_s: {{ device.latest_heartbeat.uptime_seconds or 0 }}</li>
       <li>incident_cycles: {{ device.latest_heartbeat.incident_cycles or 0 }}</li>
     </ul>
+    {# v0.5.52 (P0.2): device-self-reported recovery/central truth from
+       firmware 0.1.19+. Only renders when the device actually reports a
+       central_state — older firmware leaves it blank. #}
+    {% if device.reported_central_state is not none %}
+      <p class="muted" style="margin-bottom:.25rem"><strong>Device-reported status</strong></p>
+      <ul class="muted" style="margin-top:0">
+        <li>central_enabled: {{ device.reported_central_enabled }}</li>
+        <li>central_registered: {{ device.reported_central_registered }}</li>
+        <li>central_state: <code>{{ device.reported_central_state }}</code></li>
+        <li>recovery_mode: {{ device.reported_recovery_mode }}</li>
+        {% if device.reported_auto_recovery_triggered %}
+          <li>auto_recovery_triggered: {{ device.reported_auto_recovery_triggered }}</li>
+        {% endif %}
+        {% if device.reported_last_known_good_restored %}
+          <li>last_known_good_restored: {{ device.reported_last_known_good_restored }}</li>
+        {% endif %}
+        <li>consecutive_unhealthy_boots: {{ device.reported_consecutive_unhealthy_boots or 0 }}</li>
+        {% if device.reported_in_captive_portal %}
+          <li>in_captive_portal: {{ device.reported_in_captive_portal }}</li>
+        {% endif %}
+      </ul>
+    {% endif %}
     {% if device.active_firmware_assignment %}
       <p class="muted" style="margin-top:0">
         Firmware assignment:
