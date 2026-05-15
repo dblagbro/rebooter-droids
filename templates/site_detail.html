@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+{% block title %}{{ site.name }} - Sites - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.list_sites_page') }}">← Sites</a></p>
+<h1>{{ site.name }}</h1>
+
+<section class="placeholder">
+  <h2>Site details</h2>
+  <dl style="display:grid;grid-template-columns:auto 1fr;gap:0.5rem 1rem;max-width:40rem">
+    <dt style="font-weight:600">Name:</dt>
+    <dd>{{ site.name }}</dd>
+    <dt style="font-weight:600">Description:</dt>
+    <dd>{{ site.description or '—' }}</dd>
+    <dt style="font-weight:600">Created:</dt>
+    <dd>{{ site.created_at }}</dd>
+    <dt style="font-weight:600">Devices:</dt>
+    <dd>{{ devices|length }}</dd>
+  </dl>
+</section>
+
+<section class="placeholder">
+  <h2>Members</h2>
+  <p class="muted" style="margin-bottom:1rem">
+    Users with role bindings to this site. Grant bindings from the <a href="{{ url_for('admin_ui.users_page') }}">Users page</a>.
+  </p>
+
+  {% if members|length == 0 %}
+  <p class="muted">No users have bindings to this site.</p>
+  {% else %}
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>User</th><th>Email</th><th>Global Role</th><th>Site Role</th><th>Granted</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for m in members %}
+    <tr>
+      <td>
+        {% if current_user.role == 'super_admin' %}
+        <a href="{{ url_for('admin_ui.user_detail_page', user_id=m.user.id) }}">{{ m.user.display_name }}</a>
+        {% else %}
+        {{ m.user.display_name }}
+        {% endif %}
+      </td>
+      <td>{{ m.user.email }}</td>
+      <td><span class="badge">{{ m.user.role }}</span></td>
+      <td><span class="badge">{{ m.binding.role }}</span></td>
+      <td>{{ m.binding.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>
+        {% if current_user.role == 'super_admin' %}
+        <form method="post"
+              action="{{ url_for('admin_ui.revoke_user_binding_ui', user_id=m.user.id, binding_id=m.binding.id) }}"
+              data-confirm-message="Revoke site binding for {{ m.user.email }}?"
+              style="margin:0">
+          <button type="submit" style="padding:0.4rem 0.8rem">Revoke</button>
+        </form>
+        {% else %}
+        —
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+<section class="placeholder">
+  <h2>Devices at this site</h2>
+  {% if devices|length == 0 %}
+  <p class="muted">No devices assigned to this site.</p>
+  {% else %}
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>Name</th><th>MAC Address</th><th>Status</th>
+    </tr></thead>
+    <tbody>
+    {% for d in devices %}
+    <tr>
+      <td>
+        <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.name }}</a>
+      </td>
+      <td>{{ d.mac }}</td>
+      <td>
+        {% if d.is_online %}<span class="badge green">online</span>
+        {% else %}<span class="badge">offline</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+{% endblock %}
