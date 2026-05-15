@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-05-15 |
-| Status | **P1+P2+P3+P4a SHIPPED** (v0.5.35/.36/.37/.38, 2026-05-15). P4b (UI) + P5 remain per §4. |
+| Status | **FULLY SHIPPED** — all phases done 2026-05-15: P1 v0.5.35, P2 v0.5.36, P3 v0.5.37, P4a v0.5.38, P4b v0.5.39–v0.5.43, P5 (enforce toggle) v0.5.44. B1 RBAC is complete. |
 | Owners | rebooter-droids backend/web |
 | Live version | v0.5.34 at `https://www.voipguru.org/rebooter` |
 | Backlog item | `docs/BACKLOG.md` B1 |

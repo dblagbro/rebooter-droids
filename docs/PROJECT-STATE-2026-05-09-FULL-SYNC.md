@@ -1,5 +1,11 @@
 # Project State — Full Sync — 2026-05-09
 
+> **⚠ Historical snapshot — 2026-05-09. Superseded.** For current state
+> see `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` and
+> `CHANGELOG.md`. The repo has shipped through v0.5.60 since this was
+> written (full B1 RBAC, B11 sync scaffold, B16 power, B17 + P0–P3a).
+> Kept for historical context only — do not treat as current truth.
+
 | Field | Value |
 |---|---|
 | Status | **Authoritative pause state** (saved 2026-05-09 from product/firmware/PM full sync handover) |

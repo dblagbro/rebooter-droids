@@ -204,10 +204,11 @@ load-bearing).
 
 ### Tier F — Power-usage monitoring + analytics (BACKLOG B16)
 
-Operator-added 2026-05-10 PM. Sonoff S31 hardware has an HLW8032
-chip that measures voltage / current / power / energy and we
-currently throw all of that away. Full ingestion + storage +
-analytics. See `docs/BACKLOG.md` **B16** for the full scope.
+Operator-added 2026-05-10 PM. Sonoff S31 hardware has a **CSE7766**
+chip (HLW8032 was an early incorrect assumption) that measures
+voltage / current / power / energy. **Shipped** — B16 Phases 1A–1D
+(v0.5.26–v0.5.32) plus P1.1–P1.3 follow-through (v0.5.54–v0.5.59).
+See `docs/BACKLOG.md` **B16** for scope.
 
 Slots between Tier C and Tier D in the natural sprint order
 because it benefits from C1 (history source extension) for

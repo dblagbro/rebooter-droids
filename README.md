@@ -13,7 +13,11 @@ additive (group commands, firmware rollouts, fleet visibility).
 - API root: <https://www.voipguru.org/rebooter/api/v1/>
 - Firmware: <https://www.voipguru.org/rebooter/firmware/>
 
-**Secondary (www2)** - Active-active multi-hub sync:
+**Secondary (www2)** — independent hub; multi-hub sync (RFC-004 / B11)
+is wired but not yet a finished active-active path — the outbox
+replicator + HMAC peer auth ship, but `apply_outbox_event()` only
+applies deletes/tombstones (create/update LWW is still a stub) and
+`sync.enabled` defaults to `false`:
 - Admin UI: <https://www2.voipguru.org/rebooter/app/>
 - API root: <https://www2.voipguru.org/rebooter/api/v1/>
 - Firmware: <https://www2.voipguru.org/rebooter/firmware/>
