@@ -211,15 +211,9 @@
           {% endif %}
         </td>
         <td>
-          {% if d.central_status == 'transport_stale' %}
-            <span class="badge amber" title="{{ d.central_status_reason }}">transport stale</span>
-          {% elif d.central_status == 'upgrade_pending' %}
-            <span class="badge amber" title="{{ d.central_status_reason }}">upgrade pending</span>
-          {% elif d.central_status in ('attention', 'central_stale') %}
-            <span class="badge red" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
-          {% else %}
-            <span class="badge" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
-          {% endif %}
+          {# v0.5.52 (P0.2): single chip; severity comes from the
+             service-derived central_status_class (green/amber/red/""). #}
+          <span class="badge {{ d.central_status_class }}" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
           {# v0.5.31 (Phase 4A): desired-config drift chip per row.
              Only renders when a desired_config is set; in-sync hides
              entirely (no clutter when everything's clean). #}
@@ -312,15 +306,7 @@
     </div>
     <div class="v3-device-card-meta">
       <span class="badge">{{ d.registration_state }}</span>
-      {% if d.central_status == 'transport_stale' %}
-        <span class="badge amber" title="{{ d.central_status_reason }}">transport stale</span>
-      {% elif d.central_status == 'upgrade_pending' %}
-        <span class="badge amber" title="{{ d.central_status_reason }}">upgrade pending</span>
-      {% elif d.central_status in ('attention', 'central_stale') %}
-        <span class="badge red" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
-      {% else %}
-        <span class="badge" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
-      {% endif %}
+      <span class="badge {{ d.central_status_class }}" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
       {% if d.firmware_version %}<span>fw {{ d.firmware_version }}</span>{% endif %}
       {% if d.last_heartbeat_at %}<span>{{ d.last_heartbeat_at }}</span>{% endif %}
       {% if d.local_ip %}<a href="http://{{ d.local_ip }}/" target="_blank" rel="noopener">{{ d.local_ip }}</a>{% endif %}

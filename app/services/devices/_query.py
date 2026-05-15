@@ -295,11 +295,13 @@ def list_devices(
             central_status = _derive_central_status(
                 d,
                 heartbeat_state=hb_state,
+                latest_health_state=(latest_hb.health_state if latest_hb else None),
                 active_assignment=assignment,
             )
             obj["central_status"] = central_status["code"]
             obj["central_status_label"] = central_status["label"]
             obj["central_status_reason"] = central_status["reason"]
+            obj["central_status_class"] = central_status["badge_class"]
             # v0.5.26: latest_power_sample is None when the device has
             # never reported, present (with is_stale flag) otherwise.
             obj["latest_power_sample"] = power_samples_by_device.get(d.id)
@@ -394,6 +396,7 @@ def get_device_detail(device_id: str) -> dict | None:
         out["central_status"] = central_status["code"]
         out["central_status_label"] = central_status["label"]
         out["central_status_reason"] = central_status["reason"]
+        out["central_status_class"] = central_status["badge_class"]
 
         group_rows = list(
             session.execute(
