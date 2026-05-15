@@ -69,8 +69,18 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_media_session_active(probe)
         if kind == "webhook_field_equals":
             return _probe_webhook_field_equals(probe)
-        if kind == "tcp":
-            ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
+        if kind in ("tcp", "host_awake"):
+            # v0.5.62 (B17 Ship 4): `host_awake` is a TCP-connect alias —
+            # reachable = the host is powered on / awake. Defaults to
+            # SSH port 22 (a common always-on service) when no port is
+            # given. Probe succeeds when reachable, so a reboot rule
+            # fires only while the host is OFF ("don't power-cycle the
+            # office switch while the work laptop is on").
+            default_port = 22 if kind == "host_awake" else 0
+            ok = _probe_tcp(
+                probe.get("host", ""),
+                int(probe.get("port") or default_port),
+            )
         elif kind == "http":
             ok = _probe_http(probe.get("url", ""))
         elif kind == "dns":
