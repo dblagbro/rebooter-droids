@@ -35,6 +35,36 @@ def users_page():
     return render_template("users_list.html", **_ctx({"users": users}))
 
 
+@admin_ui_bp.get("/users/<user_id>")
+@role_required_ui(ROLE_SUPER_ADMIN)
+def user_detail_page(user_id: str):
+    """v0.5.42 (P4b): User detail page showing role bindings with add/remove UI."""
+    from app.services.devices import list_devices
+    from app.services.groups import list_groups
+    from app.services.sites import list_sites
+
+    users = svc_list_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        abort(404)
+
+    bindings = rb.list_for_user(user_id)
+    sites = list_sites()
+    groups = list_groups()
+    devices = list_devices()
+
+    return render_template(
+        "user_detail.html",
+        **_ctx({
+            "user": user,
+            "bindings": bindings,
+            "sites": sites,
+            "groups": groups,
+            "devices": devices,
+        }),
+    )
+
+
 @admin_ui_bp.post("/users/<user_id>/role")
 @role_required_ui(ROLE_SUPER_ADMIN)
 def change_user_role_submit(user_id: str):
@@ -109,6 +139,70 @@ def change_display_name_submit(user_id: str):
         details={"new_display_name": name},
     )
     return redirect(url_for("admin_ui.users_page"))
+
+
+@admin_ui_bp.post("/users/<user_id>/bindings")
+@role_required_ui(ROLE_SUPER_ADMIN)
+def grant_user_binding_ui(user_id: str):
+    """v0.5.42 (P4b): Grant a role binding via UI form."""
+    scope_type = request.form.get("scope_type")
+    scope_id = request.form.get("scope_id")
+    role = request.form.get("role")
+
+    if not scope_type or not role:
+        abort(400)
+    if scope_type != "global" and not scope_id:
+        abort(400)
+
+    try:
+        binding = rb.grant(
+            user_id=user_id,
+            scope_type=scope_type,
+            scope_id=scope_id,
+            role=role,
+        )
+    except Exception:
+        abort(400)
+
+    audit_service.record(
+        "user.binding_granted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={
+            "binding_id": binding.id,
+            "scope_type": scope_type,
+            "scope_id": scope_id,
+            "role": role,
+        },
+    )
+
+    return redirect(url_for("admin_ui.user_detail_page", user_id=user_id))
+
+
+@admin_ui_bp.post("/users/<user_id>/bindings/<binding_id>/revoke")
+@role_required_ui(ROLE_SUPER_ADMIN)
+def revoke_user_binding_ui(user_id: str, binding_id: str):
+    """v0.5.42 (P4b): Revoke a role binding via UI."""
+    try:
+        success = rb.revoke(user_id=user_id, binding_id=binding_id)
+    except Exception:
+        abort(400)
+
+    if not success:
+        abort(404)
+
+    audit_service.record(
+        "user.binding_revoked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={"binding_id": binding_id},
+    )
+
+    return redirect(url_for("admin_ui.user_detail_page", user_id=user_id))
 
 
 # ── API ────────────────────────────────────────────────────────────────────
