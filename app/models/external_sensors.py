@@ -29,6 +29,8 @@ EXTERNAL_SOURCE_KINDS = (
     "home_assistant", # v0.5.23 — HA REST API /api/states
     "weather",        # v0.5.23 — NWS alerts/active
     "ical",           # v0.5.23 — iCal/WebCal .ics feed
+    "solaredge",     # v0.5.56 (P2.1) — SolarEdge cloud monitoring API
+    "enphase_envoy", # v0.5.56 (P2.1) — Enphase Envoy local /production.json
 )
 
 
@@ -57,9 +59,12 @@ class ExternalSensorSource(Base):
     #   home_assistant → {"token": "...", "verify_ssl": true}
     #   weather        → {"lat": 38.9, "lng": -77.0}
     #   ical           → {"url": "https://..."}
+    #   solaredge      → {"site_id": "12345", "api_key": "..."}
+    #   enphase_envoy  → {"jwt": "...optional, 7.0+ Envoys only..."}
     # `host` + `port` keep their meaning for kinds that have an HTTP
-    # base (roku, home_assistant). Kinds that just need a URL (ical) or
-    # coordinates (weather) can leave host empty.
+    # base (roku, home_assistant, enphase_envoy). Kinds that just need a
+    # URL (ical), coordinates (weather), or a cloud account (solaredge)
+    # can leave host empty.
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = ts_column()

@@ -62,14 +62,18 @@ def _serialize(row: ExternalSensorSource, *, latest_sample: dict | None = None) 
     }
 
 
+_SECRET_CONFIG_KEYS = ("token", "api_key", "jwt")
+
+
 def _redact_config(kind: str, config: dict) -> dict:
-    """Strip secret fields (HA bearer tokens, etc.) from the
-    admin-facing source serialization."""
+    """Strip secret fields (HA bearer tokens, SolarEdge API keys,
+    Enphase JWTs, etc.) from the admin-facing source serialization."""
     if not config:
         return {}
     out = dict(config)
-    if "token" in out and out["token"]:
-        out["token"] = "********"
+    for key in _SECRET_CONFIG_KEYS:
+        if out.get(key):
+            out[key] = "********"
     return out
 
 
@@ -124,8 +128,8 @@ def create_source(
         raise ValueError("display_name is required")
     host = (host or "").strip()
     # Default ports per kind. Kinds that don't need a host (weather,
-    # ical) skip host/port validation entirely.
-    needs_host = kind in ("roku", "home_assistant")
+    # ical, solaredge — cloud) skip host/port validation entirely.
+    needs_host = kind in ("roku", "home_assistant", "enphase_envoy")
     if needs_host and not host:
         raise ValueError("host is required for this kind")
     if port is None:
@@ -133,6 +137,8 @@ def create_source(
             port = ROKU_DEFAULT_PORT
         elif kind == "home_assistant":
             port = 8123
+        elif kind == "enphase_envoy":
+            port = 80
         else:
             port = 0
     try:
@@ -208,6 +214,25 @@ def _validate_kind_config(kind: str, config: dict) -> dict:
         if url.startswith("webcal://"):
             url = "https://" + url[len("webcal://"):]
         return {"url": url}
+    if kind == "solaredge":
+        # v0.5.56 (P2.1): SolarEdge cloud monitoring API. Cloud — no
+        # host; needs the site id + a monitoring API key.
+        site_id = str(config.get("site_id") or "").strip()
+        api_key = str(config.get("api_key") or "").strip()
+        if not site_id:
+            raise ValueError("solaredge config.site_id is required")
+        if not api_key:
+            raise ValueError("solaredge config.api_key is required (monitoring API key)")
+        return {"site_id": site_id, "api_key": api_key}
+    if kind == "enphase_envoy":
+        # v0.5.56 (P2.1): local Envoy poll. `host` carries the Envoy IP.
+        # `jwt` is optional — only firmware-7.0+ Envoys require a token;
+        # legacy Envoys serve /production.json with no auth.
+        out: dict = {}
+        jwt = str(config.get("jwt") or "").strip()
+        if jwt:
+            out["jwt"] = jwt
+        return out
     return {}
 
 
@@ -321,6 +346,10 @@ def _poll_kind(src: ExternalSensorSource) -> dict:
         return _poll_weather(src.config or {})
     if src.kind == "ical":
         return _poll_ical(src.config or {})
+    if src.kind == "solaredge":
+        return _poll_solaredge(src.config or {})
+    if src.kind == "enphase_envoy":
+        return _poll_enphase_envoy(src.host, src.port, src.config or {})
     raise ValueError(f"unsupported source kind: {src.kind}")
 
 
@@ -666,6 +695,143 @@ def _parse_ical_dt(raw: str | None) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+# ── Solar (SolarEdge cloud / Enphase Envoy local) ───────────────────────
+
+
+SOLAR_POLL_TIMEOUT_SECONDS = 8
+
+
+def _num(value) -> float | None:
+    """Coerce a vendor JSON numeric to float, or None if missing/bad."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _poll_solaredge(config: dict) -> dict:
+    """v0.5.56 (P2.1): SolarEdge cloud monitoring API — site overview.
+
+    GET https://monitoringapi.solaredge.com/site/{id}/overview?api_key=…
+    Static API key (no OAuth). Rate limit is 300 requests/day, so the
+    operator should keep `poll_interval_seconds` >= 300 (the integrations
+    UI defaults solar sources to 300s).
+
+    Returns the current production wattage + lifetime/day energy.
+    """
+    site_id = (config.get("site_id") or "").strip()
+    api_key = (config.get("api_key") or "").strip()
+    if not site_id or not api_key:
+        raise RuntimeError("solaredge config requires site_id + api_key")
+    path = (
+        f"/site/{urllib.parse.quote(site_id)}/overview"
+        f"?api_key={urllib.parse.quote(api_key)}"
+    )
+    conn = http.client.HTTPSConnection(
+        "monitoringapi.solaredge.com", 443, timeout=SOLAR_POLL_TIMEOUT_SECONDS
+    )
+    try:
+        conn.request("GET", path, headers={
+            "User-Agent": "rebooter-droids/B17",
+            "Accept": "application/json",
+        })
+        resp = conn.getresponse()
+        body = resp.read()
+        status = resp.status
+    finally:
+        conn.close()
+    if status == 403:
+        raise RuntimeError("solaredge 403 — bad api_key or site not authorized")
+    if status == 429:
+        raise RuntimeError("solaredge 429 — rate limited (300 requests/day cap)")
+    if status != 200:
+        raise RuntimeError(f"solaredge HTTP {status}")
+    try:
+        data = json.loads(body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"solaredge JSON parse failed: {e}") from None
+    overview = (data.get("overview") or {}) if isinstance(data, dict) else {}
+    current = overview.get("currentPower") or {}
+    return {
+        "vendor": "solaredge",
+        "production_w": _num(current.get("power")),
+        "lifetime_energy_wh": _num((overview.get("lifeTimeData") or {}).get("energy")),
+        "day_energy_wh": _num((overview.get("lastDayData") or {}).get("energy")),
+        "last_update_time": overview.get("lastUpdateTime"),
+    }
+
+
+def _poll_enphase_envoy(host: str, port: int, config: dict) -> dict:
+    """v0.5.56 (P2.1): Enphase Envoy local poll — GET /production.json.
+
+    Legacy Envoys serve this with no auth over HTTP. Firmware-7.0+
+    Envoys require a JWT bearer and serve HTTPS with a self-signed cert
+    (so we use an insecure SSL context when a JWT is configured).
+
+    `/production.json` returns a `production` array with `inverters` and
+    (on metered gateways) `eim` entries. The `eim` (metered) reading is
+    the accurate one — preferred when present, per the design's
+    "firmware 7.0+ metered gateways" first-pass scope.
+    """
+    use_https = bool((config.get("jwt") or "").strip()) or port == 443
+    jwt = (config.get("jwt") or "").strip()
+    headers = {
+        "User-Agent": "rebooter-droids/B17",
+        "Accept": "application/json",
+    }
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    if use_https:
+        conn_port = port if port and port != 80 else 443
+        conn = http.client.HTTPSConnection(
+            host, conn_port, timeout=SOLAR_POLL_TIMEOUT_SECONDS,
+            context=_insecure_ssl_context(),
+        )
+    else:
+        conn = http.client.HTTPConnection(
+            host, port or 80, timeout=SOLAR_POLL_TIMEOUT_SECONDS
+        )
+    try:
+        conn.request("GET", "/production.json", headers=headers)
+        resp = conn.getresponse()
+        body = resp.read()
+        status = resp.status
+    finally:
+        conn.close()
+    if status == 401:
+        raise RuntimeError(
+            "enphase_envoy 401 — a JWT is required (firmware-7.0+ Envoy); "
+            "set config.jwt"
+        )
+    if status != 200:
+        raise RuntimeError(f"enphase_envoy HTTP {status}")
+    try:
+        data = json.loads(body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"enphase_envoy JSON parse failed: {e}") from None
+    production = data.get("production") if isinstance(data, dict) else None
+    if not isinstance(production, list):
+        raise RuntimeError("enphase_envoy /production.json missing production array")
+    eim = next(
+        (p for p in production if isinstance(p, dict) and p.get("type") == "eim"),
+        None,
+    )
+    inverters = next(
+        (p for p in production if isinstance(p, dict) and p.get("type") == "inverters"),
+        None,
+    )
+    chosen = eim or inverters or {}
+    return {
+        "vendor": "enphase_envoy",
+        "production_w": _num(chosen.get("wNow")),
+        "lifetime_energy_wh": _num(chosen.get("whLifetime")),
+        "active_count": chosen.get("activeCount"),
+        "reading_type": chosen.get("type"),  # "eim" (metered) or "inverters"
+    }
 
 
 # ── consumed by the watchdog probes ─────────────────────────────────────
