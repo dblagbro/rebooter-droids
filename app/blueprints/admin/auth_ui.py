@@ -215,3 +215,62 @@ def logout():
         except Exception:
             pass
     return redirect(url_for("admin_ui.login_page"))
+
+
+# ── v0.5.39: signup request form ───────────────────────────────────────────
+
+@admin_ui_bp.get("/signup-request")
+def signup_request_page():
+    """Public signup request form."""
+    return render_template(
+        "signup_request.html",
+        version=__version__,
+        submitted=False,
+        error=None,
+    )
+
+
+@admin_ui_bp.post("/signup-request")
+@limiter.limit("10 per hour")
+def signup_request_submit():
+    """Handle public signup request submission."""
+    from app.services.signup_requests import (
+        SignupRequestError,
+        create_signup_request,
+    )
+    from app.services.email import notify_admins_of_signup_request
+
+    email = (request.form.get("email") or "").strip()
+    display_name = (request.form.get("display_name") or "").strip()
+    message = (request.form.get("message") or "").strip() or None
+
+    try:
+        signup_req = create_signup_request(
+            email=email,
+            display_name=display_name,
+            message=message,
+        )
+    except SignupRequestError as e:
+        return render_template(
+            "signup_request.html",
+            version=__version__,
+            submitted=False,
+            error=e.message,
+            email=email,
+            display_name=display_name,
+            message=message,
+        )
+
+    # Send email notification to all admins
+    try:
+        notify_admins_of_signup_request(signup_req)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to send signup request notification")
+
+    return render_template(
+        "signup_request.html",
+        version=__version__,
+        submitted=True,
+        error=None,
+    )

@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block title %}Signup Requests - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.users_page') }}">← Users</a></p>
+<h1>Signup Requests</h1>
+
+<section class="placeholder">
+  <h2>Filter by status</h2>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+    <a href="{{ url_for('admin_ui.signup_requests_page', status='pending') }}"
+       class="badge {% if status_filter == 'pending' %}green{% endif %}"
+       style="{% if status_filter == 'pending' %}cursor:default{% else %}cursor:pointer{% endif %}">
+      Pending
+    </a>
+    <a href="{{ url_for('admin_ui.signup_requests_page', status='approved') }}"
+       class="badge {% if status_filter == 'approved' %}green{% endif %}"
+       style="{% if status_filter == 'approved' %}cursor:default{% else %}cursor:pointer{% endif %}">
+      Approved
+    </a>
+    <a href="{{ url_for('admin_ui.signup_requests_page', status='rejected') }}"
+       class="badge {% if status_filter == 'rejected' %}green{% endif %}"
+       style="{% if status_filter == 'rejected' %}cursor:default{% else %}cursor:pointer{% endif %}">
+      Rejected
+    </a>
+    <a href="{{ url_for('admin_ui.signup_requests_page', status='all') }}"
+       class="badge {% if status_filter == 'all' %}green{% endif %}"
+       style="{% if status_filter == 'all' %}cursor:default{% else %}cursor:pointer{% endif %}">
+      All
+    </a>
+  </div>
+</section>
+
+{% if requests|length == 0 %}
+<section class="placeholder">
+  <p>No signup requests found.</p>
+</section>
+{% else %}
+<div class="table-wrap"><table>
+  <thead><tr>
+    <th>Email</th><th>Name</th><th>Message</th><th>Status</th><th>Requested</th><th>Actions</th>
+  </tr></thead>
+  <tbody>
+  {% for r in requests %}
+  <tr>
+    <td>{{ r.email }}</td>
+    <td>{{ r.display_name }}</td>
+    <td>{{ (r.message[:50] + '...') if r.message and r.message|length > 50 else (r.message or '—') }}</td>
+    <td>
+      {% if r.status == 'pending' %}<span class="badge amber">pending</span>
+      {% elif r.status == 'approved' %}<span class="badge green">approved</span>
+      {% elif r.status == 'rejected' %}<span class="badge">rejected</span>
+      {% endif %}
+    </td>
+    <td>{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td>
+      {% if r.status == 'pending' %}
+      <form method="post" action="{{ url_for('admin_ui.signup_request_approve_submit', request_id=r.id) }}" style="display:inline">
+        <select name="role" style="font-size:0.9rem;padding:0.25rem">
+          <option value="viewer">viewer</option>
+          <option value="operator">operator</option>
+          <option value="admin">admin</option>
+          {% if current_user.role == 'super_admin' %}<option value="super_admin">super_admin</option>{% endif %}
+        </select>
+        <button type="submit" style="padding:0.4rem 0.8rem;margin-left:0.25rem">Approve</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_ui.signup_request_reject_submit', request_id=r.id) }}"
+            style="display:inline;margin-left:0.25rem"
+            data-confirm-message="Reject signup request from {{ r.email }}?">
+        <button type="submit" style="padding:0.4rem 0.8rem;background:#dc2626">Reject</button>
+      </form>
+      {% else %}
+        —
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+
+{% endblock %}

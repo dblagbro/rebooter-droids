@@ -106,3 +106,45 @@ def send_test_email(to: str) -> bool:
 <p style="margin:0;color:#c8c8d4">If you're reading this, your SMTP credentials are correctly configured. Future invites and password-reset emails will be delivered through this same channel.</p>
 </div>"""
     return send_email(to, "Rebooter-Droids SMTP test", html)
+
+
+def notify_admins_of_signup_request(signup_request) -> None:
+    """v0.5.39: Notify all admins/super_admins of a new signup request."""
+    from app.services.users import list_users
+
+    # Get all admin and super_admin users
+    all_users = list_users()
+    admin_emails = [
+        u["email"]
+        for u in all_users
+        if u["role"] in ("admin", "super_admin") and u["is_active"]
+    ]
+
+    if not admin_emails:
+        log.warning("No admins to notify of signup request")
+        return
+
+    message_preview = signup_request.message[:100] if signup_request.message else "(no message)"
+    settings = load_settings()
+    public_base = settings.public_base_url.rstrip("/")
+    review_url = f"{public_base}/app/signup-requests"
+
+    html = f"""<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:28px;background:#161a21;color:#e6e8eb;border-radius:12px">
+<h2 style="color:#6db3ff;margin:0 0 12px">🤖 New Signup Request</h2>
+<p style="margin:0 0 16px;color:#c8c8d4">Someone has requested access to Rebooter-Droids:</p>
+<ul style="color:#c8c8d4;margin:0 0 16px;padding-left:20px">
+  <li><strong>Email:</strong> {signup_request.email}</li>
+  <li><strong>Name:</strong> {signup_request.display_name}</li>
+  <li><strong>Message:</strong> {message_preview}</li>
+</ul>
+<p style="margin:0 0 20px;color:#c8c8d4">Review and approve or reject this request:</p>
+<a href="{review_url}" style="display:inline-block;background:#2563eb;color:#fff;padding:11px 24px;border-radius:7px;text-decoration:none;font-weight:600">Review Request</a>
+</div>"""
+
+    # Send to all admins
+    for email in admin_emails:
+        try:
+            send_email(email, "New Signup Request — Rebooter-Droids", html)
+        except Exception:
+            log.exception(f"Failed to notify admin {email}")
+            continue
