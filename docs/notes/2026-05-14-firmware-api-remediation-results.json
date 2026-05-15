@@ -1,0 +1,116 @@
+{
+    "date":  "2026-05-14T20:27:47",
+    "base_url":  "http://192.168.1.48",
+    "assertions":  [
+                       {
+                           "name":  "status endpoint reachable",
+                           "passed":  true,
+                           "details":  "status=200"
+                       },
+                       {
+                           "name":  "status exposes auth_required",
+                           "passed":  true,
+                           "details":  "auth_required=True"
+                       },
+                       {
+                           "name":  "public config reachable",
+                           "passed":  true,
+                           "details":  "status=200"
+                       },
+                       {
+                           "name":  "public config redacts enrollment token",
+                           "passed":  true,
+                           "details":  "checked for enrollment_token"
+                       },
+                       {
+                           "name":  "public config redacts device token",
+                           "passed":  true,
+                           "details":  "checked for device_token"
+                       },
+                       {
+                           "name":  "public config redacts site id",
+                           "passed":  true,
+                           "details":  "checked for site_id"
+                       },
+                       {
+                           "name":  "public config redacts device id",
+                           "passed":  true,
+                           "details":  "checked for device_id"
+                       },
+                       {
+                           "name":  "events endpoint reachable",
+                           "passed":  true,
+                           "details":  "status=200; count=7"
+                       },
+                       {
+                           "name":  "events expose seq",
+                           "passed":  true,
+                           "details":  "first_event_seq=1"
+                       },
+                       {
+                           "name":  "events expose boot_id",
+                           "passed":  true,
+                           "details":  "first_event_boot_id=1"
+                       },
+                       {
+                           "name":  "events expose ts_basis",
+                           "passed":  true,
+                           "details":  "first_event_ts_basis=uptime_seconds"
+                       },
+                       {
+                           "name":  "wrong method returns 405 for relay on",
+                           "passed":  true,
+                           "details":  "status=405"
+                       },
+                       {
+                           "name":  "favicon no longer 404s",
+                           "passed":  true,
+                           "details":  "status=204"
+                       },
+                       {
+                           "name":  "protected backup rejects unauthenticated access",
+                           "passed":  true,
+                           "details":  "status=401"
+                       },
+                       {
+                           "name":  "protected backup succeeds with auth",
+                           "passed":  true,
+                           "details":  "status=200"
+                       },
+                       {
+                           "name":  "protected backup still includes enrollment token",
+                           "passed":  true,
+                           "details":  "checked for enrollment_token"
+                       },
+                       {
+                           "name":  "protected backup still includes device token",
+                           "passed":  true,
+                           "details":  "checked for device_token"
+                       },
+                       {
+                           "name":  "heartbeat preview succeeds with auth",
+                           "passed":  true,
+                           "details":  "status=200"
+                       },
+                       {
+                           "name":  "heartbeat preview includes reported_config",
+                           "passed":  true,
+                           "details":  "reported_config_present=True"
+                       },
+                       {
+                           "name":  "central diagnostic omits legacy secondary",
+                           "passed":  true,
+                           "details":  "legacy_secondary_present=False"
+                       },
+                       {
+                           "name":  "central diagnostic has no 4xx/5xx targets",
+                           "passed":  true,
+                           "details":  "see diagnostic payload"
+                       }
+                   ],
+    "summary":  {
+                    "total":  21,
+                    "passed":  21,
+                    "failed":  0
+                }
+}

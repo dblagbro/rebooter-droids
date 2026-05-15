@@ -19,6 +19,7 @@ dependencies = [
   "APScheduler>=3.10,<4",
   "python-dotenv>=1.0,<2",
   "Flask-Limiter>=3.8,<4",
+  "requests>=2.31,<3",
 ]
 
 [project.optional-dependencies]

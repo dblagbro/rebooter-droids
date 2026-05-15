@@ -1,0 +1,38 @@
+{
+  "consoleMessages": [
+    {
+      "type": "verbose",
+      "text": "[DOM] Input elements should have autocomplete attributes (suggested: \"current-password\"): (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) %o"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    }
+  ],
+  "pageErrors": [],
+  "failedRequests": [],
+  "initial": {
+    "connectionNote": "Device is online and serving the local control plane.",
+    "health": "healthy",
+    "firmware": "0.1.19-dev-central-safe",
+    "relay": "On",
+    "log": "Ready.",
+    "otaLabel": "Idle"
+  },
+  "afterRelay": {
+    "relay": "On",
+    "log": "[8:04:29 PM] Relay toggle failed: unauthorized\nReady."
+  },
+  "afterSave": {
+    "log": "[8:04:31 PM] Save failed: unauthorized\n[8:04:29 PM] Relay toggle failed: unauthorized\nReady.",
+    "modeVisible": true
+  }
+}
