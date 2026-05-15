@@ -32,3 +32,27 @@ Index("ix_audit_at_desc", AuditEvent.at.desc())
 Index("ix_audit_actor", AuditEvent.actor_user_id)
 Index("ix_audit_action", AuditEvent.action)
 Index("ix_audit_target", AuditEvent.target_type, AuditEvent.target_id)
+
+
+# v0.5.36 (B1 RBAC P2): archive table for soft-pruned audit events.
+# Mirrors AuditEvent shape with an additional archived_at timestamp.
+class AuditEventArchive(Base):
+    __tablename__ = "audit_events_archive"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    at: Mapped[datetime] = ts_column(default_now=False, nullable=False)
+
+    actor_user_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    actor_email_snapshot: Mapped[str | None] = mapped_column(String(254), nullable=True)
+
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    target_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    archived_at: Mapped[datetime] = ts_column()
+
+
+Index("ix_audit_archive_at_desc", AuditEventArchive.at.desc())
+Index("ix_audit_archive_archived_at", AuditEventArchive.archived_at)

@@ -135,6 +135,9 @@ SYSTEM_KEYS = (
     ("system.password_reset_ttl_seconds", "REBOOTER_PASSWORD_RESET_TTL_SECONDS"),
     ("system.session_idle_timeout_seconds", "REBOOTER_SESSION_IDLE_TIMEOUT_SECONDS"),
     ("system.enrollment_token_ttl_seconds", "REBOOTER_ENROLLMENT_TOKEN_TTL_SECONDS"),
+    # v0.5.36 (B1 RBAC P2): audit retention in days; events older than this
+    # are soft-pruned into audit_events_archive by the nightly job. Default 90.
+    ("system.audit_retention_days",       "REBOOTER_AUDIT_RETENTION_DAYS"),
 )
 
 # v0.5.35 (B1 RBAC Phase 1): RBAC keys. `rbac.enforce_mode` is one of

@@ -166,9 +166,15 @@ session. They form the v0.4.1 + v0.4.2 release plan.
 > `scope_required_api/ui` decorators, `record_scoped()` choke-point,
 > default-shadow `rbac.enforce_mode` runtime flag, two demonstrator
 > routes (`GET /devices/<id>`, `POST /devices/<id>/commands`).
-> **Next: P2** — `Device.site_id NOT NULL` backfill + audit-events
-> archive table + nightly soft-prune. See design doc §4. The enforce
-> flip (P5b) is gated on a ≥7-day clean shadow soak.
+> **P2 — Device.site_id NOT NULL + audit archive — shipped v0.5.36**:
+> One-shot backfill assigns null-site devices to "Default" site;
+> `_PENDING_CONSTRAINTS` pattern enforces NOT NULL; `audit_events_archive`
+> table + nightly prune job at 03:00 UTC soft-prunes events older than
+> `system.audit_retention_days` (default 90).
+> **Next: P3** — Scope-aware list/detail filtering on `/app/devices`,
+> `/app/groups`, `/app/sites`, `/app/history`. Still shadow mode (double-
+> query + diff logging). Unblocked by P2's NOT NULL flip. See design doc §4.
+> The enforce flip (P5b) is gated on a ≥7-day clean shadow soak.
 
 ### B2. Admin / super-admin invite via email (30-day token expiry)
 

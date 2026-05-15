@@ -96,6 +96,33 @@ def _ensure_columns(conn) -> None:
         )
 
 
+# v0.5.36 (P2): Constraints that must run AFTER backfills. Each entry
+# is (table, constraint_check_query, alter_ddl). The check_query should
+# return True if the constraint is already applied.
+_PENDING_CONSTRAINTS: tuple[tuple[str, str, str], ...] = (
+    # Device.site_id NOT NULL — only safe after ensure_device_site_id_backfill()
+    (
+        "devices",
+        "SELECT is_nullable = 'NO' FROM information_schema.columns "
+        "WHERE table_name = 'devices' AND column_name = 'site_id'",
+        "ALTER TABLE devices ALTER COLUMN site_id SET NOT NULL",
+    ),
+)
+
+
+def _ensure_constraints(conn) -> None:
+    """Apply pending constraints that depend on backfills having run.
+    Called from run_startup_bootstrap() AFTER the backfills."""
+    from sqlalchemy import text
+
+    for table, check_query, alter_ddl in _PENDING_CONSTRAINTS:
+        already_applied = conn.execute(text(check_query)).scalar()
+        if already_applied:
+            continue
+        log.info("Applying pending constraint on %s: %s", table, alter_ddl)
+        conn.execute(text(alter_ddl))
+
+
 # v0.5.0 (A1): one-shot RBAC role-binding backfill. Runs once per
 # database; tracked via a `runtime_settings` row.
 _RBAC_BACKFILL_KEY = "rbac.role_bindings_backfilled_at"
@@ -244,6 +271,90 @@ def ensure_role_bindings_backfill() -> None:
     log.info("RBAC backfill inserted %d role_bindings rows", inserted)
 
 
+# v0.5.36 (B1 RBAC P2): one-shot Device.site_id NOT NULL backfill.
+# Runs once per database; tracked via a `runtime_settings` row.
+_DEVICE_SITE_ID_BACKFILL_KEY = "device.site_id_not_null_backfilled_at"
+
+
+def ensure_device_site_id_backfill() -> None:
+    """Backfill Device.site_id for any devices with site_id=NULL before
+    enforcing NOT NULL constraint via _PENDING_COLUMNS.
+
+    Strategy (per design doc §8 Q1):
+    - If exactly one site exists, assign all NULL devices to that site.
+    - Otherwise, create a site named "Default" and use it.
+
+    Idempotent: if `runtime_settings[device.site_id_not_null_backfilled_at]`
+    is set, do nothing.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import text
+    from app.models import Device, Site
+    from app.services import runtime_settings as rs
+
+    if rs.has_db_value(_DEVICE_SITE_ID_BACKFILL_KEY):
+        return  # already done
+
+    log.info("Running one-shot Device.site_id NOT NULL backfill (v0.5.36 / P2)")
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        # Count devices with null site_id
+        from sqlalchemy import func
+        null_count = session.scalar(
+            select(func.count()).select_from(Device).where(Device.site_id.is_(None))
+        ) or 0
+
+        if null_count == 0:
+            log.info("No devices with null site_id — backfill complete")
+            rs.set_(_DEVICE_SITE_ID_BACKFILL_KEY, now.isoformat())
+            return
+
+        # Determine target site
+        sites = list(session.scalars(select(Site)))
+        if len(sites) == 1:
+            # Reuse the single existing site
+            target_site_id = sites[0].id
+            log.info(
+                "Backfilling %d device(s) with null site_id to single existing site %s",
+                null_count,
+                target_site_id,
+            )
+        else:
+            # Create "Default" site
+            from functools import partial
+            from app.models._helpers import new_id
+
+            target_site_id = partial(new_id, "site")()
+            default_site = Site(
+                id=target_site_id,
+                name="Default",
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(default_site)
+            session.flush()
+            log.info(
+                "Created Default site %s; backfilling %d device(s) with null site_id",
+                target_site_id,
+                null_count,
+            )
+
+        # Update all NULL site_id devices
+        updated = session.execute(
+            text(
+                "UPDATE devices SET site_id = :target_site_id "
+                "WHERE site_id IS NULL"
+            ),
+            {"target_site_id": target_site_id}
+        ).rowcount
+
+        log.info("Backfilled %d devices with site_id=%s", updated, target_site_id)
+
+    # Mark backfill complete
+    rs.set_(_DEVICE_SITE_ID_BACKFILL_KEY, now.isoformat())
+
+
 def ensure_bootstrap_admin(settings: Settings) -> None:
     if not (settings.bootstrap_admin_email and settings.bootstrap_admin_password):
         return
@@ -297,3 +408,16 @@ def run_startup_bootstrap(settings: Settings) -> None:
         # exception in logs and can re-run by deleting the tracking
         # runtime_setting row.
         log.exception("RBAC role-bindings backfill failed; container will continue")
+    # v0.5.36 (P2): Device.site_id NOT NULL backfill before enforcing
+    # the constraint via _PENDING_CONSTRAINTS.
+    try:
+        ensure_device_site_id_backfill()
+    except Exception:
+        log.exception("Device.site_id backfill failed; container will continue")
+    # Apply constraints that depend on backfills (v0.5.36+)
+    try:
+        engine = get_engine()
+        with engine.begin() as conn:
+            _ensure_constraints(conn)
+    except Exception:
+        log.exception("Pending constraints application failed; container will continue")
