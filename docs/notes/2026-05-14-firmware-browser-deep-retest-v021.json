@@ -1,0 +1,45 @@
+{
+  "date": "2026-05-14T21:08:39-04:00",
+  "base_url": "http://192.168.1.48",
+  "firmware_version": "0.1.21-dev-central-safe",
+  "surface": "actual device-served UI",
+  "checks": [
+    {
+      "name": "locked state disables protected controls on initial load",
+      "passed": true
+    },
+    {
+      "name": "correct password unlocks protected controls",
+      "passed": true
+    },
+    {
+      "name": "relay off then on succeeds through the live UI",
+      "passed": true
+    },
+    {
+      "name": "config save persists a real checkbox change and revert",
+      "passed": true
+    },
+    {
+      "name": "clear re-locks protected controls",
+      "passed": true
+    },
+    {
+      "name": "bad password attempt remains locked and surfaces unauthorized message",
+      "passed": true
+    },
+    {
+      "name": "device-served app.js contains the fixed auth-header merge logic",
+      "passed": true
+    }
+  ],
+  "notes": [
+    "Password entry in the in-app browser used clipboard-paste plus click because direct fill/type hit a browser-runtime ClipboardItem limitation.",
+    "The message log briefly captured expected background fetch failures during intentional OTA reboots, but a fresh reload cleared the transient noise."
+  ],
+  "summary": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0
+  }
+}
