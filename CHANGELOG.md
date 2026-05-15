@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.33] - 2026-05-14
+
+### Changed — Phase 5: docs/backlog cleanup pass
+
+Operator-asked "next up we plan and research the B1 RBAC, B11 sync,
+B17 remaining and B17 layer 2 epg" — this ship lands the backlog
+re-org that surfaces those items clearly for the research session.
+
+**`docs/BACKLOG.md` rewrite (top portion):**
+
+- New **Current state** section at top — replaces the stale
+  "Last updated: 2026-05-09" header with a fresh 2026-05-14 PM
+  status snapshot (live version, ship history reference).
+- New **Truly open — operator-decision territory** section with
+  per-item size + blocker columns. Lists B1, B11, B17 remaining
+  integrations, B17 Layer 2 EPG, Phase 3, 4B, 4C, 6, and 2B-full.
+- New **Operator-decision research items** section preserving
+  the operator's verbatim 2026-05-14 directive as the next
+  session's charter.
+- New **Ops items** section — www2 mirror sync + bench reflash
+  staging.
+- New **Shipped — what's CLOSED** section with a compact
+  pre-v0.5.x B1-B14 list + B15-B24 mid-cycle list + the B16 phase
+  table + the firmware-team alignment-plan phase table + the
+  structural-refactor cross-reference.
+- New **How to consume this list** preamble pointing readers at
+  the live-priority view vs the historical entries.
+
+The historical detailed B1-B24 entries are retained verbatim below
+the new top section for archival reference; no information is
+deleted.
+
+### Phase 3 unblock noted
+
+The parallel firmware-team session shipped `0.1.19-dev-central-safe`
+this evening with the heartbeat-contract expansion the alignment
+plan called for (richer status fields + `reported_config`
+snapshot). The new BACKLOG section flags this as the unblocker for:
+
+- **Phase 3** — recovery / status truth (hub-side absorption now
+  actionable).
+- **Phase 4B** — recovery-aware drift actions (depends on Phase 3).
+
+See `docs/notes/2026-05-14-firmware-status-and-recovery-contract.md`
++ `docs/notes/2026-05-14-heartbeat-expansion-and-reported-config-memo.md`
+for the contract spec the hub side will implement against.
+
+### Parallel-session uncommitted state at v0.5.33 ship time
+
+Working tree has uncommitted parallel-session work I did NOT touch
+this ship (separate Claude session is mid-work on the firmware-team
+side):
+- `docs/firmware-apply-config-schema-v01.md` modified
+- 5 new `docs/notes/2026-05-14-*.md` files (firmware-coord + heartbeat
+  + reported-config + button-verification + 48-preview JSON)
+- 3 still-empty 0-byte stubs from earlier sessions
+
+Not mine to commit; will land when the parallel session pauses
+cleanly. Documented in the new BACKLOG **Ops** section.
+
 ## [0.5.32] - 2026-05-14
 
 ### Added — B16 Phase 1D: power-targeted watchdog probe kinds
