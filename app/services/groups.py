@@ -24,7 +24,13 @@ def serialize_group(g: Group, member_count: int = 0) -> dict:
 
 def list_groups() -> list[dict]:
     with session_scope() as session:
-        groups = list(session.scalars(select(Group).order_by(Group.created_at.desc())))
+        stmt = select(Group).order_by(Group.created_at.desc())
+
+        # v0.5.37 (B1 RBAC Phase 3): Apply scope-based filtering.
+        # In shadow mode, logs what WOULD be hidden; in enforce mode, actually filters.
+        from app.services.rbac_filter import filter_groups_with_shadow_logging
+        groups = filter_groups_with_shadow_logging(stmt, session)
+
         # Cheap N+1 — fine at this scale
         results = []
         for g in groups:
