@@ -1,7 +1,11 @@
 # B1 RBAC Phase 3 (P3) — Implementation Progress
 
+> **Superseded — B1 RBAC P3 shipped as v0.5.37 (2026-05-15).** All four
+> resource types (devices, groups, sites, audit/history) complete; the
+> full B1 RBAC rollout P1–P5 is done. Kept for historical context only.
+
 **Started**: 2026-05-15  
-**Status**: 🚧 **IN PROGRESS** — Devices complete, 3 resource types remaining
+**Status**: ✅ **DONE** — shipped v0.5.37
 
 ---
 
