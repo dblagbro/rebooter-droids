@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Research
+
+- **P2.2 / P2.3 router & managed-switch telemetry — design pass complete.** `docs/notes/2026-05-15-p2-router-switch-telemetry-design.md`. Recommends a single `kind='snmp'` external-sensor integration (router and switch are the same IF-MIB data — the difference is probe-level) using net-snmp CLI shell-out (mirrors the `_probe_ping` precedent; zero new Python deps). Three watchdog probes: `snmp_interface_down`, `snmp_throughput_above/below`, `snmp_error_rate_above`. The one new mechanic is a two-sample counter-delta for rate metrics. ~7–8 h, one version. **Gated on an operator question**: does the site run SNMP-capable gear (managed switch / UniFi / MikroTik / OpenWrt / pfSense)? If only an ISP gateway is present, park P2.2/P2.3.
+
 ## [0.5.57] - 2026-05-15
 
 ### Added — P2.4: Home Assistant bridge deepening
