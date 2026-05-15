@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.59] - 2026-05-15
+
+### Added — P1.3 (partial): interactive 24h power chart
+
+Third phase of the P1 work track per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6. P1.3 has two halves — an interactive intraday chart (shipped here) and loaded-power analytics validation (still firmware-blocked, see Notes).
+
+- **`intraday_power_series()`** (`app/services/device_power.py`): splits a window (default 24 h) into equal time buckets (default 144 → 10-min resolution) and averages `p_w` per bucket. Empty buckets land `avg_w=None` so the chart shows a gap rather than interpolating across a reporting outage. Each bucket also carries real/synthetic sample counts (P1.2 data-quality).
+
+- **Interactive 24h chart on device detail** (`templates/device_detail.html`): a server-rendered SVG time-series of average watts over the last 24 h, with native `<title>` hover tooltips on every point (time, watts, sample count, synthetic count) — CSP-safe, no JavaScript. Line segments break at gaps; synthetic-only buckets render amber. Sits above the existing 14-day rollup sparkline, which stays as the longer trend view.
+
+### Notes
+- **Loaded-power validation remains firmware-blocked.** Every real CSE7766 sample so far is no-load (0 W); the cost/kWh analytics cannot be validated against non-zero current/watts until the firmware team provides a known-load capture. The chart itself works correctly at any wattage — it just currently draws a near-zero line, which is accurate for an idle plug.
+- No schema change — the chart reads existing `device_power_samples`.
+
 ## [0.5.58] - 2026-05-15
 
 ### Added — P2.2 / P2.3: Router & managed-switch telemetry (SNMP)

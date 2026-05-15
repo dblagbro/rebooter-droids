@@ -494,4 +494,9 @@ def get_device_detail(device_id: str) -> dict | None:
         out["power_source_breakdown"] = device_power.power_source_breakdown(
             device_id, window_seconds=24 * 60 * 60
         )
+        # v0.5.59 (P1.3): time-bucketed 24h watts series for the
+        # interactive intraday chart on the Power section.
+        out["power_intraday_series"] = device_power.intraday_power_series(
+            device_id, window_seconds=24 * 60 * 60
+        )
         return out
