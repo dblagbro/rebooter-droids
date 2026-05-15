@@ -84,6 +84,9 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # weather / iCal integrations. Existing Roku sources keep NULL +
     # behave exactly as before; new kinds populate it.
     ("external_sensor_sources", "config", "JSONB"),
+    # v0.5.38 (B1 RBAC P4): invitations can carry scope bindings that
+    # will be granted on redemption. NULL = legacy global role only.
+    ("invitations", "scope_payload", "JSONB"),
 )
 
 

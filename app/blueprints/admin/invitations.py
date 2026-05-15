@@ -175,9 +175,28 @@ def list_invitations_api():
 @admin_api_bp.post("/invitations")
 @role_required_api(*ADMIN_AND_UP)
 def create_invitation():
+    """v0.5.38 (P4): create invitation with optional scope_payload.
+
+    Body shape:
+    {
+      "email": "user@example.com",
+      "role": "admin",
+      "note": "optional note",
+      "scope_payload": {
+        "bindings": [
+          {"scope_type": "site", "scope_id": "site_01..."},
+          {"scope_type": "group", "scope_id": "grp_01..."}
+        ]
+      }
+    }
+
+    scope_payload is optional. If omitted, invitation creates user with
+    global role only (legacy behavior, RBAC backfill will grant default bindings).
+    """
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip()
     role = body.get("role") or "admin"
+    scope_payload = body.get("scope_payload")
 
     if role == ROLE_SUPER_ADMIN and g.current_user.role != ROLE_SUPER_ADMIN:
         return err(
@@ -194,6 +213,7 @@ def create_invitation():
             role=role,
             issued_by_user_id=g.current_user.id,
             note=body.get("note"),
+            scope_payload=scope_payload,
         )
     except InvitationError as e:
         return err(e.code, e.message, status=400)
@@ -217,7 +237,12 @@ def create_invitation():
         actor_email_snapshot=g.current_user.email,
         target_type="invitation",
         target_id=record.id,
-        details={"email": email, "role": role, "email_sent": sent},
+        details={
+            "email": email,
+            "role": role,
+            "email_sent": sent,
+            "has_scope": scope_payload is not None,
+        },
     )
 
     return ok(
@@ -228,6 +253,7 @@ def create_invitation():
             "redeem_url": redeem_url,
             "expires_at": record.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "email_sent": sent,
+            "has_scope_payload": scope_payload is not None,
             # Only returned to the inviter; never persisted in cleartext.
             "invitation_token": raw,
         },

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from functools import partial
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, Index, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
@@ -24,6 +24,11 @@ class Invitation(Base):
         String(40), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # v0.5.38 (B1 RBAC P4): scope bindings to grant on redemption.
+    # Shape: {"bindings": [{"scope_type": "site", "scope_id": "site_01..."}, ...]}
+    # NULL = legacy behavior (global role only, no bindings).
+    scope_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     expires_at: Mapped[datetime] = ts_column(default_now=False, nullable=False)
     consumed_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)

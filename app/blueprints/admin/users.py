@@ -23,6 +23,7 @@ from app.services.users import (
     update_user_display_name,
     update_user_role,
 )
+from app.services import role_bindings as rb
 
 
 # ── UI ─────────────────────────────────────────────────────────────────────
@@ -196,3 +197,106 @@ def change_user_display_name_api(user_id: str):
         details={"new_display_name": name},
     )
     return ok(out)
+
+
+# ── Role Bindings Management (v0.5.38 P4) ─────────────────────────────────────
+
+@admin_api_bp.get("/users/<user_id>/bindings")
+@role_required_api(*SUPER_ADMIN_ONLY)
+def get_user_bindings(user_id: str):
+    """v0.5.38 (P4): List all role bindings for a user."""
+    bindings = rb.list_for_user(user_id)
+    return ok({
+        "user_id": user_id,
+        "bindings": [
+            {
+                "id": b.id,
+                "scope_type": b.scope_type,
+                "scope_id": b.scope_id,
+                "role": b.role,
+                "created_at": b.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "updated_at": b.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+                if b.updated_at
+                else None,
+            }
+            for b in bindings
+        ],
+    })
+
+
+@admin_api_bp.post("/users/<user_id>/bindings")
+@role_required_api(*SUPER_ADMIN_ONLY)
+def grant_user_binding(user_id: str):
+    """v0.5.38 (P4): Grant a role binding to a user.
+
+    Body: {"scope_type": "site", "scope_id": "site_01...", "role": "admin"}
+    """
+    body = request.get_json(silent=True) or {}
+    scope_type = body.get("scope_type")
+    scope_id = body.get("scope_id")
+    role = body.get("role")
+
+    if not scope_type or not role:
+        return err("validation_failed", "scope_type and role are required", status=400)
+
+    # scope_id is required for non-global bindings
+    if scope_type != "global" and not scope_id:
+        return err("validation_failed", "scope_id is required for non-global bindings", status=400)
+
+    try:
+        binding = rb.grant(
+            user_id=user_id,
+            scope_type=scope_type,
+            scope_id=scope_id,
+            role=role,
+        )
+    except Exception as e:
+        return err("grant_failed", str(e), status=400)
+
+    audit_service.record(
+        "user.binding_granted",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={
+            "binding_id": binding.id,
+            "scope_type": scope_type,
+            "scope_id": scope_id,
+            "role": role,
+        },
+    )
+
+    return ok({
+        "binding": {
+            "id": binding.id,
+            "scope_type": binding.scope_type,
+            "scope_id": binding.scope_id,
+            "role": binding.role,
+            "created_at": binding.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+    }, status=201)
+
+
+@admin_api_bp.delete("/users/<user_id>/bindings/<binding_id>")
+@role_required_api(*SUPER_ADMIN_ONLY)
+def revoke_user_binding(user_id: str, binding_id: str):
+    """v0.5.38 (P4): Revoke a role binding from a user."""
+    try:
+        success = rb.revoke(user_id=user_id, binding_id=binding_id)
+    except Exception as e:
+        return err("revoke_failed", str(e), status=400)
+
+    if not success:
+        return err("binding_not_found", "Binding not found or already removed", status=404)
+
+    audit_service.record(
+        "user.binding_revoked",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="user",
+        target_id=user_id,
+        details={"binding_id": binding_id},
+    )
+
+    return ok({"revoked": True})
