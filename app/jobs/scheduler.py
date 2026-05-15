@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.services.audit_prune import prune_old_audit_events
 from app.services.commands import expire_overdue_commands
 from app.services.device_power import compute_daily_rollups
+from app.services.epg import refresh_epg
 from app.services.external_sensors import poll_all_due as external_sensors_poll_all_due
 from app.services.schedule_runtime import tick as schedule_tick
 from app.services.sync_replicator import tick as sync_replicator_tick
@@ -84,6 +86,19 @@ def _audit_prune_job():
         log.info("audit prune: %s", stats)
 
 
+def _epg_refresh_job():
+    """v0.5.64 (B17 Layer 2): refresh the TVMaze EPG cache (today +
+    tomorrow's US schedule) and run the janitor. Every 6 h — cheap (two
+    HTTP calls) and keeps the `epg_show_airing` probe's data fresh."""
+    try:
+        stats = refresh_epg()
+    except Exception:
+        log.exception("epg refresh job crashed")
+        return
+    if stats.get("stored") or stats.get("errors"):
+        log.info("epg refresh: %s", stats)
+
+
 def _sync_replicator_job():
     """v0.5.48 (B11 Phase 5): multi-hub sync replicator. Polls peer
     hubs' /api/v1/sync/since endpoints every 3s, fetches outbox events,
@@ -135,6 +150,16 @@ def start() -> None:
         hour=3, minute=0,
         id="audit_prune_daily",
     )
+    # v0.5.64 (B17 Layer 2): EPG cache refresh every 6 h. `next_run_time`
+    # ~30 s out so the cache populates shortly after a deploy rather
+    # than waiting a full 6 h interval.
+    sched.add_job(
+        _epg_refresh_job,
+        "interval",
+        hours=6,
+        id="epg_refresh",
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+    )
     sched.start()
     _scheduler = sched
 
@@ -156,7 +181,8 @@ def start() -> None:
         "external_sensors_tick every 30s, "
         "sync_replicator every 3s, "
         "power_rollups_daily @ 02:00 UTC, "
-        "audit_prune_daily @ 03:00 UTC; "
+        "audit_prune_daily @ 03:00 UTC, "
+        "epg_refresh every 6h; "
         "MQTT subscribers: %d",
         n_mqtt,
     )

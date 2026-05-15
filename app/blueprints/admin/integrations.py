@@ -24,12 +24,18 @@ from app.services import external_sensors as ext_svc
 @admin_required_ui
 def settings_integrations_page():
     sources = ext_svc.list_sources()
+    # v0.5.64 (B17 Layer 2): EPG is a global schedule cache, not a
+    # per-operator source row — surface its status separately.
+    from app.services import epg as epg_svc
+
+    epg_status = epg_svc.epg_status()
     return render_template(
         "settings/integrations.html",
         **_ctx({
             "active": "settings",
             "settings_tab": "integrations",
             "sources": sources,
+            "epg_status": epg_status,
         }),
     )
 
