@@ -29,10 +29,24 @@ from app.services.invitations import (
 @admin_ui_bp.get("/invitations")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def invitations_page():
+    from app.services.devices import list_devices
+    from app.services.groups import list_groups
+    from app.services.sites import list_sites
+
     invs = list_invitations()
+    sites = list_sites()
+    groups = list_groups()
+    devices = list_devices()
+
     return render_template(
         "invitations_list.html",
-        **_ctx({"invitations": invs, "new_invite": session.pop("_new_invite", None)}),
+        **_ctx({
+            "invitations": invs,
+            "new_invite": session.pop("_new_invite", None),
+            "sites": sites,
+            "groups": groups,
+            "devices": devices,
+        }),
     )
 
 
@@ -109,6 +123,21 @@ def invitations_create_submit():
     note = (request.form.get("note") or "").strip() or None
     if role == ROLE_SUPER_ADMIN and g.current_user.role != ROLE_SUPER_ADMIN:
         abort(403)
+
+    # v0.5.41 (P4b): collect scope bindings from form
+    bindings = []
+    for site_id in request.form.getlist("site_ids"):
+        if site_id:
+            bindings.append({"scope_type": "site", "scope_id": site_id})
+    for group_id in request.form.getlist("group_ids"):
+        if group_id:
+            bindings.append({"scope_type": "group", "scope_id": group_id})
+    for device_id in request.form.getlist("device_ids"):
+        if device_id:
+            bindings.append({"scope_type": "device", "scope_id": device_id})
+
+    scope_payload = {"bindings": bindings} if bindings else None
+
     try:
         record, raw = mint_invitation(
             settings,
@@ -116,6 +145,7 @@ def invitations_create_submit():
             role=role,
             issued_by_user_id=g.current_user.id,
             note=note,
+            scope_payload=scope_payload,
         )
     except InvitationError:
         abort(400)

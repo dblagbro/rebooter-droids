@@ -26,6 +26,54 @@
       </select>
     </label>
     <label>Note <input type="text" name="note" placeholder="why this invite was issued"></label>
+
+    <details style="margin-top:1rem">
+      <summary style="cursor:pointer;font-weight:600;margin-bottom:0.5rem">Scope to specific resources (optional)</summary>
+      <p class="muted" style="margin-bottom:1rem">Leave all unchecked for global access. Select specific sites, groups, or devices to restrict this user's access.</p>
+
+      {% if sites %}
+      <fieldset style="margin-bottom:1rem">
+        <legend>Sites</legend>
+        <div style="max-height:12rem;overflow-y:auto;border:1px solid #3a3a4a;padding:0.5rem;border-radius:4px">
+          {% for s in sites %}
+          <label style="display:block;margin-bottom:0.25rem">
+            <input type="checkbox" name="site_ids" value="{{ s.id }}" style="margin-right:0.5rem">
+            {{ s.name }}
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endif %}
+
+      {% if groups %}
+      <fieldset style="margin-bottom:1rem">
+        <legend>Groups</legend>
+        <div style="max-height:12rem;overflow-y:auto;border:1px solid #3a3a4a;padding:0.5rem;border-radius:4px">
+          {% for g in groups %}
+          <label style="display:block;margin-bottom:0.25rem">
+            <input type="checkbox" name="group_ids" value="{{ g.id }}" style="margin-right:0.5rem">
+            {{ g.name }}
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endif %}
+
+      {% if devices %}
+      <fieldset style="margin-bottom:1rem">
+        <legend>Devices</legend>
+        <div style="max-height:12rem;overflow-y:auto;border:1px solid #3a3a4a;padding:0.5rem;border-radius:4px">
+          {% for d in devices %}
+          <label style="display:block;margin-bottom:0.25rem">
+            <input type="checkbox" name="device_ids" value="{{ d.id }}" style="margin-right:0.5rem">
+            {{ d.name }} <span class="muted" style="font-size:0.9em">({{ d.mac }})</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endif %}
+    </details>
+
     <button type="submit">Send invite</button>
   </form>
 </section>
