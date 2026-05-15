@@ -49,6 +49,44 @@ def record(
         log.exception("audit emit failed for action=%s target=%s/%s", action, target_type, target_id)
 
 
+def record_scoped(
+    action: str,
+    *,
+    actor_user_id: str | None = None,
+    actor_email_snapshot: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    scope_claim: dict | None = None,
+    details: dict | None = None,
+    ip: str | None = None,
+) -> None:
+    """v0.5.35 (B1 RBAC Phase 1) — audit a per-resource mutation with its
+    RBAC scope claim attached.
+
+    Today this is a thin wrapper over ``record()`` that folds
+    ``scope_claim`` into ``details``. It exists as a deliberate
+    choke-point: when B11 multi-hub sync ships (RFC-004 Option C), this
+    is the single place that will *also* append the row to
+    ``outbox_events`` with the scope claim already attached — so every
+    per-resource mutation routed through here is B11-ready without a
+    second cross-blueprint sweep.
+
+    ``scope_claim`` shape: ``{"scope_type": "device", "scope_id": "..."}``.
+    Best-effort: never raises (see ``record``)."""
+    merged = dict(details or {})
+    if scope_claim is not None:
+        merged["scope_claim"] = scope_claim
+    record(
+        action,
+        actor_user_id=actor_user_id,
+        actor_email_snapshot=actor_email_snapshot,
+        target_type=target_type,
+        target_id=target_id,
+        details=merged,
+        ip=ip,
+    )
+
+
 def record_per_device(
     action: str,
     *,

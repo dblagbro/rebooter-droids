@@ -162,3 +162,92 @@ def admin_required_api(fn):
 
 def admin_required_ui(fn):
     return role_required_ui(*ANY_AUTHENTICATED)(fn)
+
+
+# ── RBAC SCOPE DECORATORS (B1 Phase 1 — v0.5.35) ────────────────────────
+# These pair with `role_required_*`: the role decorator authenticates and
+# sets `g.current_user`; the scope decorator then checks that user's role
+# bindings against the resource id carried in the route URL. Apply the
+# scope decorator *below* (inner to) the role decorator so `g.current_user`
+# is set before it runs. In shadow mode a miss is logged as an
+# `rbac.shadow_deny` audit row and the request proceeds; in enforce mode
+# it returns 403 / renders forbidden.html. See app/services/role_bindings.
+
+_SCOPE_REQUIRERS = ("device", "site", "group")
+
+
+def _resolve_scope_requirer(scope: str):
+    """Map a scope keyword to its require_can_act_on_* helper. Imported
+    lazily so this module stays import-light at app start."""
+    from app.services import role_bindings
+
+    if scope == "device":
+        return role_bindings.require_can_act_on_device
+    if scope == "site":
+        return role_bindings.require_can_act_on_site
+    if scope == "group":
+        return role_bindings.require_can_act_on_group
+    raise ValueError(f"scope must be one of {_SCOPE_REQUIRERS}, got {scope!r}")
+
+
+def scope_required_api(role_needed: str, *, scope: str, id_kwarg: str):
+    """Require the caller's role bindings to cover the resource named by
+    ``kwargs[id_kwarg]``. ``scope`` ∈ {"device","site","group"}. Apply
+    below a `role_required_*` decorator on a JSON API route."""
+
+    def decorator(fn):
+        requirer = _resolve_scope_requirer(scope)
+
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            from app.services.role_bindings import RbacScopeDenied
+
+            user = g.get("current_user")
+            try:
+                requirer(kwargs.get(id_kwarg), role_needed, user=user)
+            except RbacScopeDenied:
+                return err(
+                    "forbidden",
+                    "You do not have access to this resource.",
+                    status=403,
+                )
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def scope_required_ui(role_needed: str, *, scope: str, id_kwarg: str):
+    """UI sibling of `scope_required_api` — renders forbidden.html on an
+    enforce-mode deny instead of a JSON 403. Shipped in v0.5.35 alongside
+    the API variant so the P3 list/detail-filtering work has the
+    primitive ready; not yet wired to any route (the P1 demonstrators are
+    both API routes)."""
+
+    def decorator(fn):
+        requirer = _resolve_scope_requirer(scope)
+
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            from app.services.role_bindings import RbacScopeDenied
+
+            user = g.get("current_user")
+            try:
+                requirer(kwargs.get(id_kwarg), role_needed, user=user)
+            except RbacScopeDenied:
+                from flask import render_template
+
+                from app.version import __version__
+
+                return (
+                    render_template(
+                        "forbidden.html", current_user=user, version=__version__
+                    ),
+                    403,
+                )
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

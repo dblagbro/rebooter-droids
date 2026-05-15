@@ -23,8 +23,10 @@ from app.middleware.admin_auth import (
     WRITE_ROLES,
     admin_required_api,
     role_required_api,
+    scope_required_api,
 )
 from app.middleware.response import err, ok
+from app.models.users import ROLE_OPERATOR, ROLE_VIEWER
 from app.services import audit as audit_service
 from app.services import mass_action
 from app.services.commands import (
@@ -65,8 +67,12 @@ def list_devices():
     return ok({"devices": devices, "total": len(devices)})
 
 
+# v0.5.35 (B1 RBAC Phase 1): demonstrator route #1 — read path. The
+# scope decorator runs after admin_required_api sets g.current_user; in
+# shadow mode an out-of-scope caller is logged but still served.
 @admin_api_bp.get("/devices/<device_id>")
 @admin_required_api
+@scope_required_api(ROLE_VIEWER, scope="device", id_kwarg="device_id")
 def get_device(device_id: str):
     detail = get_device_detail(device_id)
     if detail is None:
@@ -110,8 +116,10 @@ def patch_device(device_id: str):
     return ok(updated)
 
 
+# v0.5.35 (B1 RBAC Phase 1): demonstrator route #2 — write path.
 @admin_api_bp.post("/devices/<device_id>/commands")
 @role_required_api(*WRITE_ROLES)
+@scope_required_api(ROLE_OPERATOR, scope="device", id_kwarg="device_id")
 def send_device_command(device_id: str):
     body = request.get_json(silent=True) or {}
     cmd_type = body.get("type")
@@ -135,12 +143,16 @@ def send_device_command(device_id: str):
         return err("device_locked", str(e), status=423)  # 423 Locked
     except ValueError as e:
         return err("validation_failed", str(e), status=400)
-    audit_service.record(
+    # v0.5.35 (B1 RBAC Phase 1): per-resource mutation routed through the
+    # record_scoped() choke-point so the audit row carries its RBAC scope
+    # claim — this is the seam B11 multi-hub sync writes outbox events from.
+    audit_service.record_scoped(
         "device.command_issued",
         actor_user_id=g.current_user.id,
         actor_email_snapshot=g.current_user.email,
         target_type="device",
         target_id=device_id,
+        scope_claim={"scope_type": "device", "scope_id": device_id},
         details={
             "type": cmd_type,
             "command_id": cmd.id,
