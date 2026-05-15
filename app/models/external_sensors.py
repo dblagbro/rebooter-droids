@@ -32,7 +32,15 @@ EXTERNAL_SOURCE_KINDS = (
     "solaredge",     # v0.5.56 (P2.1) — SolarEdge cloud monitoring API
     "enphase_envoy", # v0.5.56 (P2.1) — Enphase Envoy local /production.json
     "snmp",          # v0.5.58 (P2.2/P2.3) — router/switch SNMP IF-MIB poll
+    "plex",          # v0.5.61 (B17 Ship 2) — Plex Media Server webhook
+    "jellyfin",      # v0.5.61 (B17 Ship 2) — Jellyfin webhook
+    "ios_shortcut",  # v0.5.61 (B17 Ship 2) — generic iOS Shortcuts webhook
 )
+
+# v0.5.61 (B17 Ship 2): inbound-webhook kinds. These are NOT polled —
+# the external service POSTs to /api/v1/integrations/webhook/<id>. The
+# poller (`poll_all_due`) skips them; there is no `_poll_<kind>` branch.
+WEBHOOK_KINDS = ("plex", "jellyfin", "ios_shortcut")
 
 # v0.5.60 (P3a / RFC-006): the authoritative source-kind → modality map.
 # RFC-006 Decision 1 makes `modality` the cross-modal query key; §4 picks
@@ -46,6 +54,9 @@ KIND_TO_MODALITY = {
     "solaredge": "solar",
     "enphase_envoy": "solar",
     "snmp": "network",
+    "plex": "media",
+    "jellyfin": "media",
+    "ios_shortcut": "automation",
 }
 
 

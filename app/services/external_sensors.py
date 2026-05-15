@@ -20,6 +20,7 @@ import http.client
 import json
 import logging
 import re
+import secrets
 import shutil
 import subprocess
 import urllib.parse
@@ -29,7 +30,11 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import ExternalSensorSample, ExternalSensorSource
-from app.models.external_sensors import EXTERNAL_SOURCE_KINDS, KIND_TO_MODALITY
+from app.models.external_sensors import (
+    EXTERNAL_SOURCE_KINDS,
+    KIND_TO_MODALITY,
+    WEBHOOK_KINDS,
+)
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +147,8 @@ def create_source(
         raise ValueError("display_name is required")
     host = (host or "").strip()
     # Default ports per kind. Kinds that don't need a host (weather,
-    # ical, solaredge — cloud) skip host/port validation entirely.
+    # ical, solaredge — cloud; webhook kinds — inbound) skip host/port
+    # validation entirely.
     needs_host = kind in ("roku", "home_assistant", "enphase_envoy", "snmp")
     if needs_host and not host:
         raise ValueError("host is required for this kind")
@@ -249,6 +255,18 @@ def _validate_kind_config(kind: str, config: dict) -> dict:
         if jwt:
             out["jwt"] = jwt
         return out
+    if kind in WEBHOOK_KINDS:
+        # v0.5.61 (B17 Ship 2): inbound-webhook kinds. The hub never
+        # reaches out — the external service POSTs to
+        # /api/v1/integrations/webhook/<source_id>, authenticated by a
+        # per-source secret. The secret is auto-minted here if absent.
+        out: dict = {}
+        secret = str(config.get("webhook_secret") or "").strip()
+        out["webhook_secret"] = secret or secrets.token_hex(24)
+        server_name = str(config.get("server_name") or "").strip()
+        if server_name:
+            out["server_name"] = server_name[:120]
+        return out
     if kind == "snmp":
         # v0.5.58 (P2.2/P2.3): router/managed-switch SNMP poll. v2c uses
         # a community string; v3 uses a nested user/auth/priv block.
@@ -333,6 +351,13 @@ def poll_source(source_id: str) -> dict:
         src = session.get(ExternalSensorSource, source_id)
         if src is None:
             return {"error": "source not found"}
+        if src.kind in WEBHOOK_KINDS:
+            # v0.5.61 (B17 Ship 2): webhook sources receive inbound
+            # events — there is nothing to poll.
+            return {
+                "error": "This is a webhook source — it receives inbound "
+                         "events and is not polled."
+            }
         src.last_polled_at = now
         try:
             payload = _poll_kind(src)
@@ -360,6 +385,40 @@ def poll_source(source_id: str) -> dict:
         }
 
 
+def record_webhook_event(source_id: str, payload: dict) -> dict:
+    """v0.5.61 (B17 Ship 2): inbound-webhook sample writer.
+
+    Called by the `/api/v1/integrations/webhook/<source_id>` endpoint
+    after it has authenticated the per-source secret. Mirrors
+    `poll_source`'s success path — append an `ExternalSensorSample`,
+    stamp `last_polled_at`/`last_success_at` — but skips the
+    `_poll_kind` switch entirely (the hub did not reach out).
+
+    Returns `{"recorded": True, "sampled_at": ...}` or `{"error": ...}`.
+    Best-effort: callers should treat any exception as a 500.
+    """
+    now = datetime.now(timezone.utc)
+    with session_scope() as session:
+        src = session.get(ExternalSensorSource, source_id)
+        if src is None:
+            return {"error": "source not found"}
+        if src.kind not in WEBHOOK_KINDS:
+            return {"error": "source is not a webhook kind"}
+        if not src.enabled:
+            return {"error": "source disabled"}
+        src.last_polled_at = now
+        src.last_success_at = now
+        src.last_error = None
+        session.add(src)
+        session.add(ExternalSensorSample(
+            source_id=src.id,
+            sampled_at=now,
+            payload=payload if isinstance(payload, dict) else {},
+        ))
+        session.flush()
+    return {"recorded": True, "sampled_at": _iso(now)}
+
+
 def poll_all_due() -> dict:
     """APScheduler entry point. Returns counts for the log line."""
     now = datetime.now(timezone.utc)
@@ -368,7 +427,10 @@ def poll_all_due() -> dict:
         rows = list(
             session.scalars(
                 select(ExternalSensorSource).where(
-                    ExternalSensorSource.enabled.is_(True)
+                    ExternalSensorSource.enabled.is_(True),
+                    # v0.5.61: webhook kinds receive inbound events; the
+                    # poll tick must skip them (no `_poll_<kind>` branch).
+                    ExternalSensorSource.kind.not_in(WEBHOOK_KINDS),
                 )
             )
         )

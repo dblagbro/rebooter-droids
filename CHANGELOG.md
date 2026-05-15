@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.61] - 2026-05-15
+
+### Added — B17 Ship 2: inbound-webhook framework + Plex / Jellyfin / iOS Shortcuts
+
+Implements "Ship 2" from `docs/notes/2026-05-15-b17-remaining-integrations-design.md` §6 — the documented next B17 integration after Solar (Ship 1). Adds the inbound-webhook architecture pattern (the hub *receives* events, vs. the existing poll model).
+
+- **Three new webhook `external_sensor_sources` kinds** — `plex`, `jellyfin`, `ios_shortcut`. They are not polled; `poll_all_due()` skips them and `poll_source()` returns a clear "not pollable" message. A per-source `webhook_secret` is auto-minted on creation.
+
+- **Inbound endpoint** (`app/blueprints/api/integrations_webhook.py`): `POST /api/v1/integrations/webhook/<source_id>`. Authenticated by a per-source secret in the `X-Webhook-Secret` header (constant-time compare, `secrets.compare_digest`); no admin session, no CSRF (external callers, `/api/v1/*` is CSRF-exempt). 64 KiB body cap. Accepts JSON (Jellyfin / iOS Shortcuts) or Plex's multipart `payload` form field. Writes via the new `record_webhook_event()` service helper.
+
+- **Two watchdog probes** (`app/services/watchdog_runtime/_probes.py`):
+  - `media_session_active` — Plex/Jellyfin playback. Webhook samples are *events*, so the latest play/resume event within `presumed_duration_seconds` presumes an active session. Success = media active (mirrors `roku_app_active`) — a reboot rule fires only when idle ("don't power-cycle the AV gear mid-movie").
+  - `webhook_field_equals` — generic JSON-field match for iOS Shortcuts / Apple Home (e.g. a Shortcut posting `{"state":"home"}`).
+
+- **Integrations UI**: a webhook add-source form (kind picker), the inbound URL + `X-Webhook-Secret` shown on each webhook source row (admin-only page, not masked — the operator must paste it into Plex/Jellyfin/the Shortcut), per-kind sample summary, and setup notes for all three senders.
+
+### Notes
+- No schema change — `external_sensor_sources.config` holds `webhook_secret`; samples land in `external_sensor_samples`.
+- Body size is capped at 64 KiB; explicit per-source rate-limiting is a tracked follow-up (the secret + size cap are the v1 protections).
+- Per the design, Google Calendar OAuth (Ship 5) stays deferred — the existing `ical` integration is functionally equivalent.
+
 ## [0.5.60] - 2026-05-15
 
 ### Added — P3a: consistent modality tagging (RFC-006 phase 1)

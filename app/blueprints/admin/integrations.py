@@ -82,6 +82,12 @@ def settings_integrations_add_submit():
             config["interface_filter"] = [
                 s.strip() for s in iface_raw.split(",") if s.strip()
             ]
+    elif kind in ("plex", "jellyfin", "ios_shortcut"):
+        # v0.5.61 (B17 Ship 2): inbound-webhook kinds. webhook_secret is
+        # auto-minted in the service layer; server_name is optional.
+        sn = (request.form.get("webhook_server_name") or "").strip()
+        if sn:
+            config["server_name"] = sn
     try:
         out = ext_svc.create_source(
             kind=kind,
