@@ -279,6 +279,97 @@ def power_source_breakdown(
     }
 
 
+def intraday_power_series(
+    device_id: str,
+    *,
+    channel_id: int = 0,
+    window_seconds: int = 24 * 60 * 60,
+    buckets: int = 144,
+) -> dict:
+    """v0.5.59 (P1.3): time-bucketed avg watts for the device-detail
+    intraday chart.
+
+    Splits `window_seconds` into `buckets` equal slices and averages
+    `p_w` per slice — a fixed-width series the template renders as an
+    interactive SVG regardless of raw sample density. Empty slices land
+    `avg_w=None` so the chart can show a gap rather than interpolate
+    across a reporting outage.
+
+    Each bucket also carries `real`/`synthetic` sample counts (P1.2
+    data-quality) so the chart can flag a synthetic-tainted slice.
+    """
+    if not device_id:
+        return {"window_seconds": 0, "buckets": []}
+    win = max(600, min(int(window_seconds or 24 * 60 * 60), 30 * 24 * 60 * 60))
+    n = max(12, min(int(buckets or 144), 1440))
+    bucket_seconds = win / n
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=win)
+
+    with session_scope() as session:
+        rows = list(
+            session.execute(
+                select(
+                    DevicePowerSample.sampled_at,
+                    DevicePowerSample.p_w,
+                    DevicePowerSample.source,
+                ).where(
+                    DevicePowerSample.device_id == device_id,
+                    DevicePowerSample.channel_id == channel_id,
+                    DevicePowerSample.sampled_at >= cutoff,
+                )
+            )
+        )
+
+    sums = [0.0] * n
+    counts = [0] * n
+    real = [0] * n
+    synth = [0] * n
+    for sampled_at, p_w, source in rows:
+        if sampled_at is None:
+            continue
+        if sampled_at.tzinfo is None:
+            sampled_at = sampled_at.replace(tzinfo=timezone.utc)
+        idx = int((sampled_at - cutoff).total_seconds() / bucket_seconds)
+        if idx < 0 or idx >= n:
+            continue
+        if p_w is not None:
+            try:
+                sums[idx] += float(p_w)
+                counts[idx] += 1
+            except (TypeError, ValueError):
+                pass
+        if source in REAL_POWER_SOURCES:
+            real[idx] += 1
+        else:
+            synth[idx] += 1
+
+    out_buckets = []
+    max_w = 0.0
+    point_count = 0
+    for i in range(n):
+        bucket_start = cutoff + timedelta(seconds=i * bucket_seconds)
+        avg_w = round(sums[i] / counts[i], 2) if counts[i] else None
+        if avg_w is not None:
+            point_count += 1
+            if avg_w > max_w:
+                max_w = avg_w
+        out_buckets.append({
+            "t": _iso(bucket_start),
+            "avg_w": avg_w,
+            "sample_count": counts[i],
+            "real": real[i],
+            "synthetic": synth[i],
+        })
+    return {
+        "window_seconds": win,
+        "bucket_seconds": int(bucket_seconds),
+        "buckets": out_buckets,
+        "max_w": max_w,
+        "point_count": point_count,
+    }
+
+
 # ── Fleet summary (used by Phase 1B /app/power) ──────────────────────────
 
 
