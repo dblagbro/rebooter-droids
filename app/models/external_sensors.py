@@ -31,6 +31,7 @@ EXTERNAL_SOURCE_KINDS = (
     "ical",           # v0.5.23 — iCal/WebCal .ics feed
     "solaredge",     # v0.5.56 (P2.1) — SolarEdge cloud monitoring API
     "enphase_envoy", # v0.5.56 (P2.1) — Enphase Envoy local /production.json
+    "snmp",          # v0.5.58 (P2.2/P2.3) — router/switch SNMP IF-MIB poll
 )
 
 
@@ -61,10 +62,12 @@ class ExternalSensorSource(Base):
     #   ical           → {"url": "https://..."}
     #   solaredge      → {"site_id": "12345", "api_key": "..."}
     #   enphase_envoy  → {"jwt": "...optional, 7.0+ Envoys only..."}
+    #   snmp           → {"version": "2c", "community": "...",
+    #                     "v3": {...}, "interface_filter": [...]}
     # `host` + `port` keep their meaning for kinds that have an HTTP
-    # base (roku, home_assistant, enphase_envoy). Kinds that just need a
-    # URL (ical), coordinates (weather), or a cloud account (solaredge)
-    # can leave host empty.
+    # base (roku, home_assistant, enphase_envoy) or an SNMP agent
+    # (snmp → port 161). Kinds that just need a URL (ical), coordinates
+    # (weather), or a cloud account (solaredge) can leave host empty.
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = ts_column()
