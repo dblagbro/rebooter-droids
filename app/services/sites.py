@@ -26,10 +26,14 @@ def serialize_site(s: Site) -> dict:
 
 def list_sites() -> list[dict]:
     with session_scope() as session:
-        return [
-            serialize_site(s)
-            for s in session.scalars(select(Site).order_by(Site.name))
-        ]
+        stmt = select(Site).order_by(Site.name)
+
+        # v0.5.37 (B1 RBAC Phase 3): Apply scope-based filtering.
+        # In shadow mode, logs what WOULD be hidden; in enforce mode, actually filters.
+        from app.services.rbac_filter import filter_sites_with_shadow_logging
+        sites = filter_sites_with_shadow_logging(stmt, session)
+
+        return [serialize_site(s) for s in sites]
 
 
 def create_site(name: str, description: str | None) -> dict:

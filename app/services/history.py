@@ -122,7 +122,13 @@ def _audit_iter(
             )
         )
     stmt = stmt.order_by(AuditEvent.at.desc()).limit(limit)
-    for e in session.scalars(stmt):
+
+    # v0.5.37 (B1 RBAC Phase 3): Apply scope-based filtering.
+    # In shadow mode, logs what WOULD be hidden; in enforce mode, actually filters.
+    from app.services.rbac_filter import filter_audit_with_shadow_logging
+    filtered_rows = filter_audit_with_shadow_logging(stmt, session)
+
+    for e in filtered_rows:
         yield _row_audit(e)
 
 

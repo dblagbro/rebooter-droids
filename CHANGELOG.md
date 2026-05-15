@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.37] - 2026-05-15
+
+### Added — B1 RBAC Phase 3 (P3): Scope-aware list filtering
+
+Third phase of B1 RBAC rollout per `docs/notes/2026-05-15-b1-rbac-design.md` §4 (P3).
+Applies scope-based filtering to four major list surfaces: devices, groups, sites, and
+audit/history. In shadow mode (default), runs double-query pattern that logs what WOULD
+be hidden but preserves legacy behavior (returns unfiltered results). In enforce mode,
+actually filters results based on user's effective scope.
+
+- **Central filtering logic** (`app/services/rbac_filter.py`): New file with four filter
+  functions: `filter_devices_with_shadow_logging()`, `filter_groups_with_shadow_logging()`,
+  `filter_sites_with_shadow_logging()`, `filter_audit_with_shadow_logging()`. Each
+  implements shadow/enforce mode switching and double-query pattern. Super_admin always
+  bypasses filtering (escape hatch from §9.0).
+
+- **Double-query shadow pattern**: In shadow mode, runs both unfiltered and filtered
+  queries, calculates diff, logs `rbac.shadow_diff` audit rows with `total_count`,
+  `scoped_count`, `hidden_count`, and `hidden_sample` (first 10 IDs), then returns
+  unfiltered results. Provides production observability of enforcement impact before flip.
+
+- **Integrated into list services**:
+  - `app/services/devices/_query.py::list_devices()` — device list filtering
+  - `app/services/groups.py::list_groups()` — group list filtering  
+  - `app/services/sites.py::list_sites()` — site list filtering
+  - `app/services/history.py::_audit_iter()` — audit/history filtering
+
+- **Cross-resource audit filtering**: Audit events are visible if user has access to the
+  target resource. Checks `target_type` (device/site/group) and filters based on whether
+  `target_id` is in user's effective scope for that resource type. Events with
+  `target_type=NULL` (system events) are always visible. Most complex filter due to
+  cross-resource nature.
+
+### Tests
+- **Regression test**: `tests/qa/test_v0537_scope_filter_lists.py` validates:
+  (a) super_admin sees all resources in all lists; (b) super_admin produces no
+  `rbac.shadow_diff` rows; (c) scoped users produce shadow_diff rows when listing
+  resources; (d) all list endpoints serve correctly with filtering. Enforce-mode
+  validation happens in live retest (flipping global runtime setting in test would
+  affect real callers).
+
 ## [0.5.36] - 2026-05-15
 
 ### Added — B1 RBAC Phase 2 (P2): Device.site_id NOT NULL + audit archive
