@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.65] - 2026-05-15
+
+### Changed — incremental architectural refactor (behavior-preserving)
+
+Two oversized service files — both bloated this session as B16/B17 integrations and probes accumulated — split into cohesive modules following the existing `architecture.md` §"Service subpackages" convention. Pure re-organization: every public import path is preserved via `__init__.py` re-exports; no blueprint, scheduler, template, or behavior change.
+
+- **`services/external_sensors.py` (1369 LOC) → `services/external_sensors/` subpackage:**
+  - `_common.py` — `_iso`, `ROKU_DEFAULT_PORT` (dependency-free shared leaf)
+  - `_crud.py` — source registry: create / list / enable / delete, per-kind config validation, redacted serialization
+  - `_pollers.py` — poll dispatch + every `_poll_<kind>` (Roku/HA/weather/iCal/solar/SNMP) + SNMP helpers
+  - `_inbound.py` — webhook + MQTT sample writers (the push side)
+  - `_query.py` — sample reads consumed by the watchdog probes + UI
+  - `__init__.py` — public API re-exports
+
+- **`services/watchdog_runtime/_probes.py` (1265 LOC) → split in two:**
+  - `_probes.py` — `run_probe()` dispatcher + core network probes (internet/ping/tcp/http/dns/host_awake)
+  - `_probes_integrations.py` — the 14 sensor-backed probes (Roku/HA/weather/iCal/power/solar/SNMP/media/webhook/MQTT/EPG). `run_probe` dispatches into them via a one-directional import.
+
+### Docs
+- **Created `docs/design.md`** (was missing) — design rationale: the local-first contract, the three integration ingestion shapes (poll / webhook / subscriber), the modality model, and key trade-offs.
+- Updated `docs/architecture.md` (source-layout tree) and appended to `docs/refactor-log.md`.
+
+### Notes
+- Verified behavior-preserving via a full `create_app()` smoke test in the built image — all 8 blueprints register, all re-exports resolve.
+- No oversized file remains above ~720 LOC (was 1369). Next targets recorded in `refactor-log.md`.
+
 ## [0.5.64] - 2026-05-15
 
 ### Added — B17 Layer 2: EPG (TV programming guide)

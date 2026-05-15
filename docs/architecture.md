@@ -89,47 +89,42 @@ app/
 │  ├─ rate_limit.py       Flask-Limiter wiring (memory backend, single-worker)
 │  └─ response.py         ok()/err() envelope helpers
 ├─ services/              business logic; one module per domain aggregate
-│  ├─ audit.py
-│  ├─ auth.py             JWT issuance + decoding
-│  ├─ bootstrap.py        ensure_schema() + ensure_bootstrap_admin()
-│  ├─ commands.py
-│  ├─ dashboard.py
-│  ├─ deployments.py
-│  ├─ devices/            v0.5.15 split — see "Service subpackages" below
+│  ├─ audit.py · auth.py · bootstrap.py · commands.py · dashboard.py
+│  ├─ deployments.py · email.py · enrollment.py · events.py
+│  ├─ firmware.py · groups.py · heartbeats.py · invitations.py
+│  ├─ mass_action.py · sites.py · unregistered.py · users.py
+│  ├─ device_config.py · device_power.py    B16/B21 power + desired-config
+│  ├─ role_bindings.py · rbac_filter.py      B1 RBAC scope machinery
+│  ├─ sync.py · sync_replicator.py           B11 multi-hub sync (RFC-004)
+│  ├─ epg.py                                 B17 Layer 2 — TVMaze EPG cache
+│  ├─ mqtt_subscriber.py                     B17 Ship 3 — MQTT subscriber thread
+│  ├─ devices/            subpackage (v0.5.15) — see "Service subpackages"
+│  │  ├─ __init__.py _serialize.py _query.py _mutations.py
+│  ├─ external_sensors/   subpackage (v0.5.65) — B17 integration registry
 │  │  ├─ __init__.py      public API re-exports
-│  │  ├─ _serialize.py    pure dict/presentation helpers, central-status derivation
-│  │  ├─ _query.py        read-only queries (list_devices, get_device_detail, …)
-│  │  └─ _mutations.py    writes (update/delete/bulk-delete/display-name push)
-│  ├─ email.py            SMTP send (earthlink config)
-│  ├─ enrollment.py
-│  ├─ events.py
-│  ├─ firmware.py
-│  ├─ groups.py
-│  ├─ heartbeats.py
-│  ├─ invitations.py
-│  ├─ mass_action.py      blast-radius confirmation gate (v0.2.5)
-│  ├─ sites.py
-│  ├─ unregistered.py     v0.2.5 unregistered-auth-attempts tracker
-│  ├─ users.py
-│  └─ watchdog_runtime/   v0.5.15 split — see "Service subpackages" below
+│  │  ├─ _common.py       _iso + shared constants (dependency-free leaf)
+│  │  ├─ _crud.py         source registry CRUD + per-kind config validation
+│  │  ├─ _pollers.py      poll dispatch + every _poll_<kind> + SNMP helpers
+│  │  ├─ _inbound.py      webhook + MQTT sample writers (push side)
+│  │  └─ _query.py        sample reads consumed by watchdog probes + UI
+│  └─ watchdog_runtime/   subpackage (v0.5.15) — see "Service subpackages"
 │     ├─ __init__.py      tick() entrypoint + re-exports
-│     ├─ _probes.py       internet / ping / tcp / http / dns / gateway
+│     ├─ _probes.py       run_probe() dispatcher + core net probes
+│     ├─ _probes_integrations.py  sensor probes (v0.5.65 split — Roku/HA/
+│     │                   weather/iCal/power/solar/SNMP/media/MQTT/EPG)
 │     ├─ _state.py        scheduling, event log, streak machine
 │     └─ _actions.py      cycle / hold_off / target resolution
 ├─ models/                SQLAlchemy ORM; one module per aggregate
-│  ├─ _helpers.py         ULID + utcnow + ts_column shortcuts
-│  ├─ audit.py
-│  ├─ commands.py
-│  ├─ devices.py
-│  ├─ events.py
-│  ├─ firmware.py
-│  ├─ groups.py
-│  ├─ invitations.py
-│  ├─ sites.py
-│  ├─ unregistered.py
-│  └─ users.py
+│  ├─ _helpers.py audit.py commands.py devices.py events.py firmware.py
+│  ├─ groups.py invitations.py sites.py unregistered.py users.py
+│  ├─ power_analytics.py power_rollups.py    B16 power telemetry
+│  ├─ external_sensors.py external_epg.py    B17 integration sources + EPG
+│  ├─ role_bindings.py sync.py               B1 RBAC + B11 outbox/cursor
+│  └─ (schedules, announcements, runtime_settings, … one file per aggregate)
 └─ jobs/
-   └─ scheduler.py        APScheduler tick (expire_commands every 30s)
+   └─ scheduler.py        APScheduler — expire/watchdog/schedule/external-
+                          sensors/sync-replicator/power-rollups/audit-prune/
+                          epg-refresh ticks; also starts the MQTT subscriber
 
 templates/                Jinja templates (server-rendered admin UI)
 static/                   CSS + JS (mass_action.js for the gate)
@@ -168,14 +163,34 @@ services/<x>/
 │                     ORM rows + bag-of-fields into dicts / templates consume.
 ├─ _query.py          Read-only queries; opens its own session_scope.
 ├─ _mutations.py      Writes; opens its own session_scope; raises typed errors.
-└─ (_other.py)        Additional cohesive slices as needed
-                      (e.g., watchdog_runtime/_probes / _state / _actions).
+└─ (_other.py)        Additional cohesive slices as needed.
 ```
+
+The `{_serialize, _query, _mutations}` triad is the *starting* shape —
+a subpackage uses whatever cohesive slices its domain needs. Three
+precedents exist:
+
+- `devices/` (v0.5.15) — `_serialize` / `_query` / `_mutations`.
+- `watchdog_runtime/` (v0.5.15, extended v0.5.65) — `_probes` (dispatch
+  + core net probes) / `_probes_integrations` (sensor probes) /
+  `_state` / `_actions`.
+- `external_sensors/` (v0.5.65) — `_common` / `_crud` / `_pollers` /
+  `_inbound` / `_query`. Sliced by *ingestion shape* (poll vs. inbound)
+  rather than the read/write split, because that is the axis the
+  domain actually varies along.
+
+A leaf module with genuinely shared, dependency-free helpers
+(`external_sensors/_common.py`) is acceptable and is not
+over-fragmentation — it is what keeps the other slices from importing
+each other just for an `_iso()`.
 
 Cross-module dependencies between split modules use **deferred imports**
 inside function bodies (e.g., `_state.py` defers `_actions._fire_action`
-to avoid a top-level cycle). The pattern is already in use throughout
-the codebase for `services/commands.enqueue_for_device`.
+to avoid a top-level cycle), *or* a strict one-directional module-level
+import where no cycle is possible (`_probes.py` imports
+`_probes_integrations` at module level — the latter imports nothing
+back). The pattern is already in use throughout the codebase for
+`services/commands.enqueue_for_device`.
 
 Files inside a subpackage are leading-underscore (`_serialize.py`) to
 signal "internal — import via the package root, not directly." External
@@ -228,6 +243,7 @@ callers always do `from app.services.devices import …`, never
 
 ## See also
 
+- [`design.md`](design.md) — design rationale ("why"); read before non-trivial changes
 - [`contributing.md`](contributing.md) — workflow + commit + release rules
 - [`refactor-log.md`](refactor-log.md) — chronological structural changes
 - [`SPEC.md`](SPEC.md) — canonical device/admin contract
