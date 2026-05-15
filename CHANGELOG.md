@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.34] - 2026-05-15
+
+### Fixed — BUG-054: `custom` probe-kind dropped from canonical list
+
+The 2026-05-15 regression sweep (R3b) confirmed that
+`PROBE_KIND_CUSTOM` had been in `KNOWN_PROBE_KINDS` since v0.4.0
+but the runtime `_run_probe` dispatcher never had a branch — any
+operator who saved a rule with `kind=custom` got
+`failure: reason="unknown probe kind: custom"` forever.
+
+Fix (chose Option A from the bug log):
+- Removed `PROBE_KIND_CUSTOM` from `KNOWN_PROBE_KINDS` in
+  `app/models/watchdog.py`. The string constant itself is preserved
+  with a deprecation comment for any third-party importer.
+- Removed the `custom` branch from `_probe_to_phrase()` in
+  `app/services/watchdog.py`. Old DB rows with `kind=custom`
+  (none on the live hub) would fall through to the generic
+  "unknown probe" phrase.
+- `KNOWN_PROBE_KINDS` shrinks from 14 to 13 canonical kinds.
+
+### Fixed — BUG-055: per-kind probe-field validation
+
+The 2026-05-15 regression sweep (R9) caught that `create_rule` +
+`update_rule` only validated `probe.kind` and (for `internet`) the
+`targets` list shape. 12 of 15 deliberately-broken probe
+configurations returned 201 — operators could save rules that
+silently failed at runtime, including (for `cycle`/`hold_off`
+actions) rules that eventually fired actions on wrong targets
+when their threshold typos crossed the failure-streak gate.
+
+Fix:
+- New `_validate_probe(probe)` helper in
+  `app/services/watchdog.py` dispatching per-kind. Follows the
+  pattern established by
+  `services.external_sensors._validate_kind_config()`.
+- Per-kind enforcement now:
+  - **`internet`**: `targets[*]` shape (preserved from v0.5.9)
+  - **`ping`**: `host` non-empty
+  - **`tcp`**: `host` non-empty; `port` int in [1, 65535]
+  - **`http`**: `url` non-empty + must use http/https scheme
+  - **`dns`**: `hostname` non-empty
+  - **`gateway`**: no required fields
+  - **`roku_app_active`**: `source_id` + `app_name` non-empty
+  - **`ha_state_is`**: `source_id` + `entity_id` + `expected_state` non-empty
+  - **`weather_alert_active`**: `source_id` non-empty; optional
+    `min_severity` ∈ {Minor, Moderate, Severe, Extreme}
+  - **`ical_event_active`**: `source_id` non-empty
+  - **`power_above` / `power_below`**: `device_id` non-empty;
+    `threshold_w` numeric in [0, 10000]; optional `window_seconds`
+    int in [30, 86400]
+  - **`power_zero_while_on`**: `device_id` non-empty; optional
+    `near_zero_threshold_w` numeric in [0, 100]; optional
+    `window_seconds` int in [30, 86400]
+- Defensive fallback: a future canonical kind without a
+  validator-branch raises a developer-facing error.
+- `create_rule` + `update_rule` both call the new helper. The
+  duplicated v0.5.9 internet-targets inline block is removed from
+  both (collapsed to a single source of truth in `_validate_probe`).
+
+### Tests
+
+- `tests/qa/test_v0534_probe_validation.py`:
+  - `test_custom_probe_kind_rejected_at_create` — BUG-054 retest
+  - 25 parametrised bad-case tests (BUG-055 negative coverage)
+  - 15 parametrised happy-case tests (no false rejections across
+    all 13 canonical kinds)
+
+The 25 bad cases match the v0.5.34 in-container smoke
+(9 quick checks all returned the expected `WatchdogValidationError`
+with the expected message substring) plus the full coverage list
+from the bug-log fix-direction.
+
+### Out of scope
+
+- Rules-create form UI fields already enforced these constraints
+  via HTML5 `required`/`min`/`max` (v0.5.28 / v0.5.32). The fix
+  closes the API + JSON-editor bypass paths.
+- No template change shipped; this is purely a server-side
+  validation hardening.
+
 ## [0.5.33] - 2026-05-14
 
 ### Changed — Phase 5: docs/backlog cleanup pass

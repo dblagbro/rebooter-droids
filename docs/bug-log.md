@@ -784,3 +784,200 @@ order found.
   contract.
 - **Fix direction:** desired-name propagation must run on ordinary
   rename / drift reconciliation, not only restore-after-reflash.
+- **2026-05-15 update — fixed.** v0.5.12 (B24) shipped the rename
+  push from both API and UI handlers (`devices_api.py:93` +
+  `devices_ui.py:149`); v0.5.22 (B21) generalised this to a full
+  `desired_config` blob with drift detection. Re-verified during
+  the 2026-05-15 regression sweep (R7 — set desired_config on
+  `.48`; drift_summary returned `state='drifted',
+  mismatched=['device_name']` against live `last_reported_config`
+  echoed from firmware `0.1.19-dev-central-safe`).
+
+### BUG-052 — status update (2026-05-15)
+
+- **Status:** **fixed in v0.5.12 (B23)** — `_derive_central_status`
+  in `services/devices/_serialize.py` now returns one of
+  `transport_stale` / `central_stale` / `upgrade_pending` /
+  `attention` / `awaiting_first_heartbeat` / `central_ok` /
+  `local_only` instead of collapsing the entire space into binary
+  online/offline. Devices-list + Device-detail templates render
+  distinct chips with hover tooltips carrying the reason. The
+  ".225 looks like .69" scenario was the motivating case the fix
+  closes. Re-verified during the 2026-05-15 regression sweep.
+- **Doc-cleanup note:** The original entry above was still tagged
+  "open" until this sweep, despite v0.5.12 having shipped the fix
+  on 2026-05-14. Bug-log drift caught.
+
+---
+
+## BUG-054 — `custom` probe kind is canonical but has no runtime branch
+
+- **Date:** 2026-05-15
+- **Severity:** medium (latent operator footgun via JSON editor)
+- **Area:** `app/services/watchdog_runtime/_probes.py::run_probe`
+- **Status:** **open — discovered 2026-05-15 regression sweep (R3b)**
+- **Environment:** live hub `0.5.33` against
+  `https://www.voipguru.org/rebooter`.
+- **Repro:**
+  ```bash
+  curl -X POST /api/v1/admin/rules -d '{
+    "name":"qa-custom",
+    "probe":{"kind":"custom","name":"qa-custom"},
+    "target":{"kind":"tag","tag":"qa-noop"},
+    "action":{"kind":"notify_only"},
+    "failure_threshold":3,"recovery_threshold":2,
+    "window_seconds":60,"cooldown_seconds":300}' → 201 Created
+
+  curl -X POST /api/v1/admin/rules/<id>/probe-now
+  → {"data":{"outcome":"failure",
+             "details":{"reason":"unknown probe kind: custom"}}}
+  ```
+- **Expected:** Either a runtime handler exists for `custom` and
+  it executes, OR `KNOWN_PROBE_KINDS` rejects the kind at create
+  time. Anything else is a contract gap.
+- **Actual:** Validation accepts the kind (it's in
+  `KNOWN_PROBE_KINDS`). Runtime fails the probe with the
+  misleading reason string "unknown probe kind: custom". The rule
+  silently builds toward firing every probe interval.
+- **Evidence:** R3b output in the 2026-05-15 sweep log:
+  `custom: outcome=failure  reason=unknown probe kind: custom, via=probe_now`.
+- **Cause:** `PROBE_KIND_CUSTOM = "custom"` has been in
+  `KNOWN_PROBE_KINDS` since v0.4.0. `_run_probe` never had a
+  branch for it. `_probe_to_phrase` *does* handle it
+  (`f"custom probe \`{p.get('name','?')}\`"`) which makes the gap
+  even more confusing — model + service-phrase render agree the
+  kind is real; only the runtime says no.
+- **Recommended fix:** **Option A (recommended)** — drop
+  `PROBE_KIND_CUSTOM` from `KNOWN_PROBE_KINDS` + the
+  `_probe_to_phrase` branch. The integration probes
+  (roku/ha/weather/ical) and power probes
+  (power_above/_below/_zero_while_on) are the actual extensibility
+  surface today. **Option B** — implement `_probe_custom` for e.g.
+  user-supplied lambda or shell-exec; out of scope for any
+  immediate ship, and a security review surface.
+
+---
+
+## BUG-055 — `create_rule()` skips per-kind probe-field validation for non-internet kinds
+
+- **Date:** 2026-05-15
+- **Severity:** medium (operator UX footgun; rules silently never
+  fire OR fire wrong-target if action is `cycle`/`hold_off`)
+- **Area:** `app/services/watchdog.py::create_rule` + `update_rule`
+- **Status:** **open — discovered 2026-05-15 regression sweep (R9)**
+- **Environment:** live hub `0.5.33`.
+- **Repro:**
+  ```bash
+  curl -X POST /api/v1/admin/rules -d '{
+    "name":"x",
+    "probe":{"kind":"power_above","device_id":"dev_x",
+             "threshold_w":"oops","window_seconds":300},
+    "target":{"kind":"tag","tag":"qa"},
+    "action":{"kind":"notify_only"},
+    "failure_threshold":3,"recovery_threshold":2,
+    "window_seconds":60,"cooldown_seconds":300}' → 201 Created
+  ```
+- **Expected:** 400 `validation_failed` with a per-kind message
+  (`threshold_w must be numeric`, `source_id is required for
+  kind=roku_app_active`, etc.).
+- **Actual:** 12 of 15 deliberately-broken probe configurations
+  returned 201 Created. Rule lands in DB. Runtime later returns
+  `failure: reason="missing threshold_w"` every probe interval
+  (the message is itself misleading — the actual cause is
+  "threshold_w is a string, not a number"). For `notify_only`
+  actions this is invisible. **For `cycle`/`hold_off` actions
+  targeting a real device**, the malformed rule eventually fires
+  after `failure_threshold` ticks because the streak gate doesn't
+  know it's stuck — **operator could accidentally power-cycle a
+  device by mistyping a threshold**.
+- **Evidence:** R9 sweep output:
+  ```
+    roku-missing-source_id: 201
+    roku-empty-app_name: 201
+    ha-missing-entity_id: 201
+    weather-missing-source_id: 201
+    weather-bogus-severity: 201
+    ical-bad-url-not-validated-at-rule: 201
+    power_above-missing-threshold: 201
+    power_above-negative-threshold: 201
+    power_above-string-threshold: 201
+    power_above-tiny-window: 201
+    power_above-huge-window: 201
+    power-missing-device_id: 201
+    unknown-kind: 400 ✓ (correctly rejected)
+    malformed-kind-int: 400 ✓ (correctly rejected)
+    missing-kind: 400 ✓ (correctly rejected)
+  ```
+- **Cause:** `create_rule` validates only:
+  - `probe.kind in KNOWN_PROBE_KINDS`
+  - `internet.targets[*]` shape (added v0.5.9 — the only per-kind
+    pre-existing validator)
+  It does NOT validate per-kind required-field presence, type, or
+  range for any other kind. The integration probes (v0.5.17/.23)
+  and power probes (v0.5.32) inherited this gap.
+- **Recommended fix:** Per-kind validator dispatch helper in
+  `services/watchdog.py`. Pattern is already proven by
+  `services.external_sensors._validate_kind_config()` which does
+  exactly this for source-kind extras. Fix scope (~1-2 h):
+  - `roku_app_active`: `source_id` + `app_name` non-empty
+  - `ha_state_is`: `source_id` + `entity_id` + `expected_state` non-empty
+  - `weather_alert_active`: `source_id` non-empty; `min_severity`
+    ∈ {Minor, Moderate, Severe, Extreme} when present
+  - `ical_event_active`: `source_id` non-empty
+  - `power_above`/`power_below`: `device_id` non-empty;
+    `threshold_w` numeric ∈ [0, 10000]; `window_seconds` ∈
+    [30, 86400]
+  - `power_zero_while_on`: `device_id` non-empty;
+    `near_zero_threshold_w` numeric ∈ [0, 100]
+- **Workaround until fix lands:** The rules-create form fields
+  (v0.5.28 / v0.5.32) have the right HTML5 `required` + `min` +
+  `max` constraints. Only the JSON-editor and API paths bypass
+  them. The runtime stale-sample + missing-field gates *do*
+  prevent power_above/_below with bad input from acting on the
+  wrong target — they just fail-loud at probe-time rather than
+  fail-loud at save-time.
+
+---
+
+## 2026-05-15 regression sweep — coverage map
+
+| Round | Surface | Verdict |
+|---|---|---|
+| R1 | Smoke — `/api/v1/version` → 0.5.33 | ✓ |
+| R2 | Subpackage import contract (v0.5.15 + v0.5.18/.21) — 15 modules + 30 public symbols re-exported cleanly | ✓ |
+| R3 | Rule creation across all 14 probe kinds via API | ✓ all 201 |
+| R3b | `probe-now` dispatch across all 14 kinds | ✓ 13/14 dispatched correctly; **BUG-054** surfaced on `custom` |
+| R4 | Power telemetry E2E: ingest → query → manual rollup → idempotent re-run → chart data; math verified (`(144 + 145.2 + 146.4 + 147.6 + 148.8) / 5 = 146.4`) | ✓ |
+| R5 | Cost calc — set/clear rate, bad input (non-numeric / 999 / -1) all return 302 with flash; page renders persisted value | ✓ |
+| R6 | CSV export — `text/csv; charset=utf-8`, `attachment; filename="rebooter-power-24h.csv"`, header row matches; unknown window falls back to 24h cleanly | ✓ |
+| R7 | Drift detection E2E against live `last_reported_config` from firmware `0.1.19-dev-central-safe`; bad-JSON + unknown-key both return 302 with flash; clear flow works | ✓ |
+| R9 | Negative validation — 15 deliberately-broken probe configs | ✗ **BUG-055** — 12/15 false-201 |
+| R10 | Long-poll concurrency — 4 parallel `Prefer: wait=5` polls all returned in ~5.16 s; `Preference-Applied: wait=5` echoed; no serialisation | ✓ |
+| R11 | Log review — zero errors / exceptions / 5xx / DB connection issues; APScheduler ticking on all 5 jobs | ✓ |
+| R12 | Power probe stale-sample gate — 12-min-old sample with 600 s max-age correctly returns `failure: reason='stale_sample'`; stricter 60 s also fails | ✓ |
+| R13 | Power probe success-vs-failure semantics — 4 cases (`power_above` threshold above/below avg, `power_below` threshold above/below avg) all match expected outcomes | ✓ |
+| R14 | Schema verification — `device_power_rollups` has the `uq_device_power_rollups_device_day` UNIQUE constraint (concern: module-level `UniqueConstraint()` declaration usually doesn't bind; verified that it does here) | ✓ |
+
+### Surfaces NOT validated this sweep (gap inventory)
+
+- Playwright UI flows on the new `/app/power`,
+  `/app/settings/integrations`, and drift-chip surfaces. The sweep
+  validated rendering via `grep -c` on the HTML body, not user
+  interaction or console-error monitoring.
+- Long-poll under saturation — only 4-wide tested; the worker
+  thread pool is 8 (default `REBOOTER_GUNICORN_THREADS`); behaviour
+  at 8+ concurrent long-polls not exercised.
+- Power rollup cron tick at 02:00 UTC — manually invoked, but the
+  actual scheduled fire not yet observed in a log.
+- SQLite test path for the v0.5.22 `desired_config` columns — the
+  `test_v0514_*.py` BigInteger autoincrement quirk noted at ship
+  time still blocks the SQLite path; production Postgres works.
+- nginx layer — route + redirect + alias behaviour against the new
+  `/app/power` + `/app/power/rate` + `/app/power/export.csv` paths.
+- The three firmware-coord-gated phases (Phase 3 hub absorption of
+  expanded heartbeat fields, Phase 4B recovery-aware drift
+  actions, Phase 4C schema alignment) — code not yet written.
+- SSH to `tmrwww02` — unblocked but never exercised this session.
+- Auto-rebind path — covered by `test_v0420_*` but not re-run live
+  this sweep (would require minting a real device + simulating
+  token loss; covered in the v0.5.24 merge ship's verification).
