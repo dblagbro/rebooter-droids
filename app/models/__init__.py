@@ -49,3 +49,4 @@ from app.models.sync import (  # noqa: E402,F401
     SyncCursor,
     Tombstone,
 )
+from app.models.external_epg import ExternalEpgCache  # noqa: E402,F401

@@ -535,6 +535,34 @@
   </p>
 </div>
 
+{# ── TV Guide (EPG) ───────────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>TV Guide (EPG)</h3>
+  <p class="muted" style="font-size:.85rem; margin-top:0">
+    A background job refreshes the US TV schedule from
+    <strong>TVMaze</strong> (free, no account) every 6 hours into a
+    local cache. No setup needed — it's a shared schedule, not a
+    per-operator source.
+  </p>
+  {% if epg_status %}
+    <ul class="muted" style="font-size:.85rem">
+      <li>Provider: <code>{{ epg_status.provider }}</code></li>
+      <li>Cached airings: <strong>{{ epg_status.cached_rows }}</strong></li>
+      <li>Last refreshed:
+        {% if epg_status.last_refreshed_at %}{{ epg_status.last_refreshed_at }}
+        {% else %}<span class="badge amber">never — refresh runs ~30 s after start</span>{% endif %}
+      </li>
+    </ul>
+  {% endif %}
+  <p class="muted" style="font-size:.85rem">
+    Rule probe: <code>epg_show_airing</code> — succeeds while a named
+    show is airing. Match by <code>show</code> title (substring) and an
+    optional TVMaze <code>network</code> name. Pair with
+    <code>roku_app_active</code> for "the show is on <em>and</em> the
+    Roku is on the right app".
+  </p>
+</div>
+
 <div class="v3-card" style="margin-top:1rem">
   <h3>How to use this in a watchdog rule</h3>
   <p>
