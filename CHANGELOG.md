@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.63] - 2026-05-15
+
+### Added — B17 Ship 3: MQTT broker subscriber
+
+Implements "Ship 3" from `docs/notes/2026-05-15-b17-remaining-integrations-design.md` §3.1 / §5 — the long-lived-subscriber pattern. Operator confirmed an existing Mosquitto broker on the Home Assistant host, so the hub subscribes to it (no broker bundled).
+
+- **New `mqtt` external-sensor kind**: `host`/`port` = broker; `config = {topics[], username?, password?, client_id}`. Topics support MQTT wildcards. `password` joins the redacted-config set.
+
+- **In-process subscriber** (`app/services/mqtt_subscriber.py`) — design Option A: one `paho-mqtt` client per source, started from the scheduler bootstrap (single-worker, advisory-lock-guarded — the paho daemon threads inherit that guarantee). `connect_async` + `loop_start()` with bounded auto-reconnect backoff; `on_connect` re-subscribes (subscriptions don't survive a reconnect). Each message → one `external_sensor_samples` row via the new `record_mqtt_message()` (`payload = {topic, msg, received_at}`). Best-effort throughout — a down broker never blocks the scheduler.
+
+- **`mqtt_topic_equals` watchdog probe**: resolves the most-recent message on a named topic (MQTT spans many topics per source — new `latest_sample_for_topic()` helper, Python-side topic filter per the design's first-ship option (a)) and matches it case-insensitively. E.g. power-cycle the garage opener when `garage/door/state` last published `open`.
+
+- **Dependency**: `paho-mqtt>=2.1,<3` (OSS, EPL/EDL — consistent with the open-source-only policy).
+
+- **Integrations UI**: MQTT add-source form, sample summary (`last: <topic> = <msg>`), `mqtt_topic_equals` probe reference card.
+
+### Notes
+- First-ship scope: the subscriber list is read at container start — adding/editing an MQTT source takes effect on the next restart (a live reconcile is a documented follow-up). The UI states this.
+- No schema change — topic filtering is Python-side; a `topic_key` column + index is the documented migration if message volume warrants it.
+
 ## [0.5.62] - 2026-05-15
 
 ### Added — B17 Ship 4: `host_awake` watchdog probe

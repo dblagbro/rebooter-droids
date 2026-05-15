@@ -137,11 +137,26 @@ def start() -> None:
     )
     sched.start()
     _scheduler = sched
+
+    # v0.5.63 (B17 Ship 3): start the MQTT subscriber here — this
+    # `start()` is the single-worker bootstrap (the caller guards it),
+    # so the long-lived paho threads inherit the one-worker guarantee.
+    # Best-effort: a broker that's down must not block the scheduler.
+    try:
+        from app.services import mqtt_subscriber
+
+        n_mqtt = mqtt_subscriber.start()
+    except Exception:
+        log.exception("MQTT subscriber failed to start")
+        n_mqtt = 0
+
     log.info(
         "APScheduler started: expire_commands every 30s, "
         "watchdog_tick every 10s, schedule_tick every 30s, "
         "external_sensors_tick every 30s, "
         "sync_replicator every 3s, "
         "power_rollups_daily @ 02:00 UTC, "
-        "audit_prune_daily @ 03:00 UTC"
+        "audit_prune_daily @ 03:00 UTC; "
+        "MQTT subscribers: %d",
+        n_mqtt,
     )

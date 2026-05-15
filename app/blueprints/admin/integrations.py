@@ -88,6 +88,18 @@ def settings_integrations_add_submit():
         sn = (request.form.get("webhook_server_name") or "").strip()
         if sn:
             config["server_name"] = sn
+    elif kind == "mqtt":
+        # v0.5.63 (B17 Ship 3): MQTT subscriber. Topics one-per-line.
+        topics_raw = (request.form.get("mqtt_topics") or "").strip()
+        config["topics"] = [
+            t.strip() for t in topics_raw.splitlines() if t.strip()
+        ]
+        u = (request.form.get("mqtt_username") or "").strip()
+        p = request.form.get("mqtt_password") or ""
+        if u:
+            config["username"] = u
+        if p:
+            config["password"] = p
     try:
         out = ext_svc.create_source(
             kind=kind,
