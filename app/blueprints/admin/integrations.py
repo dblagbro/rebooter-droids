@@ -57,6 +57,13 @@ def settings_integrations_add_submit():
             return redirect(url_for("admin_ui.settings_integrations_page"))
     elif kind == "ical":
         config["url"] = (request.form.get("ical_url") or "").strip()
+    elif kind == "solaredge":
+        config["site_id"] = (request.form.get("solaredge_site_id") or "").strip()
+        config["api_key"] = (request.form.get("solaredge_api_key") or "").strip()
+    elif kind == "enphase_envoy":
+        jwt = (request.form.get("envoy_jwt") or "").strip()
+        if jwt:
+            config["jwt"] = jwt
     try:
         out = ext_svc.create_source(
             kind=kind,

@@ -55,6 +55,8 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_ical_event_active(probe)
         if kind in ("power_above", "power_below", "power_zero_while_on"):
             return _probe_power(probe, kind)
+        if kind in ("solar_production_above", "solar_production_below"):
+            return _probe_solar(probe, kind)
         if kind == "tcp":
             ok = _probe_tcp(probe.get("host", ""), int(probe.get("port", 0)))
         elif kind == "http":
@@ -660,3 +662,72 @@ def _probe_power(probe: dict, kind: str) -> tuple[str, dict]:
         return "success", details
 
     return "failure", {"reason": f"unknown power probe kind: {kind}", **details}
+
+
+def _probe_solar(probe: dict, kind: str) -> tuple[str, dict]:
+    """v0.5.56 (P2.1): solar-production probe over a SolarEdge /
+    Enphase-Envoy external sensor source.
+
+    Rule shape:
+        probe = {"kind": "solar_production_above" | "solar_production_below",
+                 "source_id": "ext_…",
+                 "threshold_w": 3000,
+                 "max_sample_age_seconds": 1800}
+
+    Mirrors the B16 `power_above`/`power_below` semantics — "failure"
+    (builds toward firing the rule's action) on the actionable
+    condition:
+    - solar_production_above → fails when production_w > threshold_w
+      (e.g. "exporting > 3 kW → switch on the water heater")
+    - solar_production_below → fails when production_w < threshold_w
+
+    Stale-sample gate: solar sources poll every ~5 min, so if the most
+    recent sample is older than `max_sample_age_seconds` (default 1800s
+    = 30 min) the probe fails with `reason='stale_sample'` rather than
+    acting on a stale generation reading.
+    """
+    source_id = (probe.get("source_id") or "").strip()
+    if not source_id:
+        return "failure", {"reason": "missing source_id"}
+    try:
+        threshold = float(probe.get("threshold_w"))
+    except (TypeError, ValueError):
+        return "failure", {"reason": "missing threshold_w", "source_id": source_id}
+    try:
+        max_age = int(probe.get("max_sample_age_seconds") or 1800)
+    except (TypeError, ValueError):
+        max_age = 1800
+
+    from app.services.external_sensors import latest_sample
+
+    sample = latest_sample(source_id, max_age_seconds=max_age)
+    if sample is None:
+        return "failure", {
+            "reason": "stale_sample",
+            "source_id": source_id,
+            "max_sample_age_seconds": max_age,
+        }
+    payload = sample.get("payload") or {}
+    production_w = payload.get("production_w") if isinstance(payload, dict) else None
+    if production_w is None:
+        return "failure", {
+            "reason": "no_production_reading",
+            "source_id": source_id,
+            "sampled_at": sample.get("sampled_at"),
+        }
+    try:
+        production_w = float(production_w)
+    except (TypeError, ValueError):
+        return "failure", {"reason": "bad_production_reading", "source_id": source_id}
+
+    details = {
+        "source_id": source_id,
+        "production_w": round(production_w, 1),
+        "threshold_w": threshold,
+        "vendor": payload.get("vendor"),
+        "sampled_at": sample.get("sampled_at"),
+    }
+    if kind == "solar_production_above":
+        return ("failure" if production_w > threshold else "success"), details
+    # solar_production_below
+    return ("failure" if production_w < threshold else "success"), details
