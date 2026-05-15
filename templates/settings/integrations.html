@@ -65,6 +65,16 @@
           {% endif %}
         </td>
         <td>
+          {# v0.5.61 (B17 Ship 2): webhook sources need their inbound URL
+             + secret shown so the operator can wire up Plex/Jellyfin/
+             Shortcuts. Admin-only page — the secret is intentionally
+             not masked here. #}
+          {% if s.kind in ('plex', 'jellyfin', 'ios_shortcut') %}
+            <div style="font-size:.72rem; margin-bottom:.3rem" class="muted">
+              Webhook URL: <code>&lt;hub-base&gt;/api/v1/integrations/webhook/{{ s.id }}</code><br>
+              Header <code>X-Webhook-Secret: {{ s.config.webhook_secret or '—' }}</code>
+            </div>
+          {% endif %}
           {% if s.latest_sample %}
             {# v0.5.30 (Phase 2C): per-kind sample summary so operators
                see the same fields the rule engine reads. #}
@@ -106,6 +116,9 @@
                 {% if pl.interface_count %}
                   <span class="badge {{ 'green' if pl.interfaces_up == pl.interface_count else 'amber' }}">{{ pl.interfaces_up or 0 }} up</span>
                 {% endif %}
+              {% elif s.kind in ('plex', 'jellyfin', 'ios_shortcut') %}
+                {% set ev = pl.event or pl.NotificationType or pl.Event %}
+                last event: <strong>{{ ev or '(received)' }}</strong>
               {% else %}
                 <span class="muted">sample stored</span>
               {% endif %}
@@ -116,9 +129,12 @@
           {% endif %}
         </td>
         <td style="white-space:nowrap">
+          {# Webhook kinds receive inbound events — there is nothing to poll. #}
+          {% if s.kind not in ('plex', 'jellyfin', 'ios_shortcut') %}
           <form method="post" action="{{ url_for('admin_ui.settings_integrations_probe_submit', source_id=s.id) }}" style="display:inline">
             <button type="submit" class="btn-secondary" style="font-size:.8rem">Probe now</button>
           </form>
+          {% endif %}
           {% if s.kind == 'home_assistant' %}
             <a class="btn-secondary" style="font-size:.8rem"
                href="{{ url_for('admin_ui.settings_integrations_ha_entities_page', source_id=s.id) }}">Entities</a>
@@ -424,6 +440,52 @@
     <code>snmp_interface_down</code>,
     <code>snmp_throughput_above</code>/<code>below</code>,
     <code>snmp_error_rate_above</code>.
+  </p>
+</div>
+
+{# ── Webhook integrations (Plex / Jellyfin / iOS Shortcuts) ───────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Add a webhook integration (Plex / Jellyfin / iOS Shortcuts)</h3>
+  <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Type</span>
+      <select name="kind">
+        <option value="plex">Plex Media Server</option>
+        <option value="jellyfin">Jellyfin</option>
+        <option value="ios_shortcut">iOS Shortcut / generic webhook</option>
+      </select>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Display name</span>
+      <input type="text" name="display_name" placeholder="e.g. Living-room Plex" required>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:.2rem">
+      <span class="muted" style="font-size:.75rem">Server name (optional)</span>
+      <input type="text" name="webhook_server_name" placeholder="e.g. Plex-Living-Room">
+    </label>
+    <button type="submit" class="btn">Add</button>
+  </form>
+  <p class="muted" style="font-size:.85rem; margin-top:1rem">
+    No host needed — these <em>push</em> to the hub. On <code>Add</code> the
+    hub mints a per-source secret; the integration row then shows the
+    inbound URL and the <code>X-Webhook-Secret</code> header value to
+    paste into the sender:
+  </p>
+  <ul class="muted" style="font-size:.85rem">
+    <li><strong>Plex</strong> — Settings → Webhooks → Add Webhook → paste the URL.
+      Plex POSTs multipart; the secret goes in the <code>X-Webhook-Secret</code> header
+      (use a webhook proxy/Shortcut if your Plex can't set headers).</li>
+    <li><strong>Jellyfin</strong> — install the Webhook plugin → add a Generic
+      Destination → set the URL and add the <code>X-Webhook-Secret</code> header.</li>
+    <li><strong>iOS Shortcuts</strong> — a "Get Contents of URL" action, POST,
+      JSON body (e.g. <code>{"state":"home"}</code>), with the
+      <code>X-Webhook-Secret</code> header.</li>
+  </ul>
+  <p class="muted" style="font-size:.85rem">
+    Rule probes: <code>media_session_active</code> (Plex/Jellyfin — succeeds
+    while a movie is playing, so a reboot rule fires only when idle);
+    <code>webhook_field_equals</code> (generic — match any JSON field, e.g.
+    iOS Shortcut <code>state=home</code>).
   </p>
 </div>
 
