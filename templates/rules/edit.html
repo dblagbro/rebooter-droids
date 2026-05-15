@@ -156,6 +156,25 @@
     </p>
   </details>
 
+  {# v0.5.62 (B17 Ship 4): host_awake — a direct TCP-connect probe, no
+     external-sensor source needed. #}
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">host_awake</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "host_awake",
+  "host": "192.168.1.50",
+  "port": 22
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      TCP-connect check — succeeds while the host is reachable (powered
+      on / awake). <code>port</code> is optional, defaults to 22 (SSH).
+      No <code>source_id</code> needed — it probes the host directly.
+      A reboot rule using this fires only while the host is OFF
+      (e.g. "don't power-cycle the office switch while the work laptop
+      is on").
+    </p>
+  </details>
+
   <p class="muted" style="font-size:.85rem; margin-top:.6rem">
     Find your <code>source_id</code>s at
     <a href="{{ url_for('admin_ui.settings_integrations_page') }}">Settings → Integrations →</a>.
