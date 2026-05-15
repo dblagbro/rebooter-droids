@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.38] - 2026-05-15
+
+### Added — B1 RBAC Phase 4a (P4a): Scoped invitations + bindings API
+
+Fourth phase of B1 RBAC rollout per `docs/notes/2026-05-15-b1-rbac-design.md` §4 (P4).
+Ships backend and API support for scoped invitations and user binding management. UI for
+invite form and binding editor deferred to P4b.
+
+- **Scoped invitations**: `invitations.scope_payload` JSONB column stores binding specifications
+  that will be granted on redemption. Shape: `{"bindings": [{"scope_type": "site", "scope_id": "..."}]}`.
+  NULL = legacy global role only. Added via `_PENDING_COLUMNS` pattern in `bootstrap.py`.
+
+- **Invitation service updates** (`app/services/invitations.py`):
+  - `mint_invitation()` accepts optional `scope_payload` parameter with validation
+  - `redeem_invitation()` creates `role_bindings` rows from `scope_payload` after user creation
+  - Failed binding grants (e.g. resource deleted between invite/redeem) are logged but don't fail redemption
+
+- **Invitation API** (`app/blueprints/admin/invitations.py`):
+  - `POST /api/v1/admin/invitations` accepts `scope_payload` in request body
+  - Returns `has_scope_payload: true` in response when scope provided
+  - Audit row includes `has_scope: true` for tracking
+
+- **User bindings management API** (`app/blueprints/admin/users.py`):
+  - `GET /api/v1/admin/users/<id>/bindings` — list all bindings for a user
+  - `POST /api/v1/admin/users/<id>/bindings` — grant a binding (body: `{scope_type, scope_id?, role}`)
+  - `DELETE /api/v1/admin/users/<id>/bindings/<bid>` — revoke a binding
+  - All endpoints super_admin only, emit audit events (`user.binding_granted`, `user.binding_revoked`)
+
+### Changed
+- **Invitation model**: Added `scope_payload: Mapped[dict | None]` field (JSONB, nullable)
+
+### Notes
+- **P4a vs P4b**: This ship is API-complete. Operators can create scoped invitations and manage
+  bindings programmatically. UI for invite form pickers and user binding editor deferred to P4b.
+- **Backwards compatible**: Invitations without `scope_payload` behave exactly as before (global
+  role only, RBAC backfill grants default bindings).
+
 ## [0.5.37] - 2026-05-15
 
 ### Added — B1 RBAC Phase 3 (P3): Scope-aware list filtering

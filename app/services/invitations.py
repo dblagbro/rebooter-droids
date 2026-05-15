@@ -46,12 +46,39 @@ def mint_invitation(
     role: str,
     issued_by_user_id: str | None,
     note: str | None = None,
+    scope_payload: dict | None = None,
 ) -> tuple[Invitation, str]:
+    """v0.5.38 (P4): mint an invitation with optional scope bindings.
+
+    scope_payload shape: {"bindings": [{"scope_type": "site", "scope_id": "..."}, ...]}
+    NULL = legacy global role only (no explicit bindings created on redemption).
+    """
     email = email.lower().strip()
     if not email or "@" not in email:
         raise InvitationError("validation_failed", "valid email is required")
     if role not in ALL_ROLES:
         raise InvitationError("validation_failed", f"role must be one of {ALL_ROLES}")
+
+    # v0.5.38 (P4): validate scope_payload shape if provided
+    if scope_payload is not None:
+        if not isinstance(scope_payload, dict) or "bindings" not in scope_payload:
+            raise InvitationError("validation_failed", "scope_payload must have 'bindings' key")
+        bindings = scope_payload.get("bindings", [])
+        if not isinstance(bindings, list):
+            raise InvitationError("validation_failed", "scope_payload.bindings must be a list")
+        for b in bindings:
+            if not isinstance(b, dict):
+                raise InvitationError("validation_failed", "each binding must be a dict")
+            if "scope_type" not in b or "scope_id" not in b:
+                raise InvitationError(
+                    "validation_failed",
+                    "each binding must have scope_type and scope_id"
+                )
+            if b["scope_type"] not in ("site", "group", "device"):
+                raise InvitationError(
+                    "validation_failed",
+                    f"scope_type must be site/group/device, got {b['scope_type']}"
+                )
 
     secret = "inv_" + secrets.token_urlsafe(24)
     record = Invitation(
@@ -60,6 +87,7 @@ def mint_invitation(
         token_hash=_hash(secret),
         issued_by_user_id=issued_by_user_id,
         note=note,
+        scope_payload=scope_payload,
         expires_at=datetime.now(timezone.utc) + timedelta(
             seconds=_invitation_ttl(settings)
         ),
@@ -138,6 +166,7 @@ def redeem_invitation(
     password: str,
     display_name: str,
 ) -> dict:
+    """v0.5.38 (P4): redeem invitation and grant scope bindings if provided."""
     if len(password) < 8:
         raise InvitationError("validation_failed", "password must be at least 8 characters")
 
@@ -164,6 +193,26 @@ def redeem_invitation(
             )
         except UserError as e:
             raise InvitationError("validation_failed", str(e))
+
+        # v0.5.38 (P4): if scope_payload provided, create role_bindings
+        if inv.scope_payload:
+            from app.services import role_bindings as rb
+            bindings = inv.scope_payload.get("bindings", [])
+            for b in bindings:
+                try:
+                    rb.grant(
+                        user_id=user_dict["id"],
+                        scope_type=b["scope_type"],
+                        scope_id=b["scope_id"],
+                        role=inv.role,
+                    )
+                except Exception as e:
+                    # Log but don't fail redemption if a binding fails
+                    # (resource may have been deleted between invite and redeem)
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Failed to grant binding {b} to user {user_dict['id']}: {e}"
+                    )
 
         inv.consumed_at = now
         inv.consumed_by_user_id = user_dict["id"]
