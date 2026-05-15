@@ -71,6 +71,8 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_webhook_field_equals(probe)
         if kind == "mqtt_topic_equals":
             return _probe_mqtt_topic_equals(probe)
+        if kind == "epg_show_airing":
+            return _probe_epg_show_airing(probe)
         if kind in ("tcp", "host_awake"):
             # v0.5.62 (B17 Ship 4): `host_awake` is a TCP-connect alias —
             # reachable = the host is powered on / awake. Defaults to
@@ -1219,4 +1221,45 @@ def _probe_mqtt_topic_equals(probe: dict) -> tuple[str, dict]:
         "expected_value": expected,
         "actual_value": msg,
         "sampled_at": sample.get("sampled_at"),
+    }
+
+
+def _probe_epg_show_airing(probe: dict) -> tuple[str, dict]:
+    """v0.5.64 (B17 Layer 2): TV-guide probe — is a show airing right now?
+
+    Rule shape:
+        probe = {"kind": "epg_show_airing",
+                 "show": "Jeopardy",
+                 "network": "ABC"}    # network optional
+
+    `show` is a case-insensitive substring match against the TVMaze EPG
+    cache; `network` optionally restricts to a TVMaze network name.
+    **success = the show is airing now** (mirrors `roku_app_active` /
+    `ical_event_active`). Pair with `roku_app_active` for the
+    "Jeopardy is on AND the Roku is showing the right app" rule.
+    """
+    show = (probe.get("show") or "").strip()
+    if not show:
+        return "failure", {"reason": "missing show"}
+    network = (probe.get("network") or "").strip() or None
+
+    from app.services import epg
+
+    airing = epg.show_airing_now(show, network=network)
+    if airing is None:
+        # Distinguish "not on right now" from "EPG cache never loaded".
+        status = epg.epg_status()
+        reason = "epg_cache_empty" if not status.get("cached_rows") else "not_airing"
+        return "failure", {
+            "reason": reason,
+            "show": show,
+            "network": network,
+        }
+    return "success", {
+        "show": show,
+        "network": network,
+        "matched_show": airing.get("show_title"),
+        "channel": airing.get("channel_id"),
+        "episode_title": airing.get("episode_title"),
+        "airing_end": airing.get("airing_end"),
     }

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.64] - 2026-05-15
+
+### Added — B17 Layer 2: EPG (TV programming guide)
+
+Implements B17 Layer 2 per `docs/notes/2026-05-15-b17-layer2-epg-design.md` — operator picked the **TVMaze** provider (free, no auth; over Schedules Direct's $25/yr). "Run a watchdog rule while a named show is airing."
+
+- **`external_epg_cache` table** (`app/models/external_epg.py`): provider-agnostic cache of "what's airing on which channel when" — `provider`, `channel_id`, `airing_start`/`airing_end` (half-open window), `show_title`, episode metadata, `extra`. New table, no migration needed (`create_all()`).
+
+- **EPG service** (`app/services/epg.py`): `refresh_epg()` fetches today + tomorrow's US schedule from TVMaze `GET /schedule?country=US&date=…`, replaces that window in the cache, and runs a janitor (drops airings ended > 24 h ago). `show_airing_now()` answers the probe; `epg_status()` feeds the UI. A transient TVMaze outage never wipes the cache.
+
+- **Scheduler**: `epg_refresh` job every 6 h (first run ~30 s after start so the cache populates promptly after a deploy).
+
+- **`epg_show_airing` watchdog probe**: succeeds while a show (title substring, case-insensitive) is airing now, optionally restricted to a TVMaze `network`. No `source_id` — the EPG cache is global. Distinguishes "not airing" from "EPG cache never loaded". Pair with `roku_app_active` for "the show is on AND the Roku is on the right app".
+
+- **UI**: a TV Guide (EPG) status card on the integrations page (provider, cached-airing count, last refresh) + an `epg_show_airing` probe reference card in the rule editor.
+
+### Notes
+- The design's companion `epg_channel_mappings` table (operator-friendly "Spectrum 27 = ABC" labels) is **deferred** — the v1 probe matches the TVMaze network name directly, which is sufficient in a JSON-rule world. A follow-up if operators want a friendly channel picker.
+- Schedules Direct stays available as a future `provider` value — the schema and provider column are already provider-agnostic; no migration needed to add it.
+
 ## [0.5.63] - 2026-05-15
 
 ### Added — B17 Ship 3: MQTT broker subscriber
