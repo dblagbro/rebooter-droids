@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.55] - 2026-05-15
+
+### Added — P1.2: Power data-quality surfacing
+
+Second phase of the P1 work track per `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §6. Makes the real-vs-synthetic split in power telemetry explicit so charts and rollups never silently average measured CSE7766 data with synthetic firmware fallback.
+
+- **Source taxonomy** (`app/services/device_power.py`): `steady`/`burst` = real CSE7766 measurement; `synthetic` = firmware fallback. `source_kind()` classifies a sample as `real`/`synthetic`. Every serialized sample now carries `source_kind`.
+
+- **`source_flags` decoder**: `decode_source_flags()` turns the opaque integer bitfield into `{raw, bits_set: [...]}`. Each sample carries `source_flags_decoded`. Bit *semantics* are firmware-owned and not yet published — see the firmware ask below.
+
+- **`power_source_breakdown()`**: cheap `GROUP BY source` count over a window — `{total, real, synthetic, by_source}`. The data-quality primitive.
+
+- **Power-samples API** (`GET /api/v1/admin/devices/<id>/power-samples`): adds an optional `?source=` filter (e.g. `?source=steady` to exclude synthetic samples) and a `source_breakdown` block over the full window. Samples carry `source_kind` + `source_flags_decoded`.
+
+- **Rollup data-quality** (`device_power_rollups.synthetic_sample_count`): new nullable column records how many of a rollup day's samples were synthetic. `compute_daily_rollups()` populates it via `SUM(CASE WHEN source='synthetic')`. `_serialize_rollup()` exposes `synthetic_sample_count` + `is_synthetic_tainted` (None on pre-P1.2 rollups = "quality unknown"). Added via the `_PENDING_COLUMNS` pattern.
+
+- **Device-detail UI**: the Power section shows a last-24h telemetry-quality line — green when all samples are real, amber when synthetic data is mixed in ("charts below mix measured and fallback data").
+
+### Firmware asks (recorded for the firmware team)
+- **`source_flags` bit dictionary**: publish the meaning of each bit so `decode_source_flags()` can surface named flags, not just bit indices.
+- **Frame counts in the heartbeat**: `power_valid_frame_count` / `power_invalid_frame_count` / `power_chip_seen` are exposed on the device's `/api/status` (the `.48` snapshot showed ~35% invalid frames — a real operational signal) but are **not** in the heartbeat or power-samples payload, so the hub cannot surface them yet. Adding them to the heartbeat (alongside the existing `power_*` fields) would let a future hub release persist and chart UART/frame health.
+
+### Notes
+- P1.3 (loaded-power validation + interactive chart) remains blocked on the firmware team's loaded-power capture — every real CSE7766 sample so far is no-load (0 W).
+
 ## [0.5.54] - 2026-05-15
 
 ### Added — P1.1: JSON power query API

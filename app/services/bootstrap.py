@@ -117,6 +117,9 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("devices", "reported_central_enabled", "BOOLEAN"),
     ("devices", "reported_central_registered", "BOOLEAN"),
     ("devices", "reported_central_state", "VARCHAR(40)"),
+    # v0.5.55 (P1.2): per-rollup synthetic-sample count for data-quality
+    # surfacing. Nullable — pre-P1.2 rollups stay NULL.
+    ("device_power_rollups", "synthetic_sample_count", "INTEGER"),
 )
 
 

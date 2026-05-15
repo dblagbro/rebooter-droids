@@ -216,6 +216,24 @@
     </div>
   </div>
 
+  {# v0.5.55 (P1.2): telemetry data-quality — real (CSE7766) vs
+     synthetic-fallback sample mix over the last 24h, so the operator
+     never reads the charts below as all-measured when they aren't. #}
+  {% set psb = device.power_source_breakdown %}
+  {% if psb and psb.total %}
+    <div class="muted" style="font-size:.78rem; margin-bottom:1rem">
+      Last-24h telemetry quality:
+      {% if psb.synthetic == 0 %}
+        <span class="badge green" title="all samples measured off the CSE7766 chip">{{ psb.real }} real sample{{ '' if psb.real == 1 else 's' }}</span>
+      {% elif psb.real == 0 %}
+        <span class="badge amber" title="firmware emitted synthetic fallback — no fresh CSE7766 readings">{{ psb.synthetic }} synthetic — no real CSE7766 data</span>
+      {% else %}
+        <span class="badge amber" title="window mixes measured and synthetic-fallback samples">{{ psb.real }} real / {{ psb.synthetic }} synthetic</span>
+        <span> — charts below mix measured and fallback data</span>
+      {% endif %}
+    </div>
+  {% endif %}
+
   {# v0.5.29 (B16 Phase 1C): 14-day avg-watts sparkline from
      device_power_rollups. Inline SVG — no JS dep. Empty array means
      the rollup job hasn't run yet (or no samples to aggregate); we
