@@ -1,4 +1,15 @@
-# Firmware `apply_config` schema — v0.1 (locked)
+# Firmware `apply_config` schema — v0.1 (historical)
+
+> Warning: this file is now **historical context**, not the current
+> authoritative firmware truth. The current reconciled contract for the
+> `0.1.18-dev-central-safe` line is:
+>
+> - `S:\code\rebooter-droids\docs\notes\2026-05-14-firmware-config-and-reported-schema.md`
+> - `S:\code\rebooter-droids\docs\notes\2026-05-14-firmware-status-and-recovery-contract.md`
+>
+> This older file reflects an earlier planning model and no longer matches
+> the real firmware in several places, especially around `internet`,
+> `notifications`, and heartbeat `reported_config`.
 
 Source: firmware team delivery 2026-05-13, captured here for B21
 (`desired_config` blob + drift detection) reference. The hub-side

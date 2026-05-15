@@ -4385,6 +4385,27 @@ Reliability notes:
 
 ---
 
+### 2026-05-15 - repo-only audit note for renamed-test soak follow-up
+
+This run did not capture fresh live hub/device probes; local shell and
+browser access from the automation workstation were unavailable, so the
+check used the already-committed soak notes plus the current project
+docs as its source of truth.
+
+Concrete note worth carrying forward:
+- The checked-in evidence does **not** yet justify treating fleet-wide
+  desired-name convergence as closed for the ordinary devices.
+- Repeated 2026-05-14 soak entries above still show concrete hub-vs-local
+  name drift on `.30`, `.225`, and `.207`.
+- `docs/bug-log.md` marks BUG-053 fixed on 2026-05-15, but that closure
+  is narrower than the repeated soak evidence here: it proves the hub-side
+  rename push / desired-config / drift-detection path on `.48`, not
+  fleet-wide end-to-end convergence of the ordinary renamed devices.
+
+Until a fresh live sweep shows `.30`, `.225`, and `.207` matching the hub
+through their local UI/API surfaces, treat BUG-053 as **hub-plumbing
+fixed but fleet convergence not yet re-proven**.
+
 ## 2026-05-15 — post-v0.5.33 regression-sweep observations
 
 ### Environment
