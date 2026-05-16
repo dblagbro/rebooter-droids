@@ -1,7 +1,26 @@
-# Pause State & Resume Charter — 2026-05-15 (v0.5.67)
+# Pause State & Resume Charter — 2026-05-15 (v0.5.68)
 
 **This document overrides the priority view in `BACKLOG.md` and every
 prior pause-state note.** Read it first on resume.
+
+## Progress (updated 2026-05-15, post v0.5.68)
+
+- **P-REG — DONE (v0.5.68, both hubs live).** Writing the end-to-end
+  adoption test the suite never had immediately surfaced **two** bugs,
+  both fixed: (1) the showstopper — RBAC P2 (v0.5.36) made
+  `devices.site_id` NOT NULL but `adopt()` mints siteless tokens, so
+  `/register` 500'd for *every* announce-adopted device for ~32
+  versions; (2) a lost `/announce` response permanently stranded a
+  device at adoption. See CHANGELOG `[0.5.68]`. All three fixes
+  verified live on tmrwww01 + tmrwww02.
+- **P-QA — first gate DONE.** `.github/workflows/ci.yml`: every push /
+  PR builds the image, boots it on a throwaway Postgres, and runs the
+  `-m ci` bucket (21 registration/device-API/heartbeat tests). First
+  green run confirmed. The v0.5.36-class regression can no longer
+  merge silently. *Remaining P-QA:* widen the gate — triage the other
+  ~56 test files, add `tests/unit/` in-process tests. See
+  `docs/test-plan.md` §"How to widen the gate".
+- **P-UI — NOT STARTED.** Still the next charter item. See §P-UI below.
 
 ## Why this document exists
 
