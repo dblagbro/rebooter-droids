@@ -3,9 +3,14 @@
 import time
 import uuid
 
+import pytest
 import requests
 
 from .conftest import unique_suffix
+
+# Verified green against a fresh ephemeral instance — part of the
+# GitHub Actions CI gate. See docs/test-plan.md.
+pytestmark = pytest.mark.ci
 
 
 def _mint_enrollment(base_url, admin_headers, hint=None):
