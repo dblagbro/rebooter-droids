@@ -1,0 +1,555 @@
+{
+    "date":  "2026-05-15T19:11:30",
+    "base_url":  "http://192.168.1.48",
+    "firmware_path":  "C:\\dev\\rebooter-firmware\\.pio\\build\\sonoff_s31\\firmware.bin",
+    "cycles":  1,
+    "baseline":  {
+                     "firmware_version":  "0.1.28-dev-central-safe",
+                     "recovery_mode":  false,
+                     "central_state":  "disabled",
+                     "last_boot_id":  1
+                 },
+    "cycle_results":  [
+                          {
+                              "cycle":  1,
+                              "upload_accepted":  true,
+                              "upload_exit_code":  0,
+                              "upload_stdout":  "{\"ok\":true,\"rebooting\":true}",
+                              "first_reachable_seconds":  14,
+                              "samples":  [
+                                              {
+                                                  "at":  "2026-05-15T19:11:59",
+                                                  "uptime_seconds":  13,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:01",
+                                                  "uptime_seconds":  15,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:03",
+                                                  "uptime_seconds":  18,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:05",
+                                                  "uptime_seconds":  20,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:07",
+                                                  "uptime_seconds":  22,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:09",
+                                                  "uptime_seconds":  24,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:11",
+                                                  "uptime_seconds":  26,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:13",
+                                                  "uptime_seconds":  28,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:16",
+                                                  "uptime_seconds":  30,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:18",
+                                                  "uptime_seconds":  32,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:20",
+                                                  "uptime_seconds":  34,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:22",
+                                                  "uptime_seconds":  36,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:24",
+                                                  "uptime_seconds":  39,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:26",
+                                                  "uptime_seconds":  41,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "unknown"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:28",
+                                                  "uptime_seconds":  43,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:30",
+                                                  "uptime_seconds":  45,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:32",
+                                                  "uptime_seconds":  47,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:34",
+                                                  "uptime_seconds":  49,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:37",
+                                                  "uptime_seconds":  51,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:39",
+                                                  "uptime_seconds":  53,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:41",
+                                                  "uptime_seconds":  55,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:43",
+                                                  "uptime_seconds":  58,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:45",
+                                                  "uptime_seconds":  60,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:47",
+                                                  "uptime_seconds":  62,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:49",
+                                                  "uptime_seconds":  64,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:51",
+                                                  "uptime_seconds":  66,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:53",
+                                                  "uptime_seconds":  68,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:55",
+                                                  "uptime_seconds":  70,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:12:58",
+                                                  "uptime_seconds":  72,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:00",
+                                                  "uptime_seconds":  74,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:02",
+                                                  "uptime_seconds":  76,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:04",
+                                                  "uptime_seconds":  79,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:06",
+                                                  "uptime_seconds":  81,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:08",
+                                                  "uptime_seconds":  83,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:10",
+                                                  "uptime_seconds":  85,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:12",
+                                                  "uptime_seconds":  87,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:14",
+                                                  "uptime_seconds":  89,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:16",
+                                                  "uptime_seconds":  91,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:18",
+                                                  "uptime_seconds":  93,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:21",
+                                                  "uptime_seconds":  95,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:23",
+                                                  "uptime_seconds":  97,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:25",
+                                                  "uptime_seconds":  99,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:27",
+                                                  "uptime_seconds":  102,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:29",
+                                                  "uptime_seconds":  104,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:31",
+                                                  "uptime_seconds":  106,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:33",
+                                                  "uptime_seconds":  108,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:35",
+                                                  "uptime_seconds":  110,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:37",
+                                                  "uptime_seconds":  112,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:40",
+                                                  "uptime_seconds":  114,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:42",
+                                                  "uptime_seconds":  116,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              },
+                                              {
+                                                  "at":  "2026-05-15T19:13:44",
+                                                  "uptime_seconds":  118,
+                                                  "firmware_version":  "0.1.29-dev-central-safe",
+                                                  "recovery_mode":  false,
+                                                  "last_known_good_restored":  false,
+                                                  "central_state":  "disabled",
+                                                  "central_registered":  true,
+                                                  "health_state":  "healthy"
+                                              }
+                                          ],
+                              "saw_recovery_mode":  false,
+                              "saw_recovery_state":  false,
+                              "saw_last_known_good_restored":  false,
+                              "final_status":  {
+                                                   "at":  "2026-05-15T19:13:44",
+                                                   "uptime_seconds":  118,
+                                                   "firmware_version":  "0.1.29-dev-central-safe",
+                                                   "recovery_mode":  false,
+                                                   "last_known_good_restored":  false,
+                                                   "central_state":  "disabled",
+                                                   "central_registered":  true,
+                                                   "health_state":  "healthy"
+                                               },
+                              "new_boot_observed":  true,
+                              "max_boot_id":  2,
+                              "seq_monotonic":  true
+                          }
+                      ],
+    "summary":  {
+                    "failures":  [
+
+                                 ],
+                    "passed":  true
+                }
+}
