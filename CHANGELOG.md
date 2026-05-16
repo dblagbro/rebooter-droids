@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.71] - 2026-05-16
+
+### Added — B11: sync-emission ORM hooks — multi-hub sync converges end-to-end
+
+v0.5.70 completed the applier but found emission was the real gap (most syncable mutations emitted nothing — `sites.py` had zero audit calls, device-create on `/register` was unaudited, `user` verbs didn't match). This release fixes emission properly.
+
+- **`app/services/sync_emission.py`** (new) — mapper-level `after_insert`/`after_update`/`after_delete` listeners on the four syncable models (Device, Site, Group, User). Every row write lands an `outbox_events` row on the *same* connection/transaction as the mutation. Emission can no longer miss a mutation or depend on audit-action-string parsing.
+- **`after_update` is change-filtered** — emits only when a column *outside* a per-model ignore set changed. Device's ignore set is its heartbeat/telemetry columns (`last_heartbeat_at`, `reported_*`, `firmware_version`, `local_ip`, `last_reported_config`); those refresh per-hub from the device's own heartbeats, so replicating them via the outbox would be redundant and would emit on every heartbeat. Config changes (rename, site/group, desired_config, registration_state, protection, …) still emit.
+- **Loop prevention** — the applier writes to these same tables; it now runs inside `sync.suppress_emission()` (a ContextVar guard) and flushes within it, so an applied peer event never re-emits. No hub-to-hub ping-pong.
+- **Old audit-path emission removed** — `audit._should_sync_action` / `_emit_outbox_for_scoped_action` and the emit call in `record()` are gone. The audit log and the sync outbox are now fully independent concerns.
+- **Replicator batch isolation** (`sync_replicator._apply_event_batch`) — each event is now applied in its *own* transaction, and the sync cursor advances past every event (applied, skipped, or errored). Pre-fix, one un-appliable event (e.g. a unique-constraint collision) poisoned the whole batch's transaction and the cursor never advanced — sync wedged forever, retrying the same failing batch. Found by the two-instance convergence test. Errors are logged and surfaced on the cursor's `last_error`.
+- `OutboxEvent.seq` uses `BigInteger().with_variant(Integer, "sqlite")` so the sync layer is unit-testable without Postgres (same precedent as `DeviceHeartbeat`).
+- `tests/qa/test_v0571_b11_emission.py` — 6-case in-process unit test (create/update/delete emit, `updated_at`-only no-emit, suppression, device telemetry-vs-config filter). Runs in the `-m ci` gate.
+
+### B11 status
+
+With the applier (v0.5.70) and emission (v0.5.71), B11 multi-hub sync converges create/update/delete for device/site/group/user. Validated with a two-instance convergence test (a mutation on hub A replicates to hub B). `sync.enabled` remains **off** — re-enabling it is the operator's call.
+
 ## [0.5.70] - 2026-05-16
 
 ### Added — B11: the sync applier (create/update upsert + LWW) is complete

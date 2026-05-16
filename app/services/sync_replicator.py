@@ -120,42 +120,56 @@ def _fetch_events_from_peer(
 def _apply_event_batch(peer_id: str, events: list[dict]) -> dict[str, int]:
     """Apply a batch of events from a peer hub.
 
-    Returns stats: {"applied": N, "skipped": M, "errors": K}
+    Each event is applied in **its own transaction** so one
+    un-appliable event (e.g. a unique-constraint collision) rolls back
+    only itself and cannot poison the rest of the batch. The cursor
+    advances past every event — applied, skipped, or errored — so a
+    single poison event can never wedge the replicator into retrying
+    the same batch forever; errors are logged and surfaced on the
+    sync cursor's `last_error`.
+
+    Returns stats: {"applied": N, "skipped": M, "errors": K}.
     """
+    from app.models.sync import OutboxEvent
+
     stats = {"applied": 0, "skipped": 0, "errors": 0}
+    last_seq: int | None = None
+    last_error: str | None = None
 
-    with session_scope() as session:
-        for event_data in events:
-            try:
-                # Reconstruct OutboxEvent from JSON
-                from app.models.sync import OutboxEvent
-
-                event = OutboxEvent(
-                    seq=event_data["seq"],
-                    at=event_data["at"],  # ISO string, SQLAlchemy will parse
-                    event_type=event_data["event_type"],
-                    entity_type=event_data["entity_type"],
-                    entity_id=event_data["entity_id"],
-                    payload=event_data["payload"],
-                    scope_claims=event_data.get("scope_claims"),
-                    tombstone_for=event_data.get("tombstone_for"),
-                )
-
-                # Apply the event
+    for event_data in events:
+        seq = event_data.get("seq")
+        try:
+            event = OutboxEvent(
+                seq=seq,
+                at=event_data["at"],  # ISO string — the applier coerces it
+                event_type=event_data["event_type"],
+                entity_type=event_data["entity_type"],
+                entity_id=event_data["entity_id"],
+                payload=event_data["payload"],
+                scope_claims=event_data.get("scope_claims"),
+                tombstone_for=event_data.get("tombstone_for"),
+            )
+            # Fresh transaction per event — a flush failure rolls back
+            # this event alone, leaving the next one a clean session.
+            with session_scope() as session:
                 applied = sync_svc.apply_outbox_event(session, event)
-                if applied:
-                    stats["applied"] += 1
-                else:
-                    stats["skipped"] += 1
+            stats["applied" if applied else "skipped"] += 1
+        except Exception as e:
+            log.exception(
+                "Sync: event seq=%s from peer %s could not be applied — "
+                "skipping it so the batch is not wedged",
+                seq, peer_id,
+            )
+            stats["errors"] += 1
+            last_error = f"seq={seq}: {type(e).__name__}: {e}"
+        # Advance past this event regardless of outcome — a poison event
+        # must never block forward progress.
+        if seq is not None:
+            last_seq = seq
 
-            except Exception:
-                log.exception("Failed to apply event seq=%d from peer %s", event_data.get("seq"), peer_id)
-                stats["errors"] += 1
-
-        # Update cursor after successful batch
-        if events and stats["errors"] == 0:
-            last_seq = events[-1]["seq"]
-            sync_svc.update_sync_cursor(session, peer_id, last_seq)
+    if last_seq is not None:
+        with session_scope() as session:
+            sync_svc.update_sync_cursor(session, peer_id, last_seq, error=last_error)
 
     return stats
 
