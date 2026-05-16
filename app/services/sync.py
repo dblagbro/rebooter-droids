@@ -26,6 +26,7 @@ from app.models import (
 )
 from app.models.sync import OutboxEvent, SyncCursor, Tombstone
 from app.models._helpers import utcnow
+from app.services.sites import resolve_default_site_id
 
 log = logging.getLogger(__name__)
 
@@ -119,7 +120,12 @@ def update_sync_cursor(
     last_seq: int,
     error: str | None = None,
 ) -> None:
-    """Update the sync cursor for a peer hub."""
+    """Update the sync cursor for a peer hub.
+
+    ``error`` is the last error from the batch, or None if it applied
+    cleanly. A clean batch **clears** any stale `last_error` — otherwise
+    a one-off error would show on the cursor forever.
+    """
     cursor = session.scalar(
         select(SyncCursor).where(SyncCursor.peer_hub_id == peer_hub_id)
     )
@@ -127,9 +133,9 @@ def update_sync_cursor(
     if cursor:
         cursor.last_seq = last_seq
         cursor.updated_at = now
-        if error:
-            cursor.last_error = error
-            cursor.last_error_at = now
+        # Set on error, clear on a clean batch.
+        cursor.last_error = error
+        cursor.last_error_at = now if error else None
     else:
         cursor = SyncCursor(
             peer_hub_id=peer_hub_id,
@@ -170,12 +176,24 @@ def add_tombstone(
 
 # ── Syncable entities ────────────────────────────────────────────────
 # Entity types whose create/update/delete mutations replicate between
-# hubs. Mirrors `audit._should_sync_action`'s `syncable_types`.
+# hubs (see `sync_emission` for the emission side).
 _SYNCABLE_MODELS: dict[str, type] = {
     "device": Device,
     "site": Site,
     "group": Group,
     "user": User,
+}
+
+# Unique natural-key column per syncable entity. When an incoming
+# create's id is not found locally, the applier reconciles on this
+# column before inserting — the *same* logical entity can exist on the
+# peer under a *different* id (each hub bootstraps its own admin user
+# and "Default" site). Reconciling on the natural key turns a would-be
+# UNIQUE-constraint collision into a converging update.
+_NATURAL_KEY: dict[str, str] = {
+    "user": "email",
+    "site": "name",
+    "group": "name",
 }
 
 
@@ -294,10 +312,33 @@ def _apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
         )
         return False
 
+    # Remap an unknown site_id. Device and Group both FK `sites.id`;
+    # the peer's row may reference a site that exists here under a
+    # different id — most often the "Default" site, which each hub
+    # bootstraps independently. Point it at the local Default so the
+    # FK holds (applies to both the create and the update path).
+    if event.entity_type in ("device", "group") and incoming.get("site_id"):
+        if session.get(Site, incoming["site_id"]) is None:
+            incoming["site_id"] = resolve_default_site_id(session)
+
     incoming_updated = _as_utc(
         _coerce_datetime(payload.get("updated_at")) or _coerce_datetime(event.at)
     )
     existing = session.get(model, event.entity_id)
+
+    if existing is None:
+        # No row with this id. The same logical entity may exist
+        # locally under a different id (each hub bootstraps its own
+        # admin user / "Default" site). Reconcile on the unique natural
+        # key so the create becomes a converging update, not a
+        # UNIQUE-constraint collision.
+        natural_key = _NATURAL_KEY.get(event.entity_type)
+        if natural_key and incoming.get(natural_key) is not None:
+            existing = session.scalar(
+                select(model).where(
+                    getattr(model, natural_key) == incoming[natural_key]
+                )
+            )
 
     if existing is None:
         incoming.setdefault("id", event.entity_id)
