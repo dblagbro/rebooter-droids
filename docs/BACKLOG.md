@@ -1,5 +1,13 @@
 # Backlog
 
+> ⚠️ **PRIORITY OVERRIDE — read first.** As of 2026-05-15 the active
+> charter is `docs/notes/2026-05-15-pause-state-and-resume-charter.md`,
+> which supersedes the priority view in this file. Three operator-named
+> product problems — **failing registrations, terrible UI, poor QA** —
+> outrank every `Bxx` item and every refactor target below. Do not
+> resume from this file's "Truly open" table until P-REG / P-QA / P-UI
+> in the charter are addressed.
+
 Last updated: **2026-05-15 PM** (post v0.5.60).
 
 The canonical "what's still owed" list. Historical B1–B24 entries +
