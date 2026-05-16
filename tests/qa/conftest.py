@@ -144,8 +144,18 @@ def disposable_admin_session(base_url, admin_token):
 
 @pytest.fixture
 def chromium_browser():
-    """Headless Chromium tied to the playwright-installed binary."""
-    from playwright.sync_api import sync_playwright
+    """Headless Chromium tied to the playwright-installed binary.
+
+    When playwright isn't installed (e.g. the CI gate, which does not
+    pull a browser), browser-backed tests *skip* cleanly rather than
+    erroring — so a mixed file can carry both API and browser tests.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ModuleNotFoundError:
+        import pytest as _pytest
+
+        _pytest.skip("playwright not installed — browser test skipped")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
