@@ -38,11 +38,26 @@ P0–P3a track**:
 - **P3a** (v0.5.60) — RFC-006 multimodal-ingest decisions locked;
   consistent `modality` tagging shipped.
 
-### Truly open
+### Charter work — PRIORITY (operator-named problems)
+
+Per `docs/notes/2026-05-15-pause-state-and-resume-charter.md`. These
+outrank every item in the "Truly open" table below.
+
+| Item | Size | Status |
+|---|---|---|
+| **P-REG** — fix failing registrations | — | ✅ **DONE v0.5.68** — fixed the `site_id` NOT NULL 500 + the lost-`/announce` token strand. |
+| **P-QA gate 1** — GitHub Actions CI | — | ✅ **DONE** — `.github/workflows/ci.yml`; build + `-m ci` registration bucket, green. |
+| **P-QA gate widening** | medium | **open** — triage the ~56 non-CI test files, mark passing ones `ci`, add a `tests/unit/` in-process tree. See `docs/test-plan.md` §"How to widen the gate". |
+| **P-UI** — the "terrible UI" problem | large | **open / IN PROGRESS** — heuristic defect walkthrough of every page (desktop + mobile) → numbered defect list → fix top-down with operator. Do NOT write a 7th redesign plan. |
+| **BUG-055** — per-kind probe validation gap | small | **open** — `create_rule()`/`update_rule()` accept malformed probe configs (12/15 broken cases → 201). Safety bug: a typo'd `threshold_w` on a `cycle` rule can power-cycle a device. See `docs/bug-log.md`. |
+| **BUG-054** — `custom` probe kind has no runtime branch | small | **open** — canonical kind with no `_run_probe` handler; such rules silently fail every interval. See `docs/bug-log.md` (recommended fix: drop the dead kind). |
+
+### Truly open (below the charter work)
 
 | Item | Size | Blocker / status |
 |---|---|---|
-| **B11** finish `apply_outbox_event()` create/update upsert + LWW | medium | **Tracked debt** — B11 phases 1–7 shipped (v0.5.45–.50) but the applier only handles deletes/tombstones; non-deleted entity state does not converge. Must land **before `sync.enabled=true`** is ever set. See `docs/notes/2026-05-15-hub-team-status-sync-and-plan.md` §5.1. |
+| **B11 applier** — `apply_outbox_event()` create/update upsert + LWW | — | ✅ **DONE v0.5.70** — generic upsert for device/site/group/user, last-writer-wins on `updated_at`, idempotent, tz-safe. 7-case unit test. |
+| **B11 emission coverage** — make every syncable mutation emit an outbox event | medium | **open — the real remaining B11 gap.** v0.5.70 found emission only fires where a mutation is audited with a syncable action: `site` mutations aren't audited at all, `group` only audits deletes, `user` verbs don't match, and device-create on `/register` isn't audited. Recommended fix: ORM `after_insert`/`after_update` hooks on the four synced models so emission can't miss a mutation or depend on audit-string parsing. **Must land before `sync.enabled=true`.** |
 | **P1.3 loaded-power validation** | small | **Firmware-blocked** — every real CSE7766 sample is no-load (0 W); cost/kWh analytics can't be validated until firmware delivers a known-load capture. |
 | **P3b+** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
 | **B17 remaining integrations** — MQTT pub/sub, Plex/Jellyfin webhooks, Google Calendar OAuth, iOS Shortcuts | ~4–6 h each | none — Solar + HA-deepening done (P2.1/P2.4); these four remain, design in `docs/notes/2026-05-15-b17-remaining-integrations-design.md`. |
