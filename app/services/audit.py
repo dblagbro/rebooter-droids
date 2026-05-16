@@ -72,7 +72,7 @@ def _emit_outbox_for_scoped_action(
 
         with session_scope() as session:
             if is_delete:
-                # For deletes, emit tombstone
+                # For deletes, emit a tombstone event.
                 sync_svc.emit_outbox_event(
                     session,
                     event_type=event_type,
@@ -82,17 +82,28 @@ def _emit_outbox_for_scoped_action(
                     tombstone_for=target_id,
                     scope_claims=scope_claim,
                 )
-            elif entity_snapshot:
-                # For creates/updates, emit full entity payload
-                sync_svc.emit_outbox_event(
-                    session,
-                    event_type=event_type,
-                    entity_type=target_type,
-                    entity_id=target_id,
-                    payload=entity_snapshot,
-                    scope_claims=scope_claim,
+            else:
+                # For creates/updates, emit the full entity payload.
+                # v0.5.70 (B11): snapshot the entity here — the mutation
+                # is already committed by the time record() runs, so no
+                # call-site needs to assemble or pass `entity_snapshot`.
+                snapshot = entity_snapshot or sync_svc.snapshot_entity(
+                    session, target_type, target_id
                 )
-            # else: no entity_snapshot provided for a non-delete; skip
+                if snapshot:
+                    sync_svc.emit_outbox_event(
+                        session,
+                        event_type=event_type,
+                        entity_type=target_type,
+                        entity_id=target_id,
+                        payload=snapshot,
+                        scope_claims=scope_claim,
+                    )
+                else:
+                    log.warning(
+                        "outbox: no snapshot for %s/%s (action=%s) — event skipped",
+                        target_type, target_id, action,
+                    )
     except Exception:
         log.exception(
             "outbox emit failed for action=%s target=%s/%s",
@@ -140,14 +151,16 @@ def record(
     except Exception:
         log.exception("audit emit failed for action=%s target=%s/%s", action, target_type, target_id)
 
-    # v0.5.48 (B11 Phase 4): Emit outbox events for syncable mutations
+    # v0.5.70 (B11): record() is the single outbox-emission point — every
+    # syncable mutation flows through here (record_scoped() calls record()).
+    # _emit_outbox_for_scoped_action snapshots the entity itself.
     if _should_sync_action(action, target_type):
         _emit_outbox_for_scoped_action(
             action=action,
             target_type=target_type,
             target_id=target_id,
-            scope_claim=None,  # Infer from target_type/target_id
-            entity_snapshot=None,  # TODO: pass from callers incrementally
+            scope_claim={"scope_type": target_type, "scope_id": target_id},
+            entity_snapshot=None,
         )
 
 
@@ -166,14 +179,12 @@ def record_scoped(
     """v0.5.35 (B1 RBAC Phase 1) — audit a per-resource mutation with its
     RBAC scope claim attached.
 
-    v0.5.45 (B11 multi-hub sync) — this is now the outbox-emission
-    choke-point per RFC-004 Option C. Every scoped mutation emits both
-    an audit_events row AND an outbox_events row. The outbox event
-    carries the full entity snapshot (if provided) or a tombstone
-    marker (for deletes).
+    v0.5.70 (B11 multi-hub sync) — outbox emission is handled by
+    ``record()`` (the single emission point; this function calls it),
+    which snapshots the entity itself. ``entity_snapshot`` is retained
+    for API compatibility but is no longer required.
 
     ``scope_claim`` shape: ``{"scope_type": "device", "scope_id": "..."}``.
-    ``entity_snapshot``: full entity dict for creates/updates; omit for deletes.
     Best-effort: never raises (see ``record``)."""
     merged = dict(details or {})
     if scope_claim is not None:
@@ -186,15 +197,6 @@ def record_scoped(
         target_id=target_id,
         details=merged,
         ip=ip,
-    )
-
-    # v0.5.45 (B11): Emit outbox event for multi-hub sync
-    _emit_outbox_for_scoped_action(
-        action=action,
-        target_type=target_type,
-        target_id=target_id,
-        scope_claim=scope_claim,
-        entity_snapshot=entity_snapshot,
     )
 
 

@@ -9,10 +9,10 @@ This module provides:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import DateTime, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -139,53 +139,154 @@ def add_tombstone(
     log.info("Added tombstone for %s/%s", entity_type, entity_id)
 
 
+# ── Syncable entities ────────────────────────────────────────────────
+# Entity types whose create/update/delete mutations replicate between
+# hubs. Mirrors `audit._should_sync_action`'s `syncable_types`.
+_SYNCABLE_MODELS: dict[str, type] = {
+    "device": Device,
+    "site": Site,
+    "group": Group,
+    "user": User,
+}
+
+
+def _coerce_datetime(value: Any) -> Any:
+    """Parse an ISO-8601 string into a datetime; pass datetimes/None through.
+
+    Outbox payloads and a peer's `event.at` arrive as ISO strings over
+    JSON (see `entity_to_dict`); the applier needs real datetimes both
+    to assign to datetime columns and to compare for last-writer-wins.
+    """
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return value
+
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Normalise a datetime to tz-aware UTC so a last-writer-wins compare
+    never hits the naive-vs-aware TypeError."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def snapshot_entity(
+    session: Session, entity_type: str, entity_id: str
+) -> dict[str, Any] | None:
+    """Return a full column snapshot of a syncable entity for an outbox
+    payload, or None if the type isn't syncable or the row is gone.
+
+    Lets the emission path build every create/update payload itself, so
+    individual mutation call-sites don't each have to assemble one.
+    """
+    model = _SYNCABLE_MODELS.get(entity_type)
+    if model is None:
+        return None
+    entity = session.get(model, entity_id)
+    return entity_to_dict(entity) if entity is not None else None
+
+
 def apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
     """Apply a single outbox event from a peer hub.
 
-    Returns True if applied successfully, False if skipped.
+    Returns True if applied, False if skipped (tombstoned entity, an
+    unsyncable entity type, an empty payload, or a stale write per
+    last-writer-wins).
 
-    Implements last-writer-wins conflict resolution based on event.at.
+    - Delete events write a tombstone and remove the row.
+    - Create/update events upsert the row, last-writer-wins on the
+      entity's ``updated_at``.
+
+    Idempotent: re-applying the same event is a no-op — a create finds
+    the row already present and LWW-skips; an update finds ``updated_at``
+    already equal and LWW-skips.
     """
-    # Check tombstone first
+    # A tombstoned entity must never be recreated or updated.
     if is_tombstoned(session, event.entity_id):
         log.warning(
-            "Skipping event seq=%d for tombstoned entity %s/%s",
-            event.seq,
-            event.entity_type,
-            event.entity_id,
+            "Sync: skip seq=%s — entity %s/%s is tombstoned",
+            event.seq, event.entity_type, event.entity_id,
         )
         return False
 
-    # Handle delete events
+    model = _SYNCABLE_MODELS.get(event.entity_type)
+    if model is None:
+        log.warning(
+            "Sync: skip seq=%s — unsyncable entity_type %r",
+            event.seq, event.entity_type,
+        )
+        return False
+
+    # ── Delete ───────────────────────────────────────────────────────
     if event.tombstone_for:
-        add_tombstone(session, event.tombstone_for, event.entity_type, event.seq)
-        # Actually delete the entity from its table
-        if event.entity_type == "device":
-            device = session.get(Device, event.tombstone_for)
-            if device:
-                session.delete(device)
-        elif event.entity_type == "site":
-            site = session.get(Site, event.tombstone_for)
-            if site:
-                session.delete(site)
-        elif event.entity_type == "group":
-            group = session.get(Group, event.tombstone_for)
-            if group:
-                session.delete(group)
-        # Add more entity types as needed
+        add_tombstone(session, event.tombstone_for, event.entity_type, event.seq or 0)
+        row = session.get(model, event.tombstone_for)
+        if row is not None:
+            session.delete(row)
+        log.info(
+            "Sync: deleted %s/%s (seq=%s)",
+            event.entity_type, event.tombstone_for, event.seq,
+        )
         return True
 
-    # Handle create/update events - implement per entity type
-    # For now, log that we'd apply it
-    log.info(
-        "Would apply event seq=%d type=%s entity=%s/%s",
-        event.seq,
-        event.event_type,
-        event.entity_type,
-        event.entity_id,
+    # ── Create / update — last-writer-wins on updated_at ─────────────
+    payload = event.payload or {}
+    incoming: dict[str, Any] = {}
+    for col in model.__table__.columns:
+        if col.name not in payload:
+            continue
+        value = payload[col.name]
+        if isinstance(col.type, DateTime):
+            value = _coerce_datetime(value)
+        incoming[col.name] = value
+
+    if not incoming:
+        log.warning(
+            "Sync: skip seq=%s — empty payload for %s/%s",
+            event.seq, event.entity_type, event.entity_id,
+        )
+        return False
+
+    incoming_updated = _as_utc(
+        _coerce_datetime(payload.get("updated_at")) or _coerce_datetime(event.at)
     )
-    # TODO: Implement actual entity upsert with last-writer-wins
-    # This requires comparing event.at with the existing entity's updated_at
+    existing = session.get(model, event.entity_id)
+
+    if existing is None:
+        incoming.setdefault("id", event.entity_id)
+        session.add(model(**incoming))
+        log.info(
+            "Sync: created %s/%s (seq=%s)",
+            event.entity_type, event.entity_id, event.seq,
+        )
+        return True
+
+    # Last-writer-wins: apply only if the incoming write is strictly newer.
+    existing_updated = _as_utc(getattr(existing, "updated_at", None))
+    if (
+        incoming_updated is not None
+        and existing_updated is not None
+        and incoming_updated <= existing_updated
+    ):
+        log.debug(
+            "Sync: LWW skip %s/%s — incoming %s <= local %s",
+            event.entity_type, event.entity_id, incoming_updated, existing_updated,
+        )
+        return False
+
+    for name, value in incoming.items():
+        if name == "id":
+            continue  # never reassign the primary key
+        setattr(existing, name, value)
+    log.info(
+        "Sync: updated %s/%s (seq=%s)",
+        event.entity_type, event.entity_id, event.seq,
+    )
     return True
 
 

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.70] - 2026-05-16
+
+### Added — B11: the sync applier (create/update upsert + LWW) is complete
+
+`apply_outbox_event()` previously applied only deletes/tombstones; create/update was a `# TODO` stub — the documented gate that kept `sync.enabled` off (see `BACKLOG.md`). This release completes the **applier**.
+
+- **Applier** (`sync.apply_outbox_event`): generic create/update upsert for the syncable entity types (device, site, group, user) with **last-writer-wins on `updated_at`**. A missing row is created; an existing row is updated only if the incoming write is strictly newer. Idempotent — re-applying an event is a no-op. Datetime columns and the peer's `event.at` (ISO strings over JSON) are coerced to tz-aware datetimes, with naive/aware normalised so the LWW compare never raises. Tombstoned entities are never recreated.
+- **Emission** (`audit._emit_outbox_for_scoped_action`): create/update events now carry a full entity snapshot taken by the emit path itself (`sync.snapshot_entity`) — previously each call-site had to pass `entity_snapshot` and none did, so no create/update event was ever emitted with a real payload. `record()` is now the single emission point; the redundant emit in `record_scoped()` is removed.
+- `tests/qa/test_v0570_b11_applier.py` — 7-case in-process unit test (create, LWW win/skip, idempotency, delete+tombstone, tombstone-blocks-recreate, unknown-type). The first `tests/unit/`-style test; self-contained SQLite, runs in the `-m ci` gate with no infra.
+
+### Known gap — B11 does NOT yet fully converge; `sync.enabled` stays off
+
+The applier is done and correct, but **emission coverage is incomplete**, so this release does *not* make it safe to turn sync back on. Emission only fires where a mutation is audited with a syncable action (`audit._should_sync_action`), and an audit revealed the action vocabulary is inconsistent: `device` create/update/delete emit, but `site` mutations are **not audited at all** (`sites.py` has zero audit calls), `group` only audits deletes, and `user` actions use verbs (`created_via_invite`, `role_changed`, …) outside the syncable set. So site/group/user create/update still emit nothing.
+
+Next step before re-enabling sync: an **emission-coverage pass** — preferably ORM-level `after_insert`/`after_update` hooks on the four synced models, so emission cannot miss a mutation or depend on audit-string parsing. Tracked in `BACKLOG.md`.
+
 ## [0.5.69] - 2026-05-16
 
 ### Fixed — Settings → Sync save form 500'd on every submit
