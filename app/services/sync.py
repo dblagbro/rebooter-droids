@@ -8,7 +8,9 @@ This module provides:
 """
 from __future__ import annotations
 
+import contextvars
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -26,6 +28,33 @@ from app.models.sync import OutboxEvent, SyncCursor, Tombstone
 from app.models._helpers import utcnow
 
 log = logging.getLogger(__name__)
+
+
+# ── Emission suppression ─────────────────────────────────────────────
+# The applier writes to the syncable model tables via the ORM. Without
+# this guard those writes would trigger the emission hooks
+# (`sync_emission`) and re-emit outbox events — an infinite hub-to-hub
+# loop. The applier runs inside `suppress_emission()`; the hooks no-op
+# while the flag is set.
+_emission_suppressed: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "rebooter_emission_suppressed", default=False
+)
+
+
+@contextmanager
+def suppress_emission():
+    """Suppress the sync-emission hooks for the duration of the block —
+    wraps the applier so applied peer events do not re-emit."""
+    token = _emission_suppressed.set(True)
+    try:
+        yield
+    finally:
+        _emission_suppressed.reset(token)
+
+
+def emission_suppressed() -> bool:
+    """True while inside `suppress_emission()`. Checked by the hooks."""
+    return _emission_suppressed.get()
 
 
 def emit_outbox_event(
@@ -205,7 +234,20 @@ def apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
     Idempotent: re-applying the same event is a no-op — a create finds
     the row already present and LWW-skips; an update finds ``updated_at``
     already equal and LWW-skips.
+
+    Runs inside ``suppress_emission()`` and flushes within it, so the
+    applier's own writes never trigger the emission hooks (no hub-to-hub
+    re-emit loop).
     """
+    with suppress_emission():
+        applied = _apply_outbox_event(session, event)
+        session.flush()
+        return applied
+
+
+def _apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
+    """Core applier logic — see ``apply_outbox_event``. Always called
+    inside ``suppress_emission()``."""
     # A tombstoned entity must never be recreated or updated.
     if is_tombstoned(session, event.entity_id):
         log.warning(
