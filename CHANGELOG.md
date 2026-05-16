@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.67] - 2026-05-15
+
+### Changed — refactor: extract rule-form mapping out of the rules blueprint
+
+Continues the incremental refactor (`refactor-log.md`). `blueprints/admin/rules.py` was 645 LOC, dominated by a **211-line `rules_create_submit` handler** — ~130 lines of which were form→probe-dict mapping logic, violating `architecture.md` §"Module-boundary principles" (*no business logic in blueprints*).
+
+- **New `app/blueprints/admin/_rules_forms.py`** — four pure mappers (`build_probe_from_form`, `build_target_from_form`, `build_action_from_form`, `build_maintenance_windows_from_form`) + a typed `RuleFormError`. They turn the create-form's flat fields into the probe/target/action JSON shapes; the handler catches `RuleFormError` → flash + redirect, exactly as the inline code did.
+- **`rules_create_submit` shrank 211 → ~32 lines** — now a thin HTTP translator. `rules.py` dropped 645 → 487 LOC, back under the 500-LOC blueprint soft limit.
+- Behavior-preserving — pure extraction; UI + API handlers stay co-located in `rules.py` (co-location principle intact). Verified via `create_app()` smoke test.
+
+### Notes
+- The form-mapping is now unit-testable in isolation.
+- Next refactor targets unchanged: `settings.py` (596) and `devices_ui.py` (563) — both only ~1.2× over the limit, lower value.
+
 ## [0.5.66] - 2026-05-15
 
 ### Added — P1.3: low-load current semantics

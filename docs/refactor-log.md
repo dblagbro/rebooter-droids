@@ -17,6 +17,70 @@ Append-only journal of structural changes. Newest at top. Format:
 
 ---
 
+## 2026-05-15 — extract rule-form mapping out of the rules blueprint
+
+- **Branch:** `main` (single atomic commit)
+- **Releases included:** v0.5.67
+- **Scope:** small, behavior-preserving refactor — one over-limit
+  blueprint brought back under the soft limit by extracting business
+  logic, not by splitting HTTP surfaces.
+- **Why:** `blueprints/admin/rules.py` was 645 LOC (1.3× the 500-LOC
+  blueprint soft limit). The cause was a single **211-line handler**,
+  `rules_create_submit` — ~130 lines of which were a `probe_kind`
+  `if/elif` building the probe JSON dict from form fields. That is
+  mapping/business logic, which `architecture.md` §"Module-boundary
+  principles" explicitly bars from blueprints.
+- **Key changes:**
+  - New `app/blueprints/admin/_rules_forms.py` (219 LOC) — four pure
+    builders (`build_probe_from_form`, `build_target_from_form`,
+    `build_action_from_form`, `build_maintenance_windows_from_form`)
+    + a typed `RuleFormError`.
+  - `rules_create_submit` rewritten 211 → ~32 LOC: call the four
+    builders inside one `try`, catch `RuleFormError` → flash +
+    redirect (identical operator-facing behavior), then
+    `svc_create_rule` as before.
+  - `rules.py`: 645 → 487 LOC — under the 500 soft limit.
+- **Architectural decisions:**
+  - **Extract logic, do NOT split by HTTP surface.** The naive
+    "split UI from API" suggested in the prior log entry's
+    next-targets list would have *contradicted* the co-location
+    principle (one feature = one `blueprints/admin/<x>.py` holding
+    both UI + API). The real fix for an over-limit blueprint is to
+    move the *non-HTTP logic* out — here, into a blueprint-adjacent
+    `_rules_forms.py` helper (form input is presentation-layer, so it
+    stays in `blueprints/admin/`, not the service layer). The
+    next-targets note in the prior entry is corrected accordingly.
+  - **Builders raise, handlers flash.** A builder signals bad input
+    with `RuleFormError`; the HTTP concern (flash + redirect) stays
+    in the blueprint. Keeps the builders pure + unit-testable.
+- **Files impacted:**
+  - 1 file created (`_rules_forms.py`), 1 modified (`rules.py`)
+  - 3 docs: `CHANGELOG.md`, `refactor-log.md` (this entry); no
+    `architecture.md` change needed (no module boundary moved — a
+    blueprint-internal helper, same as `_common.py`)
+  - 0 template / service / route changes — URLs + behavior preserved
+- **Risks:**
+  - Low. Pure extraction; the probe/target/action JSON shapes are
+    byte-identical to the inline code. Verified with a `create_app()`
+    smoke test in the built image + the rules route still resolving.
+  - One pre-existing latent issue carried over unchanged: a
+    non-numeric `power_off_seconds` / threshold-int field still
+    raises an uncaught `ValueError` (HTTP 500). Not introduced here;
+    fixing it would be a behavior *change*, so deferred.
+- **Remaining technical debt / next targets:**
+  1. `blueprints/admin/settings.py` (596 LOC) — over the limit;
+     extract the per-tab save logic if it has the same handler-bloat
+     smell.
+  2. `blueprints/admin/devices_ui.py` (563 LOC) — same class.
+  3. `services/device_power.py` (723) — split when P1/P3 power work
+     next extends it.
+  4. Stale probe-shape reference card in `templates/rules/edit.html`
+     (~7 of ~25 kinds documented).
+  5. Underscore-prefixed cross-module helpers — still un-promoted
+     (carried from the 2026-05-14 entry).
+
+---
+
 ## 2026-05-15 — oversized-service split: external_sensors + watchdog probes
 
 - **Branch:** `main` (single atomic commit)
