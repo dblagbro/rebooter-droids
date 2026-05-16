@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.69] - 2026-05-16
+
+### Fixed — Settings → Sync save form 500'd on every submit
+
+`settings_sync_save_submit` (`POST /app/settings/sync`) referenced `g` and `flash` without importing them — `settings.py` imports those per-function, and this handler was missing the line. Every submit raised `NameError: name 'g' is not defined` → HTTP 500. **The Settings → Sync form has never worked** — sync settings (enable/disable, hub id, peers, HMAC key) could not be changed through the UI at all.
+
+- Added the missing `from flask import flash, g` to the handler, matching the file's per-function import pattern.
+- Found while disabling `sync.enabled` per operator request (the B11 multi-hub applier is still incomplete — sync must stay off until it lands; see `BACKLOG.md`).
+
 ## [0.5.68] - 2026-05-15
 
 First fixes of the P-REG charter (`docs/notes/2026-05-15-pause-state-and-resume-charter.md`). Two distinct bugs were breaking registration; both are the "failing registrations" symptom. Found by writing the end-to-end adoption test the codebase never had.
