@@ -16,6 +16,13 @@ from flask import abort, flash, g, redirect, render_template, request, url_for
 
 from app.blueprints.admin import admin_ui_bp, admin_api_bp
 from app.blueprints.admin._common import _ctx
+from app.blueprints.admin._rules_forms import (
+    RuleFormError,
+    build_action_from_form,
+    build_maintenance_windows_from_form,
+    build_probe_from_form,
+    build_target_from_form,
+)
 from app.middleware.admin_auth import (
     ADMIN_AND_UP,
     WRITE_ROLES,
@@ -82,184 +89,19 @@ def rules_page():
 @admin_ui_bp.post("/rules")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def rules_create_submit():
+    # v0.5.67: the form→JSON-shape mapping (probe / target / action /
+    # maintenance window) lives in `_rules_forms.py` — this handler is
+    # now a thin HTTP translator per architecture.md §"Module-boundary
+    # principles". A `RuleFormError` carries the operator-facing message.
     name = (request.form.get("name") or "").strip()
-    probe_kind = (request.form.get("probe_kind") or "").strip()
-    probe_arg = (request.form.get("probe_arg") or "").strip()
-    target_kind = (request.form.get("target_kind") or "").strip()
-    target_id = (request.form.get("target_id") or "").strip()
-    action_kind = (request.form.get("action_kind") or "cycle").strip()
-
-    # Build the probe JSON shape from the form's two-input pattern.
-    probe: dict
-    if probe_kind == "internet":
-        # v0.5.9: form posts repeated `internet_target_host[]` +
-        # `internet_target_port[]` pairs. Zip and filter to drop the
-        # empty placeholder row the UI keeps for "add another".
-        hosts = request.form.getlist("internet_target_host[]")
-        ports = request.form.getlist("internet_target_port[]")
-        targets: list[dict] = []
-        for h, p in zip(hosts, ports):
-            host = (h or "").strip()
-            port_s = (p or "").strip()
-            if not host and not port_s:
-                continue
-            try:
-                port_i = int(port_s) if port_s else 0
-            except ValueError:
-                port_i = 0
-            targets.append({"host": host, "port": port_i})
-        probe = {"kind": "internet"}
-        if targets:
-            probe["targets"] = targets
-    elif probe_kind == "ping":
-        probe = {"kind": "ping", "host": probe_arg}
-    elif probe_kind == "tcp":
-        host, _, port = probe_arg.partition(":")
-        probe = {"kind": "tcp", "host": host, "port": int(port or 0)}
-    elif probe_kind == "http":
-        probe = {"kind": "http", "url": probe_arg}
-    elif probe_kind == "dns":
-        probe = {"kind": "dns", "hostname": probe_arg}
-    elif probe_kind == "gateway":
-        probe = {"kind": "gateway"}
-    # v0.5.28 (Phase 2B): per-kind form fields for the four integration
-    # probe kinds shipped in v0.5.17 + v0.5.23. Operators no longer
-    # need the JSON editor for the common cases — JSON editor stays as
-    # an escape hatch for advanced shapes.
-    elif probe_kind == "roku_app_active":
-        probe = {
-            "kind": "roku_app_active",
-            "source_id": (request.form.get("roku_source_id") or "").strip(),
-            "app_name": (request.form.get("roku_app_name") or "").strip(),
-        }
-        try:
-            max_age = int(request.form.get("roku_max_sample_age_seconds") or 120)
-            probe["max_sample_age_seconds"] = max_age
-        except ValueError:
-            pass
-    elif probe_kind == "ha_state_is":
-        probe = {
-            "kind": "ha_state_is",
-            "source_id": (request.form.get("ha_source_id") or "").strip(),
-            "entity_id": (request.form.get("ha_entity_id") or "").strip(),
-            "expected_state": (request.form.get("ha_expected_state") or "").strip(),
-        }
-        try:
-            max_age = int(request.form.get("ha_max_sample_age_seconds") or 60)
-            probe["max_sample_age_seconds"] = max_age
-        except ValueError:
-            pass
-    elif probe_kind == "weather_alert_active":
-        probe = {
-            "kind": "weather_alert_active",
-            "source_id": (request.form.get("weather_source_id") or "").strip(),
-        }
-        ev = (request.form.get("weather_event_contains") or "").strip()
-        if ev:
-            probe["event_contains"] = ev
-        sev = (request.form.get("weather_min_severity") or "").strip()
-        if sev:
-            probe["min_severity"] = sev
-        try:
-            max_age = int(request.form.get("weather_max_sample_age_seconds") or 600)
-            probe["max_sample_age_seconds"] = max_age
-        except ValueError:
-            pass
-    elif probe_kind == "ical_event_active":
-        probe = {
-            "kind": "ical_event_active",
-            "source_id": (request.form.get("ical_source_id") or "").strip(),
-        }
-        summary = (request.form.get("ical_summary_contains") or "").strip()
-        if summary:
-            probe["summary_contains"] = summary
-        try:
-            max_age = int(request.form.get("ical_max_sample_age_seconds") or 1800)
-            probe["max_sample_age_seconds"] = max_age
-        except ValueError:
-            pass
-    # v0.5.32 (B16 Phase 1D): power-targeted probes.
-    elif probe_kind in ("power_above", "power_below"):
-        probe = {
-            "kind": probe_kind,
-            "device_id": (request.form.get("power_device_id") or "").strip(),
-        }
-        try:
-            probe["threshold_w"] = float(request.form.get("power_threshold_w") or 0)
-        except ValueError:
-            flash("threshold_w must be a number (e.g. 1500 for 1500W).", "error")
-            return redirect(url_for("admin_ui.rules_page"))
-        try:
-            probe["window_seconds"] = int(request.form.get("power_window_seconds") or 300)
-        except ValueError:
-            probe["window_seconds"] = 300
-        try:
-            mage = int(request.form.get("power_max_sample_age_seconds") or 600)
-            probe["max_sample_age_seconds"] = mage
-        except ValueError:
-            pass
-    elif probe_kind == "power_zero_while_on":
-        probe = {
-            "kind": "power_zero_while_on",
-            "device_id": (request.form.get("power_device_id") or "").strip(),
-        }
-        try:
-            probe["near_zero_threshold_w"] = float(
-                request.form.get("power_near_zero_threshold_w") or 0.5
-            )
-        except ValueError:
-            probe["near_zero_threshold_w"] = 0.5
-        try:
-            probe["window_seconds"] = int(request.form.get("power_window_seconds") or 300)
-        except ValueError:
-            probe["window_seconds"] = 300
-        try:
-            mage = int(request.form.get("power_max_sample_age_seconds") or 600)
-            probe["max_sample_age_seconds"] = mage
-        except ValueError:
-            pass
-    else:
-        flash("Unsupported probe kind.", "error")
+    try:
+        probe = build_probe_from_form(request.form)
+        target = build_target_from_form(request.form)
+        action = build_action_from_form(request.form)
+        maint_windows = build_maintenance_windows_from_form(request.form)
+    except RuleFormError as e:
+        flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_page"))
-
-    target: dict
-    if target_kind in ("device", "group"):
-        target = {"kind": target_kind, "id": target_id}
-    elif target_kind == "tag":
-        target = {"kind": "tag", "tag": target_id}
-    else:
-        flash("Pick a target.", "error")
-        return redirect(url_for("admin_ui.rules_page"))
-
-    action: dict
-    if action_kind == "cycle":
-        action = {
-            "kind": "cycle",
-            "power_off_seconds": int(request.form.get("power_off_seconds") or 5),
-            "post_reboot_holdoff_seconds": int(
-                request.form.get("post_reboot_holdoff_seconds") or 180
-            ),
-        }
-    elif action_kind == "hold_off":
-        action = {"kind": "hold_off"}
-    elif action_kind == "notify_only":
-        action = {"kind": "notify_only"}
-    else:
-        flash("Unsupported action.", "error")
-        return redirect(url_for("admin_ui.rules_page"))
-
-    # v0.4.7 (B7): per-rule maintenance window. Form provides
-    # `maint_start` and `maint_end` as `datetime-local` (no timezone).
-    # Treat as UTC since the operator is global.
-    maint_windows: list[dict] = []
-    maint_start = (request.form.get("maint_start") or "").strip()
-    maint_end = (request.form.get("maint_end") or "").strip()
-    if maint_start and maint_end:
-        # `datetime-local` produces "YYYY-MM-DDTHH:MM"; tag UTC.
-        maint_windows.append({
-            "start": maint_start + ":00+00:00" if len(maint_start) == 16 else maint_start,
-            "end": maint_end + ":00+00:00" if len(maint_end) == 16 else maint_end,
-        })
 
     try:
         rule = svc_create_rule(
@@ -271,7 +113,7 @@ def rules_create_submit():
             recovery_threshold=int(request.form.get("recovery_threshold") or 2),
             window_seconds=int(request.form.get("window_seconds") or 60),
             cooldown_seconds=int(request.form.get("cooldown_seconds") or 300),
-            maintenance_windows=maint_windows or None,
+            maintenance_windows=maint_windows,
             created_by_user_id=g.current_user.id,
         )
     except WatchdogValidationError as e:
