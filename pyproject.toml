@@ -38,6 +38,10 @@ line-length = 120
 target-version = "py312"
 
 [tool.pytest.ini_options]
+# Only collect under tests/ — keeps pytest out of runtime dirs like
+# data/pg/ (the local Postgres bind-mount, root-owned 0700) that would
+# otherwise raise PermissionError during collection.
+testpaths = ["tests"]
 # Test bucket markers — see docs/testing-split.md.
 # `addopts = "-m 'not slow'"` deselects slow probes by default; pass
 # `-m ""` (or `-m slow`) to opt in.
@@ -45,5 +49,6 @@ markers = [
   "smoke: very fast core-up checks (subset of api)",
   "responsive: mobile/tablet viewport regression tests",
   "slow: tests that block on rate-limit windows or sleep",
+  "ci: verified green against a fresh ephemeral instance — the GitHub Actions gate (see docs/test-plan.md)",
 ]
 addopts = "-m 'not slow'"
