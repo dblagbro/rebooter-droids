@@ -29,7 +29,7 @@ from sqlalchemy import select
 
 from app.config import load_settings
 from app.db import session_scope
-from app.models import Device, DeviceAnnouncement
+from app.models import Device, DeviceAnnouncement, EnrollmentToken
 from app.services.enrollment import _mint_enrollment_token_in_session, mint_enrollment_token
 
 
@@ -122,6 +122,87 @@ def _maybe_prepare_auto_rebind(*, session, row: DeviceAnnouncement, now: datetim
     return True
 
 
+def _maybe_recover_stranded_pickup(
+    *, session, row: DeviceAnnouncement, now: datetime
+) -> bool:
+    """Recover a device stranded in the `awaiting_register` state.
+
+    Before v0.5.68, `upsert_announcement` cleared `adoption_token_secret`
+    on the *first* /announce that delivered it. A device that lost that
+    single HTTP response — a dropped packet, or an ESP8266 crash under
+    TLS/heap pressure — could never obtain the token again and was
+    permanently stuck in `awaiting_register`. v0.5.68 stops the
+    premature clear for new adoptions; this helper repairs rows that
+    were *already* stranded by the old behaviour, so production devices
+    bricked before the fix self-heal on their next poll with no
+    operator action.
+
+    Fires only for a row that is adopted, delivered, not consumed, not
+    rejected, with the secret already gone. Re-mints a fresh enrolment
+    token (carrying over the original token's site / target-device /
+    name context) and re-arms the row so the normal lifecycle delivers
+    it as `adopted`.
+    """
+    if row.adopted_at is None or row.rejected_at is not None:
+        return False
+    if row.adoption_token_secret or row.consumed_at is not None:
+        return False
+    if row.delivered_at is None:
+        # Adopted but never delivered — a normal pending pickup the
+        # device just hasn't polled for yet. Nothing to recover.
+        return False
+
+    old = (
+        session.get(EnrollmentToken, row.enrollment_token_id)
+        if row.enrollment_token_id
+        else None
+    )
+    # If the original token was actually consumed, the device DID
+    # register — `mark_consumed` just never ran (e.g. the /register
+    # payload carried no MAC to cross-link on). Reconcile the row
+    # instead of re-minting a token for an already-registered device.
+    if old is not None and old.consumed_at is not None:
+        row.consumed_at = old.consumed_at
+        session.flush()
+        return False
+
+    settings = load_settings()
+    site_id = old.site_id if old is not None else None
+    target_device_id = (
+        getattr(old, "target_device_id", None) if old is not None else None
+    )
+    hint = (
+        (old.display_name_hint if old is not None else None)
+        or row.claimed_display_name_hint
+        or f"device-{row.mac_address[-5:].replace(':', '')}"
+    )
+    note = (
+        "Re-mint after stranded awaiting_register "
+        f"(announcement {row.id}, MAC {row.mac_address})"
+    )
+    record, raw_secret = _mint_enrollment_token_in_session(
+        session,
+        settings=settings,
+        issued_by_user_id=None,
+        site_id=site_id,
+        display_name_hint=hint,
+        note=note,
+        ttl_seconds=86400 * 7,
+        target_device_id=target_device_id,
+    )
+    # Re-arm the row. Reassign the FK to the new token *before* deleting
+    # the old one so the announcement never references a deleted row.
+    row.adoption_token_secret = raw_secret
+    row.enrollment_token_id = record.id
+    row.delivered_at = None
+    if old is not None and old.consumed_at is None:
+        # Drop the original unconsumed token — its plaintext is lost,
+        # so it can never be used; leaving it would just be an orphan.
+        session.delete(old)
+    session.flush()
+    return True
+
+
 # ── public-side: announce ────────────────────────────────────────────
 
 def upsert_announcement(
@@ -202,6 +283,7 @@ def upsert_announcement(
         session.flush()
 
         _maybe_prepare_auto_rebind(session=session, row=row, now=now)
+        _maybe_recover_stranded_pickup(session=session, row=row, now=now)
 
         # Compute the response based on lifecycle state
         if row.rejected_at is not None:
@@ -222,10 +304,19 @@ def upsert_announcement(
                 "message": "Awaiting operator adoption. Visit /app/pending-adoption.",
             }
         if row.adoption_token_secret:
-            # Operator clicked Adopt — deliver the secret + mark delivered
+            # Operator clicked Adopt — deliver the secret.
+            #
+            # v0.5.68 (P-REG fix): do NOT clear `adoption_token_secret`
+            # here. Pre-fix it was cleared on the first /announce that
+            # delivered it, so a device that lost that single HTTP
+            # response — common on ESP8266 under TLS/heap pressure —
+            # could never obtain the token again and was stranded
+            # forever in `awaiting_register`. The secret now stays on
+            # the row, re-deliverable on every poll, until the device
+            # actually registers; `mark_consumed` clears it then.
             secret = row.adoption_token_secret
-            row.delivered_at = now
-            row.adoption_token_secret = None
+            if row.delivered_at is None:
+                row.delivered_at = now
             session.flush()
             settings = load_settings()
             return {
@@ -443,6 +534,10 @@ def mark_consumed(mac_address: str) -> None:
             )
             if row is not None and row.consumed_at is None:
                 row.consumed_at = datetime.now(timezone.utc)
+                # v0.5.68 (P-REG fix): the device has registered — the
+                # plaintext enrolment token is no longer needed on the
+                # row. This is now the *only* place it gets cleared.
+                row.adoption_token_secret = None
                 session.flush()
     except Exception:
         import logging
