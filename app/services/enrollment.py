@@ -283,7 +283,18 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
             )
             session.add(credential)
         else:
-            # Fresh adoption (today's path, unchanged behaviour).
+            # Fresh adoption.
+            #
+            # v0.5.68 (P-REG fix): `devices.site_id` is NOT NULL since
+            # v0.5.36 (RBAC P2), but tokens minted by the announce/adopt
+            # flow (`announcements.adopt`) carry no `site_id`. Pre-fix
+            # this INSERT hit a NotNullViolation and `/register` 500'd —
+            # so *every* device adopted through the normal pending-
+            # adoption flow could never register. Fall back to the
+            # Default site when the token carries none.
+            from app.services.sites import resolve_default_site_id
+
+            site_id = et.site_id or resolve_default_site_id(session)
             device = Device(
                 display_name=resolved_name,
                 hardware_model=registration_payload.get("hardware_model"),
@@ -292,7 +303,7 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
                 mac_address=registration_payload.get("mac_address"),
                 serial_number=registration_payload.get("serial_number"),
                 local_ip=registration_payload.get("local_ip"),
-                site_id=et.site_id,
+                site_id=site_id,
                 registration_state="active",
                 capabilities=registration_payload.get("capabilities") or {},
                 is_qa_fixture=is_qa,

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.68] - 2026-05-15
+
+First fixes of the P-REG charter (`docs/notes/2026-05-15-pause-state-and-resume-charter.md`). Two distinct bugs were breaking registration; both are the "failing registrations" symptom. Found by writing the end-to-end adoption test the codebase never had.
+
+### Fixed — P-REG #1: `/register` 500'd for every announce-adopted device (showstopper)
+
+The RBAC P2 work (v0.5.36) made `devices.site_id` NOT NULL. But `announcements.adopt()` mints enrolment tokens with **no `site_id`**, so `consume_enrollment_token` inserted the new `Device` with `site_id=NULL` → `psycopg.errors.NotNullViolation` → HTTP 500. **Every device adopted through the normal announce → pending-adoption → register flow has been unable to register since v0.5.36** — ~32 versions. It went uncaught because there was no end-to-end adoption test; the QA suite only ever exercised a synthetic register against a hand-minted token.
+
+- New `sites.resolve_default_site_id(session)` — resolves a fallback site (the "Default" site, else the sole site, else a freshly created "Default"), within the caller's transaction.
+- `consume_enrollment_token` fresh-adoption branch now uses `et.site_id or resolve_default_site_id(session)`. A device adopted without an explicit site lands in "Default"; the operator can re-home it from the devices UI. Restore-after-reflash is unaffected (it preserves the existing row's site).
+
+### Fixed — P-REG #2: a lost /announce response permanently bricked adoption
+
+`upsert_announcement` cleared `adoption_token_secret` from the announcement row on the **first** `/announce` poll that delivered it. If the device lost that single HTTP response — a dropped packet, or an ESP8266 crash/reboot under TLS/heap pressure (precisely the conditions the firmware team documents) — the plaintext token was gone forever. Every later poll returned `status=awaiting_register` with no token, and the device was **permanently stranded at adoption**.
+
+- **The token now survives a lost response.** `adoption_token_secret` stays on the row, re-delivered on every `/announce` poll, until the device completes `/register`. `mark_consumed` is now the *only* place it is cleared — the proper end-of-life, once registration succeeds.
+- **Already-stranded devices self-heal.** New `_maybe_recover_stranded_pickup` helper: a row that is adopted + delivered + not-consumed with the secret already gone (the pre-fix strand state) gets a freshly minted enrolment token on its next poll — carrying over the original token's site / restore-target / name context. If the original token turns out to have been consumed, the row is reconciled to `registered` instead (covers a `/register` that carried no MAC to cross-link on).
+- Security posture unchanged: `/announce` is unauthenticated by design (operator approval is the trust gate), so the token was already handed to any caller polling that MAC. Keeping the plaintext until `/register` only widens the delivery window from one poll to the intended short bring-up window; the token is single-use with a 7-day TTL.
+
+### Added
+- `tests/qa/test_v0568_adoption_token_redelivery.py` — the first true end-to-end adoption regression test: announce → adopt → announce → **announce again** (the lost packet) → register → announce. Guards both fixes — pre-fix the second announce returned `awaiting_register` and `/register` 500'd.
+
+### Notes
+- No schema change. Behavior for a device that registers on its first post-adoption poll is identical to before — except it now succeeds instead of returning 500.
+- The separate strand mode — a *registered* device that loses its `device_token` **and** changes DHCP lease — is still gated by the conservative IP-match check in `_maybe_prepare_auto_rebind`; a narrower, documented limitation, not addressed here.
+
 ## [0.5.67] - 2026-05-15
 
 ### Changed — refactor: extract rule-form mapping out of the rules blueprint

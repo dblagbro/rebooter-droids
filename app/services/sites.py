@@ -36,6 +36,36 @@ def list_sites() -> list[dict]:
         return [serialize_site(s) for s in sites]
 
 
+DEFAULT_SITE_NAME = "Default"
+
+
+def resolve_default_site_id(session) -> str:
+    """Return a `site_id` to assign a device that arrives without one.
+
+    `devices.site_id` has been NOT NULL since v0.5.36 (RBAC P2), but
+    enrolment tokens minted by the announce/adopt flow carry no site —
+    so a fresh `/register` would hit a NotNullViolation and 500. This
+    resolves a fallback, in priority order:
+
+      1. the site named "Default", if it exists,
+      2. else the only site, if exactly one exists,
+      3. else a freshly created "Default" site.
+
+    Operates within the caller's session/transaction so the resolved
+    (or created) site commits atomically with the device row.
+    """
+    site = session.scalar(select(Site).where(Site.name == DEFAULT_SITE_NAME))
+    if site is not None:
+        return site.id
+    sites = list(session.scalars(select(Site)))
+    if len(sites) == 1:
+        return sites[0].id
+    site = Site(name=DEFAULT_SITE_NAME)
+    session.add(site)
+    session.flush()
+    return site.id
+
+
 def create_site(name: str, description: str | None) -> dict:
     s = Site(name=name, description=description)
     try:
