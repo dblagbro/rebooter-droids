@@ -1,0 +1,85 @@
+name: CI
+
+# First CI for rebooter-droids (P-QA charter,
+# docs/notes/2026-05-15-pause-state-and-resume-charter.md).
+#
+# Before this, nothing ran the tests on push or pull request — a
+# registration-breaking change (e.g. the v0.5.36 `site_id` NOT NULL
+# regression, which 500'd /register for ~32 versions) could merge
+# silently. This gate makes that class of bug fail the build.
+#
+# Scope: it builds the application image, boots it against a throwaway
+# Postgres, and runs the `-m ci` test bucket — the suite's
+# registration / device-API / heartbeat tests, verified green against
+# a fresh ephemeral instance. The other ~56 test files are live-
+# deployment integration tests not yet CI-runnable; widening the gate
+# is tracked in docs/test-plan.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build image + registration CI gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the application image
+        run: docker build -t rebooter-droids:ci .
+
+      - name: Boot Postgres + the app
+        run: |
+          docker network create rd-ci
+          docker run -d --name rd-ci-pg --network rd-ci \
+            -e POSTGRES_USER=rebooter \
+            -e POSTGRES_PASSWORD=cipw \
+            -e POSTGRES_DB=rebooter \
+            postgres:16
+          for i in $(seq 1 30); do
+            docker exec rd-ci-pg pg_isready -U rebooter >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker run -d --name rd-ci-app --network rd-ci -p 8090:8090 \
+            -e REBOOTER_DATABASE_URL=postgresql+psycopg://rebooter:cipw@rd-ci-pg:5432/rebooter \
+            -e REBOOTER_SECRET_KEY=ci-not-a-secret \
+            -e REBOOTER_BOOTSTRAP_ADMIN_EMAIL=ci-admin@example.com \
+            -e REBOOTER_BOOTSTRAP_ADMIN_PASSWORD=ci-Adm1n-pw \
+            rebooter-droids:ci
+
+      - name: Wait for the app to be healthy
+        run: |
+          for i in $(seq 1 45); do
+            if curl -fsS http://localhost:8090/api/v1/version; then
+              echo; echo "app is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::app did not become healthy in time"
+          docker logs rd-ci-app
+          exit 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the package + test deps
+        # Installs the app so `-m ci` can safely *collect* the whole
+        # suite (any `app.*` import resolves); the dev extra brings
+        # pytest.
+        run: pip install -e ".[dev]"
+
+      - name: Run the CI test gate
+        env:
+          REBOOTER_QA_BASE: http://localhost:8090
+          REBOOTER_QA_EMAIL: ci-admin@example.com
+          REBOOTER_QA_PASS: ci-Adm1n-pw
+        run: pytest -m ci -v
+
+      - name: App logs on failure
+        if: failure()
+        run: docker logs rd-ci-app || true

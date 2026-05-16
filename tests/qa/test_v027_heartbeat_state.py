@@ -10,9 +10,14 @@ the offline case (any device with last_heartbeat_at older than 180s).
 
 from __future__ import annotations
 
+import pytest
 import requests
 
 from .conftest import unique_suffix
+
+# Verified green against a fresh ephemeral instance — part of the
+# GitHub Actions CI gate. See docs/test-plan.md.
+pytestmark = pytest.mark.ci
 
 
 def _enroll_device(base_url, admin_headers, hint: str) -> dict:

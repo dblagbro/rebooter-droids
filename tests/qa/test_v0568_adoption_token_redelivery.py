@@ -27,7 +27,12 @@ from __future__ import annotations
 
 import secrets
 
+import pytest
 import requests
+
+# Verified green against a fresh ephemeral instance — part of the
+# GitHub Actions CI gate. See docs/test-plan.md.
+pytestmark = pytest.mark.ci
 
 
 def _announce(base_url: str, mac: str) -> dict:
