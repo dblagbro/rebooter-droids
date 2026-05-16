@@ -63,7 +63,10 @@ _NON_EMITTING_COLUMNS: dict[str, set[str]] = {
     },
     "site": {"updated_at"},
     "group": {"updated_at"},
-    "user": {"updated_at"},
+    # `last_login_at` bumps on every login — per-hub operational data,
+    # not config; emitting on it would churn. `tokens_valid_after`
+    # (logout / password reset) is security state and still emits.
+    "user": {"updated_at", "last_login_at"},
 }
 
 

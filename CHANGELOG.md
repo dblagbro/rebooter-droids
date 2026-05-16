@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.72] - 2026-05-16
+
+### Fixed — B11 bootstrap-seam: applier reconciles divergent ids, sync-cursor errors stop
+
+Each hub bootstraps its own admin user (`dblagbro@gmail.com`) and "Default" site independently, with different ids. Once sync went live (v0.5.71) those collided on the `users.email` / `sites.name` unique constraints every time the entity synced — a persistent `IntegrityError` on the sync cursor's `last_error` (logged + skipped, never wedging, but constant noise).
+
+- **Natural-key reconciliation** (`apply_outbox_event`): when an incoming create's id isn't found locally, the applier now looks the entity up by its unique natural key (`user.email`, `site.name`, `group.name`) before inserting. A match → the create becomes a converging last-writer-wins update of the existing row (local id preserved) — no UNIQUE collision, no cursor error. A genuinely new entity (no natural-key match) still inserts normally.
+- **`site_id` remap**: Device and Group both FK `sites.id`. A peer row may reference a site this hub has under a different id (the independently-bootstrapped "Default"). The applier now remaps an unknown `site_id` to the local Default site (`resolve_default_site_id`) on every device/group upsert, so the FK always holds — prevents the FK-violation errors that natural-key reconciliation would otherwise have traded the collision for.
+- `last_login_at` added to the user emission ignore-set — a login is per-hub operational state, not config, and no longer emits a `user.updated` (less outbox churn). `tokens_valid_after` (logout / password reset) still emits.
+- **`update_sync_cursor` now clears `last_error` on a clean batch** — previously it only ever *set* the error and never cleared it, so a single past error showed on the cursor forever even after sync recovered.
+- `tests/qa/test_v0572_b11_natural_key.py` — 5-case unit test.
+
+### Notes
+- The two hubs keep their own local ids for the bootstrap admin / Default site; the applier bridges the divergence transparently (reconcile + remap). Nothing synced FK-references `user.id`, so the user-id divergence is inert; `site_id` is the only cross-entity FK and is remapped.
+
 ## [0.5.71] - 2026-05-16
 
 ### Added — B11: sync-emission ORM hooks — multi-hub sync converges end-to-end
