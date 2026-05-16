@@ -555,6 +555,7 @@ def settings_sync_save_submit():
     """Save sync settings from the Settings → Sync form."""
     import json
 
+    from flask import flash, g
     from app.services import runtime_settings as rs
 
     # Parse and validate inputs
