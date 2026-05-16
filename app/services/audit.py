@@ -13,104 +13,12 @@ from app.models import AuditEvent
 
 log = logging.getLogger(__name__)
 
-
-def _should_sync_action(action: str, target_type: str | None) -> bool:
-    """Determine if an audit action should emit an outbox event for sync.
-
-    Returns True for create/update/delete actions on syncable entity types
-    (device, site, group, user).
-    """
-    if not target_type:
-        return False
-
-    # Syncable entity types
-    syncable_types = {"device", "site", "group", "user"}
-    if target_type not in syncable_types:
-        return False
-
-    # Syncable action patterns
-    # Include: created, updated, deleted, renamed, adopted, restored
-    # Exclude: command_issued, command_cancelled, etc. (operational events)
-    syncable_verbs = {
-        "created", "updated", "deleted", "renamed",
-        "adopted", "restored", "decommissioned",
-    }
-
-    # Extract verb from action (e.g., "device.created" → "created")
-    if "." not in action:
-        return False
-    verb = action.split(".", 1)[1]
-
-    return verb in syncable_verbs
-
-
-def _emit_outbox_for_scoped_action(
-    action: str,
-    target_type: str | None,
-    target_id: str | None,
-    scope_claim: dict | None,
-    entity_snapshot: dict | None,
-) -> None:
-    """Emit an outbox event for multi-hub sync (B11 / RFC-004 Option C).
-
-    Best-effort: never raises. Skips emission if target_type or target_id
-    is missing (not all audit actions map to syncable entities).
-    """
-    if not (target_type and target_id):
-        return  # Not a resource-level mutation; nothing to sync
-
-    try:
-        from app.services import sync as sync_svc
-
-        # Determine event_type from action
-        # Format: entity.verb (e.g., "device.created", "site.deleted")
-        # Audit actions use this format already
-        event_type = action
-
-        # Determine if this is a delete action
-        is_delete = action.endswith((".deleted", ".bulk_deleted"))
-
-        with session_scope() as session:
-            if is_delete:
-                # For deletes, emit a tombstone event.
-                sync_svc.emit_outbox_event(
-                    session,
-                    event_type=event_type,
-                    entity_type=target_type,
-                    entity_id=target_id,
-                    payload={"deleted": True},
-                    tombstone_for=target_id,
-                    scope_claims=scope_claim,
-                )
-            else:
-                # For creates/updates, emit the full entity payload.
-                # v0.5.70 (B11): snapshot the entity here — the mutation
-                # is already committed by the time record() runs, so no
-                # call-site needs to assemble or pass `entity_snapshot`.
-                snapshot = entity_snapshot or sync_svc.snapshot_entity(
-                    session, target_type, target_id
-                )
-                if snapshot:
-                    sync_svc.emit_outbox_event(
-                        session,
-                        event_type=event_type,
-                        entity_type=target_type,
-                        entity_id=target_id,
-                        payload=snapshot,
-                        scope_claims=scope_claim,
-                    )
-                else:
-                    log.warning(
-                        "outbox: no snapshot for %s/%s (action=%s) — event skipped",
-                        target_type, target_id, action,
-                    )
-    except Exception:
-        log.exception(
-            "outbox emit failed for action=%s target=%s/%s",
-            action,
-            target_type,
-            target_id,
-        )
+# v0.5.71 (B11): outbox emission for multi-hub sync is NO LONGER driven
+# from the audit path. It is now done by mapper-level ORM hooks in
+# `app.services.sync_emission`, which fire on the actual row write — so
+# emission can't depend on an audit action being present and correctly
+# verbed at every mutation call-site (it wasn't). The audit log and the
+# sync outbox are now fully independent concerns.
 
 
 def _client_ip() -> str | None:
@@ -132,8 +40,8 @@ def record(
 ) -> None:
     """Best-effort: never raise from the audit path.
 
-    v0.5.48 (B11 Phase 4): Also emits outbox events for syncable entity
-    mutations (device/site/group/user create/update/delete actions).
+    Outbox emission for multi-hub sync is independent of this path —
+    see `app.services.sync_emission`.
     """
     try:
         evt = AuditEvent(
@@ -151,18 +59,6 @@ def record(
     except Exception:
         log.exception("audit emit failed for action=%s target=%s/%s", action, target_type, target_id)
 
-    # v0.5.70 (B11): record() is the single outbox-emission point — every
-    # syncable mutation flows through here (record_scoped() calls record()).
-    # _emit_outbox_for_scoped_action snapshots the entity itself.
-    if _should_sync_action(action, target_type):
-        _emit_outbox_for_scoped_action(
-            action=action,
-            target_type=target_type,
-            target_id=target_id,
-            scope_claim={"scope_type": target_type, "scope_id": target_id},
-            entity_snapshot=None,
-        )
-
 
 def record_scoped(
     action: str,
@@ -174,18 +70,14 @@ def record_scoped(
     scope_claim: dict | None = None,
     details: dict | None = None,
     ip: str | None = None,
-    entity_snapshot: dict | None = None,  # v0.5.45 (B11) — full entity for outbox payload
 ) -> None:
     """v0.5.35 (B1 RBAC Phase 1) — audit a per-resource mutation with its
     RBAC scope claim attached.
 
-    v0.5.70 (B11 multi-hub sync) — outbox emission is handled by
-    ``record()`` (the single emission point; this function calls it),
-    which snapshots the entity itself. ``entity_snapshot`` is retained
-    for API compatibility but is no longer required.
-
     ``scope_claim`` shape: ``{"scope_type": "device", "scope_id": "..."}``.
-    Best-effort: never raises (see ``record``)."""
+    Outbox emission for multi-hub sync is independent of this path
+    (`app.services.sync_emission`). Best-effort: never raises (see
+    ``record``)."""
     merged = dict(details or {})
     if scope_claim is not None:
         merged["scope_claim"] = scope_claim

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Index, String, Text, JSON
+from sqlalchemy import BigInteger, Index, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
@@ -26,8 +26,15 @@ class OutboxEvent(Base):
     """
     __tablename__ = "outbox_events"
 
-    # Sequential ID used for sync cursors
-    seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Sequential ID used for sync cursors. BigInteger on Postgres;
+    # plain Integer on SQLite so the PK still ROWID-aliases and
+    # autoincrements (lets the applier/emission be unit-tested without
+    # Postgres — same precedent as DeviceHeartbeat).
+    seq: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
 
     # When the event occurred (used for last-writer-wins conflict resolution)
     at: Mapped[datetime] = ts_column()

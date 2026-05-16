@@ -149,6 +149,13 @@ def create_app() -> Flask:
     except Exception:
         app.logger.exception("Startup bootstrap failed; the app will continue running")
 
+    # B11 (RFC-004 Option C): register the multi-hub sync-emission ORM
+    # hooks so every device/site/group/user mutation lands an outbox
+    # event. Idempotent; must be in place before any mutation or the
+    # replicator could run.
+    from app.services.sync_emission import register_sync_emission
+    register_sync_emission()
+
     # Run the scheduler in only ONE worker (the first to claim a Postgres advisory lock).
     if _claim_scheduler_lock():
         from app.jobs.scheduler import start as start_scheduler
