@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.84] - 2026-05-17
+
+### Changed — P-QA: the CI gate now runs behind nginx
+
+The gate ran against the bare app on `http://localhost`; production
+always runs behind nginx under the `/rebooter` prefix. The
+nginx-layer tests (prefix root-redirect, firmware static serving with
+`autoindex off`, firmware download-URL) therefore `pytest.skip`d.
+
+CI now boots an `nginx:alpine` container (`ci/nginx.conf`) fronting the
+app under `/rebooter`, sharing the firmware volume, and points
+`REBOOTER_QA_BASE` at it. The whole `-m ci` gate now exercises the
+real production request path. The three nginx-layer tests in
+`test_routing_and_nginx` / `test_admin_api` run for real instead of
+skipping, and `test_v039_firmware_mirrors` (the per-channel firmware
+mirror chain) is now gated. Gate is ~433 tests / 62 files.
+
+### Fixed — `/` deployment-root redirect was prefix-blind
+
+`root_redirect` did `redirect("/app/")` — a host-root-relative path. On
+the `/rebooter`-mounted production deployment, hitting the deployment
+root (`/rebooter/`) redirected to `/app/`, which is a 404 behind the
+prefix. Now redirects to `request.script_root + "/app/"` — `/rebooter/app/`
+behind the prefix, `/app/` on a bare mount. Surfaced by wiring nginx
+into the gate.
+
 ## [0.5.83] - 2026-05-17
 
 ### Added — P-QA: a `tests/unit/` in-process unit-test tree

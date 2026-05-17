@@ -1,26 +1,26 @@
 name: CI
 
-# First CI for rebooter-droids (P-QA charter,
+# CI gate for rebooter-droids (P-QA charter,
 # docs/notes/2026-05-15-pause-state-and-resume-charter.md).
 #
-# Before this, nothing ran the tests on push or pull request — a
+# Before this gate, nothing ran the tests on push or pull request — a
 # registration-breaking change (e.g. the v0.5.36 `site_id` NOT NULL
 # regression, which 500'd /register for ~32 versions) could merge
 # silently. This gate makes that class of bug fail the build.
 #
-# Scope: it builds the application image, boots it against a throwaway
-# Postgres, and runs the `-m ci` test bucket against that fresh
-# instance. As of the gate-2 widening (v0.5.79) that bucket is ~230
-# tests / 33 files — registration, admin API, RBAC/auth, watchdog
-# rules + schedules, and the status/devices/firmware UI. The remaining
-# ~30 files (brittle HTML asserts, timing-flaky e2e, order-dependent)
-# are the gate-3 backlog in docs/test-plan.md.
+# It builds the application image, boots it against a throwaway
+# Postgres, fronts it with nginx under the /rebooter prefix — the same
+# shape production runs — and runs the `-m ci` test bucket against
+# that stack (~430 tests; see docs/test-plan.md). nginx lets the gate
+# exercise the prefix-proxy + firmware-static-serving layer for real
+# instead of skipping it.
 #
-# The app boot below sets REBOOTER_SESSION_COOKIE_SECURE=0 (the Secure
-# cookie isn't sent over the gate's plain http://localhost) and
-# REBOOTER_RATE_LIMIT_EXEMPT_IPS='*' (33 test modules each log in,
-# which would trip the 30/min auth limiter). Both default to the
-# production-safe value; only this throwaway instance opts out.
+# The app boot opts three settings out of their production-safe
+# defaults, only for this throwaway instance:
+#   REBOOTER_SESSION_COOKIE_SECURE=0   — the gate runs over plain http
+#   REBOOTER_RATE_LIMIT_EXEMPT_IPS='*' — many test logins vs the limiter
+#   REBOOTER_FIRMWARE_PUBLIC_BASE=…    — firmware URLs point at the
+#                                        gate's nginx, not the live host
 
 on:
   push:
@@ -29,7 +29,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Build image + registration CI gate
+    name: Build image + CI gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,7 +38,7 @@ jobs:
       - name: Build the application image
         run: docker build -t rebooter-droids:ci .
 
-      - name: Boot Postgres + the app
+      - name: Boot Postgres + the app + nginx
         run: |
           docker network create rd-ci
           docker run -d --name rd-ci-pg --network rd-ci \
@@ -51,24 +51,36 @@ jobs:
             sleep 2
           done
           docker run -d --name rd-ci-app --network rd-ci -p 8090:8090 \
+            -v rd-ci-firmware:/data/firmware \
             -e REBOOTER_DATABASE_URL=postgresql+psycopg://rebooter:cipw@rd-ci-pg:5432/rebooter \
             -e REBOOTER_SECRET_KEY=ci-not-a-secret \
             -e REBOOTER_BOOTSTRAP_ADMIN_EMAIL=ci-admin@example.com \
             -e REBOOTER_BOOTSTRAP_ADMIN_PASSWORD=ci-Adm1n-pw \
             -e REBOOTER_SESSION_COOKIE_SECURE=0 \
             -e REBOOTER_RATE_LIMIT_EXEMPT_IPS='*' \
+            -e REBOOTER_FIRMWARE_PUBLIC_BASE=http://localhost:8080/rebooter/firmware \
             rebooter-droids:ci
+          # nginx must start after the app so its upstream name resolves.
+          for i in $(seq 1 45); do
+            curl -fsS http://localhost:8090/api/v1/version >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker run -d --name rd-ci-nginx --network rd-ci -p 8080:80 \
+            -v rd-ci-firmware:/data/firmware:ro \
+            -v "$PWD/ci/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:alpine
 
-      - name: Wait for the app to be healthy
+      - name: Wait for the stack to be healthy
         run: |
           for i in $(seq 1 45); do
-            if curl -fsS http://localhost:8090/api/v1/version; then
-              echo; echo "app is up"; exit 0
+            if curl -fsS http://localhost:8080/rebooter/api/v1/version; then
+              echo; echo "stack is up (app behind nginx)"; exit 0
             fi
             sleep 2
           done
-          echo "::error::app did not become healthy in time"
+          echo "::error::stack did not become healthy in time"
           docker logs rd-ci-app
+          docker logs rd-ci-nginx
           exit 1
 
       - name: Set up Python
@@ -78,17 +90,19 @@ jobs:
 
       - name: Install the package + test deps
         # Installs the app so `-m ci` can safely *collect* the whole
-        # suite (any `app.*` import resolves); the dev extra brings
-        # pytest.
+        # suite (any `app.*` import resolves) and run the in-process
+        # tests/unit tree; the dev extra brings pytest.
         run: pip install -e ".[dev]"
 
       - name: Run the CI test gate
         env:
-          REBOOTER_QA_BASE: http://localhost:8090
+          REBOOTER_QA_BASE: http://localhost:8080/rebooter
           REBOOTER_QA_EMAIL: ci-admin@example.com
           REBOOTER_QA_PASS: ci-Adm1n-pw
         run: pytest -m ci -v
 
-      - name: App logs on failure
+      - name: Logs on failure
         if: failure()
-        run: docker logs rd-ci-app || true
+        run: |
+          docker logs rd-ci-app || true
+          docker logs rd-ci-nginx || true

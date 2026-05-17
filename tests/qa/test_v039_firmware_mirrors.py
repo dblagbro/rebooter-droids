@@ -28,6 +28,11 @@ import requests
 
 from .conftest import unique_suffix
 
+# v0.5.84: in the `-m ci` gate. The firmware mirror URLs are served by
+# nginx from the shared firmware volume — the gate now fronts the app
+# with nginx (ci/nginx.conf), so these run for real.
+pytestmark = pytest.mark.ci
+
 
 @pytest.fixture(scope="module")
 def shell_session(base_url, admin_creds):
