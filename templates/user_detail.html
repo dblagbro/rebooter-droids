@@ -127,49 +127,6 @@
   </form>
 </section>
 
-<script>
-// Show/hide resource pickers based on scope_type selection
-(function() {
-  const scopeType = document.getElementById('scope_type');
-  const sitePicker = document.getElementById('site_picker');
-  const groupPicker = document.getElementById('group_picker');
-  const devicePicker = document.getElementById('device_picker');
-
-  function updatePickers() {
-    const selected = scopeType.value;
-
-    // Hide all and disable their selects
-    [sitePicker, groupPicker, devicePicker].forEach(picker => {
-      picker.style.display = 'none';
-      const select = picker.querySelector('select');
-      if (select) {
-        select.disabled = true;
-        select.removeAttribute('required');
-      }
-    });
-
-    // Show and enable the selected one
-    if (selected === 'site') {
-      sitePicker.style.display = 'block';
-      const select = sitePicker.querySelector('select');
-      select.disabled = false;
-      select.required = true;
-    } else if (selected === 'group') {
-      groupPicker.style.display = 'block';
-      const select = groupPicker.querySelector('select');
-      select.disabled = false;
-      select.required = true;
-    } else if (selected === 'device') {
-      devicePicker.style.display = 'block';
-      const select = devicePicker.querySelector('select');
-      select.disabled = false;
-      select.required = true;
-    }
-  }
-
-  scopeType.addEventListener('change', updatePickers);
-  updatePickers();
-})();
-</script>
+<script src="{{ url_for('static', filename='js/user_detail_scope.js') }}" defer></script>
 
 {% endblock %}
