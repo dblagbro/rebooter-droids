@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.89] - 2026-05-17
+
+### Fixed — BUG-058: probe-kind validation/dispatch divergence
+
+`create_rule`'s validation gate (`KNOWN_PROBE_KINDS`) accepted only 13
+probe kinds, while the watchdog runtime (`run_probe`) had dispatched
+~26 for several releases. The 13 kinds in the gap —
+`host_awake`, `ha_numeric_above` / `ha_numeric_below`,
+`solar_production_above` / `_below`, `snmp_interface_down`,
+`snmp_throughput_above` / `_below`, `snmp_error_rate_above`,
+`media_session_active`, `webhook_field_equals`, `mqtt_topic_equals`,
+`epg_show_airing` — had full runtime handlers but could not be created
+via the API or the JSON editor (`400 validation_failed`).
+
+- `KNOWN_PROBE_KINDS` (`app/models/watchdog.py`) is now the canonical
+  26-kind registry — every kind the runtime supports.
+- `_validate_probe` (`app/services/watchdog.py`) gained a per-kind
+  field-validation branch for each new kind (its fail-closed default
+  guarantees no canonical kind can lack a validator).
+- `_probe_to_phrase` renders a plain-English sentence for each new
+  kind — created rules no longer show "unknown probe".
+- `run_probe` (`watchdog_runtime/_probes.py`) now guards on a
+  `DISPATCHED_PROBE_KINDS` frozenset — the runtime side of the
+  registry.
+- New `tests/unit/test_probe_kind_registry.py` (47 tests) pins the
+  contract: `set(KNOWN_PROBE_KINDS) == DISPATCHED_PROBE_KINDS`, plus a
+  well-formed-probe accept test and a missing-required-field reject
+  test for every kind. The two lists can no longer drift — a mismatch
+  fails CI.
+
+Verified live: `host_awake` / `snmp_interface_down` / `ha_numeric_above`
+rules now create (201) with correct sentences; a missing required
+field is rejected (400). The CI gate is now ~617 tests. The rules
+form-builder still does not expose the integration kinds — the JSON
+editor remains the create path for them (a separate UI task).
+
 ## [0.5.88] - 2026-05-17
 
 ### Fixed — BUG-059: SQLite-incompatible code blocking `tests/unit/` coverage

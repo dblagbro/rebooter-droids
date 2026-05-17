@@ -1080,7 +1080,14 @@ This is itself a process defect — see **BUG-061**.
   branches unreachable via the validated create path)
 - **Area:** `app/services/watchdog.py::KNOWN_PROBE_KINDS` vs
   `app/services/watchdog_runtime/_probes.py::run_probe`
-- **Status:** **open**
+- **Status:** **fixed in v0.5.89** — `KNOWN_PROBE_KINDS` extended to
+  the full 26-kind canonical registry; `_validate_probe` +
+  `_probe_to_phrase` gained per-kind branches for the 13 added kinds;
+  `run_probe` now guards on a `DISPATCHED_PROBE_KINDS` frozenset; a new
+  `tests/unit/test_probe_kind_registry.py` contract test pins
+  `KNOWN_PROBE_KINDS == DISPATCHED_PROBE_KINDS` so they cannot drift
+  again. Verified live (host_awake / snmp_interface_down /
+  ha_numeric_above create 201 with correct sentences).
 - **Detail:** `create_rule` validates `probe.kind` against
   `KNOWN_PROBE_KINDS` — **13 kinds** (`internet, ping, tcp, http,
   dns, gateway, roku_app_active, ha_state_is, weather_alert_active,

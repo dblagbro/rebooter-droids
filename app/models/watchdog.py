@@ -70,6 +70,29 @@ PROBE_KIND_POWER_ABOVE = "power_above"
 PROBE_KIND_POWER_BELOW = "power_below"
 PROBE_KIND_POWER_ZERO_WHILE_ON = "power_zero_while_on"
 
+# v0.5.89 (BUG-058): the remaining runtime-supported probe kinds. The
+# watchdog runtime (`watchdog_runtime/_probes.py::run_probe`) has
+# dispatched all of these for several releases, but they were never
+# added to KNOWN_PROBE_KINDS — so `create_rule` rejected them and they
+# could not be created via the API or the JSON editor despite working
+# at runtime. `host_awake` is a TCP-connect alias (v0.5.62); the rest
+# are external-source integration probes. KNOWN_PROBE_KINDS is now the
+# canonical kind registry — `run_probe` is pinned to it by a contract
+# test (`tests/unit/test_probe_kind_registry.py`).
+PROBE_KIND_HA_NUMERIC_ABOVE = "ha_numeric_above"
+PROBE_KIND_HA_NUMERIC_BELOW = "ha_numeric_below"
+PROBE_KIND_SOLAR_PRODUCTION_ABOVE = "solar_production_above"
+PROBE_KIND_SOLAR_PRODUCTION_BELOW = "solar_production_below"
+PROBE_KIND_SNMP_INTERFACE_DOWN = "snmp_interface_down"
+PROBE_KIND_SNMP_THROUGHPUT_ABOVE = "snmp_throughput_above"
+PROBE_KIND_SNMP_THROUGHPUT_BELOW = "snmp_throughput_below"
+PROBE_KIND_SNMP_ERROR_RATE_ABOVE = "snmp_error_rate_above"
+PROBE_KIND_MEDIA_SESSION_ACTIVE = "media_session_active"
+PROBE_KIND_WEBHOOK_FIELD_EQUALS = "webhook_field_equals"
+PROBE_KIND_MQTT_TOPIC_EQUALS = "mqtt_topic_equals"
+PROBE_KIND_EPG_SHOW_AIRING = "epg_show_airing"
+PROBE_KIND_HOST_AWAKE = "host_awake"
+
 KNOWN_PROBE_KINDS = (
     PROBE_KIND_INTERNET,
     PROBE_KIND_PING,
@@ -77,13 +100,26 @@ KNOWN_PROBE_KINDS = (
     PROBE_KIND_HTTP,
     PROBE_KIND_DNS,
     PROBE_KIND_GATEWAY,
+    PROBE_KIND_HOST_AWAKE,
     PROBE_KIND_ROKU_APP_ACTIVE,
     PROBE_KIND_HA_STATE_IS,
+    PROBE_KIND_HA_NUMERIC_ABOVE,
+    PROBE_KIND_HA_NUMERIC_BELOW,
     PROBE_KIND_WEATHER_ALERT_ACTIVE,
     PROBE_KIND_ICAL_EVENT_ACTIVE,
     PROBE_KIND_POWER_ABOVE,
     PROBE_KIND_POWER_BELOW,
     PROBE_KIND_POWER_ZERO_WHILE_ON,
+    PROBE_KIND_SOLAR_PRODUCTION_ABOVE,
+    PROBE_KIND_SOLAR_PRODUCTION_BELOW,
+    PROBE_KIND_SNMP_INTERFACE_DOWN,
+    PROBE_KIND_SNMP_THROUGHPUT_ABOVE,
+    PROBE_KIND_SNMP_THROUGHPUT_BELOW,
+    PROBE_KIND_SNMP_ERROR_RATE_ABOVE,
+    PROBE_KIND_MEDIA_SESSION_ACTIVE,
+    PROBE_KIND_WEBHOOK_FIELD_EQUALS,
+    PROBE_KIND_MQTT_TOPIC_EQUALS,
+    PROBE_KIND_EPG_SHOW_AIRING,
 )
 
 # Rule status enum — mirrors webui-redesign-plan.md §7.1.
