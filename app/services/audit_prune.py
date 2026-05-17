@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import delete, select
 
 from app.db import session_scope
 from app.models import AuditEvent, AuditEventArchive
@@ -77,11 +77,12 @@ def prune_old_audit_events() -> dict:
 
             session.flush()
 
-            # Delete from source
+            # Delete from source. ORM delete() (dialect-portable IN)
+            # rather than raw `id = ANY(:ids)` — the latter is
+            # Postgres-only and blocked in-process SQLite testing.
             event_ids = [e.id for e in old_events]
             pruned = session.execute(
-                text("DELETE FROM audit_events WHERE id = ANY(:ids)"),
-                {"ids": event_ids}
+                delete(AuditEvent).where(AuditEvent.id.in_(event_ids))
             ).rowcount
 
             log.info(
