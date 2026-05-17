@@ -7,22 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed — P-QA gate-3: history test files
+### Changed — P-QA gate-3: brittle test files into the CI gate
 
-Brought the three history test files into the `-m ci` gate
-(`test_v0427_history_chips`, `test_v0430_history_sources`,
-`test_v0432_history_export_search`) — +11 tests, gate now ~241 / 36
-files. Test-only change; no app code touched. Three root causes fixed,
-the same checklist the rest of the gate-3 backlog needs:
+Cleared the entire `0P`-all-fail bucket — 11 test files that failed
+every test against a fresh instance — into the `-m ci` gate. Gate is
+now ~256 tests / 44 files (was 230 after gate-2). Test-only change; no
+app code touched.
 
-- the per-file `_login()` helper hardcoded `dblagbro@gmail.com` instead
-  of honouring `REBOOTER_QA_EMAIL`/`REBOOTER_QA_PASS` — every test 401'd
-  against the CI admin;
-- the tests assumed live-deployment audit data; a fresh instance has
-  none. Added a module-scoped autouse fixture that seeds `watchdog_rule.*`
-  audit activity (create + delete a rule);
+- **History feed** (`test_v0427_history_chips`, `test_v0430_history_sources`,
+  `test_v0432_history_export_search`) — +11 tests.
+- **Settings / wizard / RBAC** (`test_v0425_runtime_smtp`,
+  `test_v0428_upgrade_button`, `test_v0431_enrol_wizard`,
+  `test_v0433_firmware_settings_tab`, `test_v0500_role_bindings`,
+  `test_v0502_pending_adoption_count`, `test_v0503_devices_list_nested_form`,
+  `test_v0511_scan_download_url`) — +15 tests, +2 conditional skips.
+
+Three recurring root causes, fixed with one checklist:
+
+- the per-file `_login()` helper hardcoded `dblagbro@gmail.com` /
+  `Super*120120` instead of honouring `REBOOTER_QA_EMAIL`/`REBOOTER_QA_PASS`
+  — every test 401'd against the CI admin;
+- the tests assumed accumulated live-deployment data; a fresh instance
+  has none. Added module-scoped autouse fixtures that seed exactly what
+  each file needs — `watchdog_rule.*` audit activity for the history
+  files, a registered device (mint enrollment token → register) for
+  `test_v0503`;
 - a `<td><code>` row-parsing regex missed the `data-label="Action"`
   attribute the responsive-table reflow added — widened to `<td[^>]*>`.
+
+`test_v0511` (scanned-release URL guard) needs firmware artifacts on
+disk that a fresh instance lacks; its two tests now `pytest.skip`
+cleanly when there are none — consistent, and they still run against a
+live deployment.
 
 ## [0.5.79] - 2026-05-16
 
