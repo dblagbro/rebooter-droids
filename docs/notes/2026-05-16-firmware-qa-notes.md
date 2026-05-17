@@ -118,6 +118,40 @@
   - `.67` `http://192.168.1.67`
   - `.48` `http://192.168.1.48`
 - Healthy real-telemetry devices so far:
+
+## 2026-05-16 Overnight Soak / Root-Cause Update
+
+- The 24-hour power capture completed at `2026-05-16 15:49 -04:00`.
+- The separate G2 timing run for `.48` / `.69` completed earlier at
+  `2026-05-15 23:19 -04:00`.
+- The headline finding changed materially overnight:
+  `0.1.29-dev-central-safe` is not just dealing with a `.225`-only outlier.
+  By the end of the soak, `.48`, `.67`, `.69`, `.30`, and `.225` were all
+  reporting `recovery_mode=true`.
+- Focused split-test on `.225`:
+  - with `central.enabled=false` and `power.enabled=false`, the device stayed
+    healthy through the 90-second healthy-mark window and beyond
+  - with `central.enabled=true` and `power.enabled=false`, the device still
+    returned to `recovery_mode`
+  - this narrows the remaining trigger to the broader central-enabled path,
+    not specifically the power-upload path
+- Captured event snapshots from the soak show repeated central / firmware
+  transport failures followed by steadily declining free heap on affected
+  devices, for example on `.30`:
+  - firmware assignment check transport failures
+  - heartbeat transport failures
+  - command poll transport failures
+  - power-sample transport failures
+  - free heap stepping down from roughly `19 KB` toward `11 KB`
+- Current best diagnosis:
+  the central-enabled failure path under repeated HTTPS transport failure is
+  still causing enough heap churn and/or fragmentation to drive later early-boot
+  failures and auto-recovery, even after the earlier event-log persistence
+  mitigation in `0.1.29`.
+- OTA QA tooling follow-up completed:
+  `scripts/qa-ota-stress.ps1` now distinguishes a true upload rejection from
+  the common case where the target has already accepted firmware and rebooted
+  before the HTTP response finishes cleanly.
   - `.30` steady around `118.8-119.2V` and about `4.9-5.0W`
   - `.225` steady around `118.8-119.0V` and observed between `0W` and about `2.2W`
 - Important nuance on low loads:
