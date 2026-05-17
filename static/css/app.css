@@ -323,10 +323,12 @@ form textarea:focus {
 }
 
 @media (min-width: 768px) {
+  /* P-UI Tier C #9: 320px was too tight — inputs read as unfinished in
+     a full-width card. 30rem is a normal, scannable field width. */
   form input,
   form select,
-  form textarea { max-width: 320px; }
-  form textarea { max-width: 480px; }
+  form textarea { max-width: 30rem; }
+  form textarea { max-width: 44rem; }
 }
 
 button, .btn {

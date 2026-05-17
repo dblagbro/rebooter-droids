@@ -50,7 +50,7 @@
         <td>{{ m.last_heartbeat_at or '—' }}</td>
         <td>
           <form method="post" action="{{ url_for('admin_ui.group_remove_member_submit', group_id=group.id, device_id=m.id) }}">
-            <button type="submit">Remove</button>
+            <button type="submit" class="btn-danger">Remove</button>
           </form>
         </td>
       </tr>

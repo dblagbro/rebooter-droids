@@ -101,7 +101,7 @@
       <td>
         <form method="post" action="{{ url_for('admin_ui.firmware_delete_submit', release_id=r.id) }}"
               data-confirm-message="Delete firmware release {{ r.version }}?">
-          <button type="submit">Delete</button>
+          <button type="submit" class="btn-danger">Delete</button>
         </form>
       </td>
     </tr>
