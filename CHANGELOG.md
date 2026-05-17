@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.86] - 2026-05-17
+
+### Added — P-QA: in-process unit tests for the device-power service
+
+`tests/unit/test_device_power_service.py` (26 tests) covers
+`app/services/device_power.py` — the power-telemetry query surface —
+in-process against the `hub_db` isolated-SQLite fixture. Coverage:
+the pure helpers (`decode_source_flags` bitfield decode + negative
+clamp, `source_kind` real/synthetic taxonomy); `cost_rate_per_kwh`
+(unset → `None`, set, negative and non-numeric rejection);
+`latest_sample` / `latest_samples_by_device` (newest-wins, channel
+scoping, the stale-age flag, batch absence); `recent_samples` (window
+filtering, `source` filter, newest-first order); `power_source_breakdown`
+(real vs synthetic split); `intraday_power_series` (fixed-width buckets
+with gap slices); `fleet_summary` (per-device aggregation, biggest-hog
+sort, cost hidden without a rate); and the rollups —
+`compute_daily_rollups` (one-day aggregation, day-boundary isolation,
+idempotent re-run upsert), `daily_rollups_for_device` (newest-first),
+`fleet_daily_rollups` (day/device pivot). Gate is now ~476 tests /
+64 files.
+
+### Fixed — `DevicePowerSample.id` did not autoincrement on SQLite
+
+`DevicePowerSample.id` was a plain `BigInteger` primary key. SQLite
+only ROWID-aliases (and so autoincrements) an `INTEGER PRIMARY KEY` —
+so inserting a sample without an explicit id failed on the SQLite
+in-process test backend. Its sibling `DevicePowerRollup.id` already
+had the `BigInteger().with_variant(Integer(), "sqlite")` trick;
+`DevicePowerSample.id` now matches. Postgres production is unaffected
+(still `BIGINT` with a sequence) — same class of fix as v0.5.82's
+`WatchdogProbeEvent.id` / `AuditEvent.id`.
+
 ## [0.5.85] - 2026-05-17
 
 ### Added — P-QA: in-process unit tests for the enrollment service
