@@ -46,6 +46,7 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import Device
+from app.models._helpers import as_aware
 
 log = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ def _compute(limit: int = 50) -> dict:
 
             if hb is None:
                 # Never heartbeated. Bucket by age:
-                if d.created_at >= enroll_recent:
+                if as_aware(d.created_at) >= enroll_recent:
                     enrollments_pending += 1
                     attention.append(
                         {
@@ -165,7 +166,7 @@ def _compute(limit: int = 50) -> dict:
                             "rank": 30,
                         }
                     )
-                elif d.created_at < never_grace:
+                elif as_aware(d.created_at) < never_grace:
                     devices_never += 1
                     attention.append(
                         {
@@ -184,7 +185,7 @@ def _compute(limit: int = 50) -> dict:
                         }
                     )
                 # else: < 30 min old, no heartbeat — too early to alarm
-            elif hb < long_cutoff:
+            elif as_aware(hb) < long_cutoff:
                 devices_offline_long += 1
                 attention.append(
                     {
@@ -198,7 +199,7 @@ def _compute(limit: int = 50) -> dict:
                         "rank": 60,
                     }
                 )
-            elif hb < short_cutoff:
+            elif as_aware(hb) < short_cutoff:
                 devices_offline_short += 1
                 attention.append(
                     {

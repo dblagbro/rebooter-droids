@@ -25,6 +25,7 @@ from sqlalchemy import select
 from app.config import load_settings
 from app.db import session_scope
 from app.models import PasswordReset, User
+from app.models._helpers import as_aware
 
 
 def _hash(token: str) -> str:
@@ -99,7 +100,11 @@ def consume_reset(token: str, new_password: str, *, ip: str | None = None) -> Us
         rec = session.scalar(
             select(PasswordReset).where(PasswordReset.token_hash == th)
         )
-        if rec is None or rec.consumed_at is not None or rec.expires_at <= now:
+        if (
+            rec is None
+            or rec.consumed_at is not None
+            or as_aware(rec.expires_at) <= now
+        ):
             return None
         u = session.get(User, rec.user_id)
         if u is None or not u.is_active:

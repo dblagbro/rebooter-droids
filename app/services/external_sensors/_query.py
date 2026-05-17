@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import ExternalSensorSample, ExternalSensorSource
+from app.models._helpers import as_aware
 from app.services.external_sensors._common import _iso
 
 
@@ -38,7 +39,7 @@ def last_two_samples(
         if len(rows) < 2:
             return None
         newer, older = rows[0], rows[1]
-        if newer.sampled_at < cutoff:
+        if as_aware(newer.sampled_at) < cutoff:
             return None
         return (
             {"sampled_at": newer.sampled_at, "payload": newer.payload or {}},
