@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.74] - 2026-05-16
+
+### Changed — P-UI Tier B: mobile layout (defect walkthrough #3, #4, #6)
+
+Operator-approved Tier B (`docs/notes/2026-05-16-pui-tier-b-mobile-proposal.md`). Completes RFC-003 §11.3 / requirement C4 ("usable at 375px"). CSS + small template edits — no route or behaviour changes.
+
+- **#4 — data tables become row-per-card on phones.** At ≤640px every `.table-wrap` table collapses to a stack of cards: the header row hides, each row is a bordered card, and each cell renders its column name (a `data-label`) as a small label above the value. Pre-fix, list tables horizontal-scrolled or clipped at 375px. `data-label`s added to the Sites, Groups, Pending-adoption, Firmware (releases + deployments), Rules and History tables.
+- **#3 — mobile header no longer wraps mid-word.** Below 768px the topbar wraps whole items to a tidy second row (brand, then actions) instead of breaking "Sign out" across lines; the version string and role badge shrink to fit. All header items kept (per operator decision).
+- **#6 — Settings sections are a jump-menu on phones.** The 12-section tab strip is unusable scrolled at 375px; at ≤640px it is swapped for a native `<select>` jump-menu. `settings_tabs.html` renders both the strip and the select; CSS swaps them at the breakpoint; `static/js/settings_tab_select.js` navigates on change. Desktop keeps the tab strip.
+- **#5** — spot-checked, no change: `main` already reserves space for the fixed bottom-nav; the walkthrough's "overlap" was a full-page-screenshot artifact.
+
+### Notes
+- Tier B done. Tiers C–E of the walkthrough remain.
+
 ## [0.5.73] - 2026-05-16
 
 ### Fixed — P-UI Tier A: broken pages (defect walkthrough #1, #2)

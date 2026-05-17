@@ -37,10 +37,10 @@
         <input type="checkbox" class="v3-bulk-checkbox" name="group_id" value="{{ g.id }}"
                data-bulk-row aria-label="Select {{ g.name }}">
       </td>{% endif %}
-      <td><a href="{{ url_for('admin_ui.group_detail_page', group_id=g.id) }}">{{ g.name }}</a></td>
-      <td><span class="badge">{{ g.member_count }}</span></td>
-      <td>{{ g.description or '—' }}</td>
-      <td>{{ g.created_at }}</td>
+      <td data-label="Name"><a href="{{ url_for('admin_ui.group_detail_page', group_id=g.id) }}">{{ g.name }}</a></td>
+      <td data-label="Members"><span class="badge">{{ g.member_count }}</span></td>
+      <td data-label="Description">{{ g.description or '—' }}</td>
+      <td data-label="Created">{{ g.created_at }}</td>
     </tr>
   {% endfor %}
   </tbody>

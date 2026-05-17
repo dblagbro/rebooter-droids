@@ -51,17 +51,17 @@
   <tbody>
   {% for a in announcements %}
     <tr>
-      <td>
+      <td data-label="Device">
         <strong>{{ a.claimed_display_name_hint or ('device-' + a.mac_address[-5:]|replace(':','')) }}</strong>
         {% if a.claimed_local_ip %}<br><a href="http://{{ a.claimed_local_ip }}/" target="_blank" rel="noopener" class="muted" style="font-size:.85rem">{{ a.claimed_local_ip }}</a>{% endif %}
         <br><code style="font-size:.75rem">{{ a.mac_address }}</code>
       </td>
-      <td class="muted" style="font-size:.85rem">
+      <td class="muted" style="font-size:.85rem" data-label="Hardware / Firmware">
         {{ a.claimed_hardware_model or '?' }}{% if a.claimed_hardware_revision %} {{ a.claimed_hardware_revision }}{% endif %}
         {% if a.claimed_firmware_version %}<br>fw: <code>{{ a.claimed_firmware_version }}</code>{% endif %}
         {% if a.claimed_serial_number %}<br>sn: <code>{{ a.claimed_serial_number }}</code>{% endif %}
       </td>
-      <td>
+      <td data-label="State">
         {% if a.state == 'pending' %}
           <span class="badge amber">pending</span>
         {% elif a.state == 'awaiting_pickup' %}
@@ -78,12 +78,12 @@
           <span class="badge">{{ a.state }}</span>
         {% endif %}
       </td>
-      <td class="muted" style="font-size:.85rem">
+      <td class="muted" style="font-size:.85rem" data-label="Seen">
         last: {{ a.last_seen_at }}<br>
         first: {{ a.first_seen_at }}<br>
         {{ a.announce_count }} poll{{ '' if a.announce_count == 1 else 's' }}
       </td>
-      <td class="muted" style="font-size:.85rem">{{ a.source_ip or '-' }}</td>
+      <td class="muted" style="font-size:.85rem" data-label="Source IP">{{ a.source_ip or '-' }}</td>
       {% if can_edit %}
       <td style="white-space:nowrap; min-width:320px">
         {% if a.state == 'pending' %}
