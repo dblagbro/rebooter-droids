@@ -21,6 +21,10 @@ import requests
 
 from .conftest import unique_suffix
 
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket).
+pytestmark = pytest.mark.ci
+
+
 
 @pytest.fixture(scope="module")
 def shell_session(base_url, admin_creds):

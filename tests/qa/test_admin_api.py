@@ -4,9 +4,13 @@ import os
 import tempfile
 import hashlib
 
+import pytest
 import requests
 
 from .conftest import unique_suffix
+
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket).
+pytestmark = pytest.mark.ci
 
 
 def test_devices_list_filters(base_url, admin_headers):
@@ -273,6 +277,10 @@ def test_firmware_upload_sha_mismatch_rejected(base_url, admin_headers):
 
 
 def test_firmware_upload_then_download_via_nginx(base_url, admin_headers):
+    if "/rebooter" not in base_url:
+        # download_url resolves to the nginx-served /rebooter/firmware
+        # path; the bare CI app instance has no such mount.
+        pytest.skip("nginx-served firmware download — prefixed deployment only")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
         body = os.urandom(2048)
         f.write(body)

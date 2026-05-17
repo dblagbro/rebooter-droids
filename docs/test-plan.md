@@ -1,7 +1,7 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~256 tests / 44 files (P-QA gate-2
-widening + gate-3 history & brittle-file fixes; charter
+Status: **2026-05-17** — CI gate at ~370 tests / 52 files (P-QA gate-2
+widening + gate-3 0P-bucket & partial-fail fixes; charter
 `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
@@ -50,10 +50,10 @@ On every push to `main` and every pull request, CI:
 ### What `-m ci` covers
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
-instance**. As of the gate-2 widening (v0.5.79) plus the gate-3 history
-and brittle-file fixes, that is **~256 tests across 44 files** — every
-test file confirmed to pass `pytest -m ci` twice against a from-scratch
-instance (fresh Postgres + populated DB):
+instance**. As of the gate-2 widening (v0.5.79) plus the gate-3
+0P-bucket and partial-fail fixes, that is **~370 tests across 52
+files** — every test file confirmed to pass `pytest -m ci` twice
+against a from-scratch instance (fresh Postgres + populated DB):
 
 - **Registration / device surface** — `test_device_api.py`,
   `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
@@ -71,13 +71,20 @@ instance (fresh Postgres + populated DB):
   free-text search (`test_v0427/0430/0432`). These seed their own
   `watchdog_rule.*` audit activity via a module-scoped autouse fixture
   rather than assuming live data.
-- **Settings / wizard / RBAC surfaces** (gate-3 brittle bucket) —
+- **Settings / wizard / RBAC surfaces** (gate-3 0P bucket) —
   runtime SMTP (`test_v0425`), the per-device upgrade button
   (`test_v0428`), the enrol wizard (`test_v0431`), the firmware settings
   tab (`test_v0433`), role-binding back-compat (`test_v0500`),
   pending-adoption count (`test_v0502`), the devices-list nested-form
   fix (`test_v0503` — seeds its own device), and the scanned-release
   URL guard (`test_v0511` — skips when no firmware artifacts exist).
+- **Smoke / auth / routing / admin-API** (gate-3 partial-fail bucket) —
+  `test_smoke`, `test_auth_negative`, `test_routing_and_nginx`,
+  `test_admin_api`, plus RBAC invites (`test_v02`), input validation
+  (`test_v0411`), the maintenance toggle (`test_v047`), and the P1
+  shell / theme picker (`test_v030`). The genuinely nginx-layer tests
+  in these files `pytest.skip` when the base URL isn't the
+  `/rebooter`-prefixed deployment.
 
 Two structural fixes made the gate-2 widening possible (both default to
 the production-safe value; the CI app boot opts out):
@@ -114,24 +121,27 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
 
 ## Known coverage gaps (the honest list)
 
-1. **~19 of the ~64 test files are still not in the CI gate** (gate-3
-   backlog). They fall into three buckets, each needing real work
-   before they can gate:
-   - *Brittle — one failing test in an otherwise-green file* — the
-     partial-fail files (`test_admin_api`, `test_auth_negative`,
-     `test_hardening_probes`, `test_routing_and_nginx`, `test_smoke`,
-     `test_v02_rbac_invites`, `test_v030_redesign_p1_shell`,
-     `test_v039_firmware_mirrors`, `test_v0411_input_validation`,
-     `test_v0420_announce_adopt`, `test_v047_…`). Each is one stale
-     assertion away from gateable. The whole `0P`-all-fail bucket —
-     the history files (`test_v0427/0430/0432`) and the settings/RBAC
-     files (`test_v0425/0428/0431/0433/0500/0502/0503/0511`) — is now
-     fixed and gated. The fix checklist that cleared them: (a) the
-     per-file `_login()` must honour `REBOOTER_QA_EMAIL/PASS`, not
-     hardcoded creds; (b) seed any data the test assumes with a
-     module-scoped autouse fixture (a fresh instance has none);
-     (c) widen HTML regexes — the responsive reflow added `data-label`
-     attributes, so `<td><code>` must become `<td[^>]*><code>`.
+1. **~11 of the ~64 test files are still not in the CI gate** (gate-3
+   backlog). The whole `0P`-all-fail bucket and the partial-fail bucket
+   are now fixed and gated; what's left needs more than an assertion
+   tweak. The fix checklist that cleared the gated files: (a) the
+   per-file `_login()` must honour `REBOOTER_QA_EMAIL/PASS`, not
+   hardcoded creds; (b) seed any data the test assumes with a
+   module-scoped autouse fixture (a fresh instance has none); (c) widen
+   HTML regexes — the responsive reflow added `data-label` attributes,
+   so `<td><code>` must become `<td[^>]*><code>`; (d) `pytest.skip`
+   genuinely nginx-layer tests when the base URL is not the
+   `/rebooter`-prefixed deployment. The remainder:
+   - *CI-environment-incompatible* — `test_hardening_probes` has a
+     rate-limit test (the gate sets `RATE_LIMIT_EXEMPT_IPS=*`) and a
+     cookie-`Secure` test (the gate sets `SESSION_COOKIE_SECURE=0`);
+     `test_v039_firmware_mirrors` hardcodes the live `voipguru.org`
+     firmware URLs. These need per-test skips or an nginx-in-CI step.
+   - *Behaviour question* — `test_v0420_announce_adopt`: two tests
+     expect a repeat `/announce` of an adopted-not-registered device
+     to return `awaiting_register`; a fresh instance returns `adopted`
+     both times. Needs the announce-lifecycle owner to confirm intended
+     behaviour before the assertion (or the code) is corrected.
    - *In-process collection errors* — `test_v0514_deployment_…` and
      `test_v0536_site_not_null_…` import `app.*` and need a DB engine
      fixture; they error at collection on a bare runner.

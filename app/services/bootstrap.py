@@ -399,6 +399,8 @@ def ensure_device_site_id_backfill() -> None:
 def ensure_bootstrap_admin(settings: Settings) -> None:
     if not (settings.bootstrap_admin_email and settings.bootstrap_admin_password):
         return
+    from app.models.users import ROLE_SUPER_ADMIN
+
     with session_scope() as session:
         existing = session.scalar(
             select(User).where(User.email == settings.bootstrap_admin_email)
@@ -419,6 +421,12 @@ def ensure_bootstrap_admin(settings: Settings) -> None:
             existing.is_admin = True
             existing.is_active = True
             existing.is_super_admin = True
+            # v0.5.80: the `role` string column (added with the v0.5.0
+            # RBAC migration) was never set here, so the bootstrap admin
+            # kept the User.role default of "admin" despite is_super_admin
+            # being True — role-checked endpoints (maintenance toggle,
+            # user management) then 403'd it. Reconcile it to match.
+            existing.role = ROLE_SUPER_ADMIN
             session.add(existing)
             return
         log.info(
@@ -432,6 +440,10 @@ def ensure_bootstrap_admin(settings: Settings) -> None:
             is_admin=True,
             is_active=True,
             is_super_admin=True,
+            # v0.5.80: without this the `role` column defaults to "admin"
+            # (User.role default) — inconsistent with is_super_admin and
+            # rejected by super-admin-only role checks.
+            role=ROLE_SUPER_ADMIN,
         )
         session.add(admin)
 

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.80] - 2026-05-17
+
+### Fixed — bootstrap admin had role="admin" despite is_super_admin
+
+`ensure_bootstrap_admin()` set the legacy `is_super_admin=True` flag but never set the `role` string column (added with the v0.5.0 RBAC migration), so the bootstrap admin kept `User.role`'s default of `"admin"`. Role-checked endpoints — the maintenance toggle, user management, anything `role_required(super_admin)` — then **403'd the super-admin account** on any fresh deployment. Now sets `role="super_admin"` on both create and the every-startup privilege reconcile. Found via the gate-3 QA work; production deployments whose admin was already `super_admin` are unaffected (the reconcile is a no-op there).
+
+### Fixed — theme-preference cookie was hardcoded Secure
+
+`settings_theme_submit()` set the `rebooter_theme` cookie with `secure=True` hardcoded. On a non-HTTPS deployment a Secure cookie is never sent back, so the theme choice silently didn't stick. Now honours the same flag as the session cookie (`REBOOTER_SESSION_COOKIE_SECURE`, default on) — same bug class as the session-cookie fix in v0.5.79.
+
+### Changed — P-QA gate-3: partial-fail test files into the CI gate
+
+Brought 9 more files into the `-m ci` gate — the "partial-fail" bucket (mostly-green files with one or two failing tests): `test_smoke`, `test_auth_negative`, `test_routing_and_nginx`, `test_admin_api`, `test_v02_rbac_invites`, `test_v0411_input_validation`, `test_v047_maintenance_and_firing_inbox`, `test_v030_redesign_p1_shell`. Gate is now ~370 selected / ~50 files. Causes fixed:
+
+- the two app bugs above (cleared the `403` failures in `test_v02`, `test_v0411`, `test_v047` and the theme failure in `test_v030`);
+- more hardcoded `_login()` creds (`test_smoke`, `test_auth_negative`);
+- nginx-layer tests (`test_root_redirects_to_app`, `test_firmware_dir_does_not_index`, `test_firmware_upload_then_download_via_nginx`) now `pytest.skip` when the base URL is not the `/rebooter`-prefixed deployment, so they still run against live but don't fail the bare-app gate.
+
+Two files stay in the gate-3 backlog with documented reasons: `test_hardening_probes` (its rate-limit and cookie-Secure tests are incompatible with the gate's `RATE_LIMIT_EXEMPT_IPS=*` / `SESSION_COOKIE_SECURE=0`) and `test_v0420_announce_adopt` (two tests assert an `awaiting_register` announce-lifecycle transition that a fresh instance doesn't produce — a behaviour question for the lifecycle owner). `test_v0420`'s stale `retry_after_seconds == 30` assertion was corrected to `>= 1` regardless (no deployment sets that value to 30).
+
 ### Changed — P-QA gate-3: brittle test files into the CI gate
 
 Cleared the entire `0P`-all-fail bucket — 11 test files that failed
