@@ -1,6 +1,6 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~476 tests / 64 files, run behind
+Status: **2026-05-17** — CI gate at ~492 tests / 65 files, run behind
 nginx (P-QA gate-2 widening + gate-3 fixes + a growing `tests/unit/`
 tree; charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
@@ -87,13 +87,14 @@ twice against a from-scratch instance (fresh Postgres + populated DB):
   `/rebooter`-prefixed deployment.
 - **`tests/unit/`** — the in-process unit-test tree. Pure-function
   tests (the `_rules_forms` form→JSON builders, schedule recurrence
-  math, the `device_power` bitfield/taxonomy helpers) need no fixture;
-  DB-backed service tests (`create_rule` validation, the
+  math, the `device_power` bitfield/taxonomy helpers, the watchdog
+  `run_probe` dispatch table — network seams monkeypatched) need no
+  fixture; DB-backed service tests (`create_rule` validation, the
   `upsert_announcement` state machine, the `enrollment`
   mint/consume/revoke service, the `device_power` query/rollup
   surface) take the `hub_db` isolated-SQLite fixture. Every test under
   `tests/unit/` is auto-tagged `ci` by its conftest — no HTTP, no
-  Docker, runs in ~7 s.
+  Docker, runs in ~8 s.
 
 Two structural fixes made the gate-2 widening possible (both default to
 the production-safe value; the CI app boot opts out):
@@ -177,10 +178,11 @@ docker volume rm rd-ci-firmware && docker network rm rd-ci
 2. **In-process unit coverage is young.** `tests/unit/` exists and
    covers the `_rules_forms` builders, schedule recurrence math,
    `create_rule` validation, the `upsert_announcement` state machine,
-   the `enrollment` mint/consume/revoke service and the `device_power`
-   query/rollup surface — but other service-layer logic (the watchdog
-   probe dispatch, `commands`, `heartbeats`, …) still has only HTTP
-   coverage. Growing `tests/unit/` is ongoing.
+   the `enrollment` mint/consume/revoke service, the `device_power`
+   query/rollup surface and the watchdog `run_probe` dispatcher — but
+   other service-layer logic (`commands`, `heartbeats`, the watchdog
+   tick/state-transition loop, …) still has only HTTP coverage.
+   Growing `tests/unit/` is ongoing.
 3. **Playwright `responsive` tests are not in CI** — they need a
    browser image (the gate's `pip install -e ".[dev]"` has no
    playwright, so they skip cleanly); deferred.

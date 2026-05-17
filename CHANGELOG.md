@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — P-QA: in-process unit tests for the watchdog probe dispatcher
+
+`tests/unit/test_watchdog_probe_dispatch.py` (16 tests) covers
+`app/services/watchdog_runtime/_probes.py` — `run_probe(rule)` and the
+core network probes. The probes do real network I/O, so coverage is
+the deterministic surface: the dispatch table (unknown kind → failure
+with reason, missing kind, `gateway` skip-as-success, `probe_exception`
+catch-all, bool→outcome mapping, `host_awake` defaulting to SSH port
+22), the `_probe_internet` multi-target logic (default targets when
+none given, ANY-success = healthy, ALL-fail = failure, malformed-target
+rejection, the 8-target cap), and every probe's no-input guard
+(`_probe_tcp` empty host/port, `_probe_http` empty/non-HTTP scheme,
+`_probe_dns` empty hostname, `_probe_ping` missing host). The
+socket-level helpers are monkeypatched where a test exercises dispatch
+past the network call — no real packets, runs in ~0.3 s. Test-only
+change: no app code touched, so no version bump / redeploy — the gate
+widens to ~492 tests on the next CI run.
+
 ## [0.5.86] - 2026-05-17
 
 ### Added — P-QA: in-process unit tests for the device-power service
