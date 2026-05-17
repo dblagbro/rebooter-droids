@@ -7,17 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.83] - 2026-05-17
+
 ### Added — P-QA: a `tests/unit/` in-process unit-test tree
 
 Started the unit-test tree the gate-3 plan called for. `tests/unit/`
 holds fast in-process service-layer tests — no HTTP, no Docker — in two
 tiers: pure-function tests that need no fixture (the `_rules_forms`
 form→JSON builders, schedule recurrence math) and DB-backed tests that
-take a `hub_db` isolated-SQLite fixture (`create_rule` validation).
-Every test under `tests/unit/` is auto-tagged `ci` by the tree's
-conftest, so new unit files gate without a per-file marker. First
-batch: 29 tests across 3 files, runs in ~2 s. Gate is now ~412 tests /
-59 files. Test-only change — no app code.
+take a `hub_db` isolated-SQLite fixture. Every test under `tests/unit/`
+is auto-tagged `ci` by the tree's conftest, so new unit files gate
+without a per-file marker. Coverage so far — the `_rules_forms`
+builders, schedule recurrence (`compute_next_run_at`), watchdog
+`create_rule` validation, and **the device-announcement state machine**
+(`upsert_announcement`: pending → adopted → registered, plus rejected).
+39 tests across 4 files, ~3 s.
+
+### Changed — `test_v0420_announce_adopt` into the CI gate; answered the open gate-3 question
+
+The gate-3 backlog flagged `test_v0420` as a "behaviour question": two
+tests expected a repeat `/announce` of an adopted-not-registered device
+to return `awaiting_register`, but a fresh instance returns `adopted`.
+Writing the announce-state-machine unit tests settled it — **the code
+is right, the test was stale.** v0.5.68 (the P-REG strand fix)
+deliberately stopped clearing `adoption_token_secret` on first
+delivery: the token is now re-delivered as `adopted` on every poll
+until the device registers, so a device that loses one announce
+response self-heals. `test_v0420`'s `awaiting_register` assertions
+predated that fix; corrected to `adopted` and the file is now gated.
+
+### Fixed
+
+- **`announcements.py` module docstring was stale** — it still
+  described the pre-v0.5.68 "secret cleared on delivery → later polls
+  get `awaiting_register`" behaviour, directly contradicting the
+  v0.5.68 code comment a few lines down. Rewritten to match.
+
+Gate is now ~430 tests / 61 files.
 
 ## [0.5.82] - 2026-05-17
 
