@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.87] - 2026-05-17
+
+### Fixed — post-refactor regression sweep: quick-win remediations
+
+The 2026-05-17 post-refactor regression validation sweep (see
+`docs/bug-log.md`, `docs/qa-notes.md`) filed BUG-056..061. This ship
+clears the three quick wins:
+
+- **BUG-057** — `templates/error.html` linked the brand and "Back to
+  dashboard" to a bare `href="/"`. Under the `/rebooter` deployment
+  prefix that is the host root (a different site) — the error page
+  ejected the user from the app. Both now use
+  `url_for('admin_ui.index')` → verified resolving to `/rebooter/app/`.
+- **BUG-056** — `schedule_runtime._fire_power_cycle` wrapped each
+  per-device `enqueue_for_device` in `except Exception: pass`. A
+  scheduled `relay_cycle` that failed to enqueue for a device (locked
+  device, missing id, DB error) was silently lost — no log, no count.
+  Now `log.exception`s the failure and reports `enqueued:N failed:M`
+  in `last_outcome` so a half-firing schedule is visible.
+- **BUG-060** — the JSON and cookie logout handlers (`auth.py`,
+  `auth_ui.py`) wrapped token/session revocation in
+  `except Exception: pass`. A failed revoke left the user's JWT or
+  session valid while telling them they were logged out, with nothing
+  logged. All three sites now `log.exception` the failure (logout
+  still succeeds for the user).
+
+Also: corrected the stale `test_responsive::test_mobile_topbar_nav_links_reachable`
+assertion (5 → 6 nav links — the `Power` link shipped with B16).
+No version-relevant behaviour change; the v0.5.84–v0.5.86 `tests/unit/`
+additions below roll up into this release.
+
 ### Added — P-QA: in-process unit tests for the watchdog probe dispatcher
 
 `tests/unit/test_watchdog_probe_dispatch.py` (16 tests) covers

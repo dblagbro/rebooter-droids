@@ -105,6 +105,7 @@ def _fire_power_cycle(s: Schedule) -> str:
         "post_reboot_holdoff_seconds": s.post_reboot_holdoff_seconds,
     }
     enqueued = 0
+    failed = 0
     for did in device_ids:
         try:
             enqueue_for_device(
@@ -116,7 +117,20 @@ def _fire_power_cycle(s: Schedule) -> str:
             )
             enqueued += 1
         except Exception:
-            pass
+            # BUG-056: this was `except Exception: pass` — a scheduled
+            # relay_cycle that failed to enqueue for a device (locked
+            # device, missing id, DB error) was silently lost with no
+            # log and no count. Log it and surface the shortfall in
+            # `last_outcome` so a half-firing schedule is visible.
+            failed += 1
+            log.exception(
+                "scheduled relay_cycle enqueue failed for device %s "
+                "(schedule %s)",
+                did,
+                s.id,
+            )
+    if failed:
+        return f"enqueued:{enqueued} failed:{failed}"
     return f"enqueued:{enqueued}"
 
 

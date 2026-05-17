@@ -213,7 +213,13 @@ def logout():
 
             sessions_service.revoke_one(sid)
         except Exception:
-            pass
+            # BUG-060: a failed cookie-session revoke must not be
+            # silent — log it (logout still redirects to login).
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "logout: cookie-session revoke failed for sid %s", sid
+            )
     return redirect(url_for("admin_ui.login_page"))
 
 

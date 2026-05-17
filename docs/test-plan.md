@@ -147,6 +147,27 @@ docker rm -f rd-ci-app rd-ci-pg rd-ci-nginx
 docker volume rm rd-ci-firmware && docker network rm rd-ci
 ```
 
+## Known non-gated test failures (2026-05-17 regression sweep)
+
+The full `tests/` suite (598 collected) was run against a fresh
+nginx-fronted Postgres replica: **593 passed, 5 failed, 5 skipped**.
+All 5 failures were classified — **none is a product regression**:
+
+| Test | Class | Why it fails outside production |
+|---|---|---|
+| `test_hardening_probes::test_session_cookie_attributes` | test-quality | Hardcodes prod creds `dblagbro`/`Super*120120`; login fails on any other instance. Does **not** honour `REBOOTER_QA_EMAIL/PASS`. |
+| `test_hardening_probes::test_logout_does_not_revoke_cookie_server_side` | test-quality | Same hardcoded-creds issue. |
+| `test_responsive::test_mobile_topbar_nav_links_reachable` | stale test | Asserts 5 top-nav / 5 bottom-nav links; the nav legitimately has **6** (`layout.html` — Status/Devices/Rules/History/**Power**/Settings — the Power link shipped with B16). Update the assertion to 6. |
+| `test_v033_cookie_domain::test_theme_cookie_legacy_name_still_read` | test-environment | Sets a cookie with `domain=urlsplit(base_url).netloc`; against a `host:port` base URL the port is included in the domain → the cookie is never sent. The code (`settings.py:437`) **does** still read the legacy `theme` cookie — verified. Passes against a port-less prod URL. |
+| `test_v042_watchdog_runtime::test_probe_now_http_success` | environmental | Documented below — probe target unreachable from inside the container. |
+
+**Correction to the prior accounting:** the gate-3 note below previously
+stated `test_hardening_probes` is ungated only because of the
+`RATE_LIMIT_EXEMPT_IPS=*` / `SESSION_COOKIE_SECURE=0` gate config. That
+is incomplete — the *primary* blocker is hardcoded production
+credentials. Any fix must (a) honour `REBOOTER_QA_EMAIL/PASS` and only
+then (b) add the per-test skips for the config-disabled assertions.
+
 ## Known coverage gaps (the honest list)
 
 1. **~4 of the ~64 test files are still not in the CI gate** (gate-3
@@ -164,11 +185,19 @@ docker volume rm rd-ci-firmware && docker network rm rd-ci
    in-process (see `test_v0414` / `test_v0417`); (f) the gate runs
    behind nginx (`ci/nginx.conf`), so the prefix-proxy and firmware
    static-serving tests run for real. The remainder:
-   - *CI-environment-incompatible* — `test_hardening_probes` has a
-     rate-limit test (the gate sets `RATE_LIMIT_EXEMPT_IPS=*`) and a
-     cookie-`Secure` test (the gate sets `SESSION_COOKIE_SECURE=0`) —
-     both assert behaviour the gate's own config deliberately disables,
-     so they need per-test skips keyed on those settings.
+   - *Hardcoded creds + CI-environment-incompatible* —
+     `test_hardening_probes` hardcodes production credentials (so it
+     fails on every non-prod instance — fix: honour
+     `REBOOTER_QA_EMAIL/PASS`), AND has a rate-limit test (the gate
+     sets `RATE_LIMIT_EXEMPT_IPS=*`) and a cookie-`Secure` test (the
+     gate sets `SESSION_COOKIE_SECURE=0`) that assert behaviour the
+     gate's own config disables (fix: per-test skips keyed on those
+     settings). Both must be fixed before it can gate.
+   - *Base-URL assumes no port* — `test_v033_cookie_domain
+     ::test_theme_cookie_legacy_name_still_read` sets a cookie scoped
+     to `urlsplit(base_url).netloc`, which includes `:port` for a
+     `host:port` base URL → cookie never sent. Fix: strip the port
+     (`.split(":")[0]`) when deriving the cookie domain.
    - *Server-side probe target* — `test_v042_watchdog_runtime`'s one
      failure (`test_probe_now_http_success`) probes `base_url` from
      inside the app container, which can't reach the host-mapped port.
@@ -185,12 +214,31 @@ docker volume rm rd-ci-firmware && docker network rm rd-ci
    `commands` queue and the `heartbeats` ingest path — but other
    service-layer logic (`events` ingest, the watchdog
    tick/state-transition loop, `deployments`, …) still has only HTTP
-   coverage. Growing `tests/unit/` is ongoing.
-3. **Playwright `responsive` tests are not in CI** — they need a
+   coverage. Growing `tests/unit/` is ongoing. **Blocker:** the
+   `invitations`, `password_resets`, `inbox`, `external_sensors`,
+   `events` and `unregistered` services cannot get `hub_db`
+   (SQLite) coverage until **BUG-059** is fixed — they carry
+   naive/aware datetime comparisons, non-variant `BigInteger` PKs,
+   and an unconditional Postgres `ON CONFLICT` that crash on the
+   SQLite test backend.
+3. **No single end-to-end adoption test.** The
+   announce → pending-adoption → adopt → token-mint → `/register` →
+   first-heartbeat → "online" flow spans ~60 KB across
+   `announcements.py` / `pending_adoption.py` / `enrollment.py` /
+   `device_api.py` and has **no test driving it as one flow**
+   (`architecture.md` / charter P-REG). This is the highest-value
+   missing test — the v0.5.36→v0.5.68 regression (siteless-token
+   adoption 500'd for 32 versions) is exactly what such a test
+   would have caught.
+4. **Playwright `responsive` tests are not in CI** — they need a
    browser image (the gate's `pip install -e ".[dev]"` has no
-   playwright, so they skip cleanly); deferred.
-4. **`qa-notes.md` is unmaintained** (~105 K tokens). Not deleted yet
+   playwright, so they skip cleanly); deferred. One is also stale
+   (`test_mobile_topbar_nav_links_reachable`, asserts 5 nav links;
+   there are 6).
+5. **`qa-notes.md` is unmaintained** (~105 K tokens). Not deleted yet
    (it has historical value) but it is not a plan.
+6. **bug-log.md drifts** — fixed bugs left tagged `open` (BUG-054,
+   BUG-055; previously BUG-052). See BUG-061.
 
 ## How to widen the gate further (gate-3)
 
