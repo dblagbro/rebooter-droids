@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.78] - 2026-05-16
+
+### Added — #15: structured rule-edit form (P-UI walkthrough, Phase 2B)
+
+Rule editing was raw-JSON-only — to change a rule's threshold or target you hand-edited a JSON blob. The edit page (`/app/rules/<id>/edit`) now opens a **structured form mirroring the create form**, pre-populated from the rule: probe kind + per-kind fields, action, target picker, thresholds, and a maintenance window. The JSON editor stays underneath as a collapsible "Advanced" escape hatch.
+
+- New route `POST /rules/<id>/edit-form` reuses the exact `_rules_forms` builders the create form uses (`build_probe_from_form` / `build_target_from_form` / `build_action_from_form` / `build_maintenance_windows_from_form`), then calls `update_rule`.
+- **No silent data loss.** Fields the structured form doesn't surface — `escalation`, `max_retries`, `retry_delay_seconds`, `description`, `site_id` — are read from the existing rule and carried through every structured save untouched.
+- **Probe kinds the form can't round-trip stay JSON-only.** A rule whose `probe.kind` is outside the 13 structured kinds (e.g. `host_awake`, `mqtt_topic_equals`, `epg_show_airing`) renders the JSON editor only, with a notice — the structured form would otherwise rebuild the probe as `internet` on save. Guarded by `STRUCTURED_PROBE_KINDS` server-side and `probe_form_supported` in the template.
+- **Multi-window maintenance is flagged, not clobbered silently.** The structured form edits one window; a rule with several shows an amber warning to use the JSON editor.
+- The create form's probe/target JS (`rules_create_probe.js`, `rules_create_target.js`) is reused as-is. One additive tweak: the tag-target text input now seeds from a `data-tag-value` attribute so an existing tag pre-fills (no-op for the create form).
+- `_render_rule_edit()` is the single render path for the edit page, so the JSON-editor validation-error re-render and the initial GET ship the structured form identical context.
+
+CI: new `ci`-gated HTTP test `test_v0578_rule_edit_form.py` — create → load structured edit page → structured-form update → verify the change applied and `max_retries` / `description` preserved.
+
+### Fixed
+
+- **Bad JSON in the rule creator's JSON editor 500'd instead of showing the error.** `rules_create_json_submit`'s error re-render never passed `sources_by_kind`, so the create form's integration-probe blocks hit an undefined variable under Jinja `StrictUndefined`. Latent since v0.5.28 (when those blocks were added); surfaced now because the existing `test_v049` JSON-editor test isn't in the `-m ci` gate. The error path now renders the friendly inline error as intended.
+- Refreshed a stale assertion in `test_v040` that still expected the "What's coming next" roadmap card removed in v0.5.77 (#17).
+
 ## [0.5.77] - 2026-05-16
 
 ### Changed — P-UI Tier E: content & polish (defect walkthrough #16–#23)
