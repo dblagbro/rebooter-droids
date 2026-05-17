@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.76] - 2026-05-16
+
+### Changed — P-UI Tier D: form UX (defect walkthrough #12, #13, #14)
+
+- **#12 / #13 — radio buttons and checkboxes now align with their labels.** The blanket `form input { display:block; width:100% }` rule was making radios and checkboxes full-width block elements, floating the control above/beside its label text (visible on the Schedules form's Kind radios and Weekday checkboxes). Radio/checkbox inputs are now `inline-block; width:auto` — a one-rule CSS fix that corrects every form app-wide.
+- **#14 — the Schedules create-form shows only the fields that apply.** It previously showed every conditional field at once, tagged "(weekly only)" / "(one-shot only)" / "(maintenance only)". `static/js/schedules_form.js` now shows/hides the at-time / weekdays / start-at / duration fields and the Target fieldset based on the selected Kind and Recurrence; the redundant parentheticals are dropped.
+
+### Deferred — #15 (structured rule-edit form)
+
+Rule editing remains raw-JSON-only. A structured edit form — mirroring the create form, pre-populated from the rule — is the long-deferred "Phase 2B"; it is a feature build, not form polish, so it is tracked separately rather than folded into this tier.
+
+### Notes
+- Tiers A, B, C, D (less #15) done. Tier E (content/polish) remains.
+
 ## [0.5.75] - 2026-05-16
 
 ### Changed — P-UI Tier C: consistency (defect walkthrough #9, #11)
