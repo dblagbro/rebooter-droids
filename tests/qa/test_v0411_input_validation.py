@@ -13,6 +13,10 @@ import requests
 
 from .conftest import unique_suffix
 
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket).
+pytestmark = pytest.mark.ci
+
+
 
 # ── BUG-035 — rule numeric bounds ───────────────────────────────────
 

@@ -1,6 +1,12 @@
 """Smoke tests — fast top-level confidence."""
 
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket).
+pytestmark = pytest.mark.ci
 
 
 def test_version_endpoint_no_auth(base_url):
@@ -16,7 +22,7 @@ def test_version_endpoint_no_auth(base_url):
 def test_login_with_full_email(base_url):
     r = requests.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200
@@ -27,10 +33,10 @@ def test_login_with_full_email(base_url):
 
 
 def test_login_with_bare_username(base_url):
-    """v0.1.2 — both 'dblagbro' and 'dblagbro@gmail.com' must work."""
+    """v0.1.2 — both the bare local-part and the full email must work."""
     r = requests.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL.split("@")[0], "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200, r.text
@@ -40,7 +46,7 @@ def test_login_with_bare_username(base_url):
 def test_login_rejects_bad_password(base_url):
     r = requests.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "definitely-wrong"},
+        json={"email": ADMIN_EMAIL, "password": "definitely-wrong"},
         timeout=10,
     )
     assert r.status_code == 401

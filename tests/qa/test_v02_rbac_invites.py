@@ -3,6 +3,11 @@
 import requests
 
 from .conftest import unique_suffix
+import pytest
+
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket).
+pytestmark = pytest.mark.ci
+
 
 
 def test_me_includes_role(base_url, admin_headers):

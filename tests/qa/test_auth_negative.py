@@ -1,6 +1,12 @@
 """Negative + edge tests for auth."""
 
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket).
+pytestmark = pytest.mark.ci
 
 
 def test_refresh_with_garbage(base_url):
@@ -28,7 +34,7 @@ def test_refresh_with_access_token_should_be_rejected(base_url, admin_token):
 def test_refresh_returns_fresh_token_pair(base_url):
     login = requests.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     ).json()["data"]
     r = requests.post(

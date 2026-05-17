@@ -476,7 +476,11 @@ def settings_theme_submit():
     cookie_kwargs: dict = {
         "max_age": 60 * 60 * 24 * 365,
         "samesite": "Lax",
-        "secure": True,
+        # v0.5.80: was hardcoded True — a Secure cookie is never sent
+        # back over plain http, so the theme preference silently didn't
+        # stick on a non-HTTPS deployment. Honour the same flag as the
+        # session cookie (default True; the CI gate sets it off).
+        "secure": settings.session_cookie_secure,
         "httponly": False,  # the FOUC prevention script reads it
     }
     if settings.cookie_domain:

@@ -1,9 +1,17 @@
 """Edge cases at the nginx + ProxyFix + PrefixMiddleware boundary."""
 
+import pytest
 import requests
+
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket). The
+# two genuinely nginx-layer tests below skip when the base URL is not
+# the `/rebooter`-prefixed deployment (e.g. the bare CI app instance).
+pytestmark = pytest.mark.ci
 
 
 def test_root_redirects_to_app(base_url):
+    if "/rebooter" not in base_url:
+        pytest.skip("nginx PrefixMiddleware deployment only")
     r = requests.get(f"{base_url}/", timeout=10, allow_redirects=False)
     assert r.status_code in (301, 302), r.status_code
     loc = r.headers.get("Location", "")
@@ -21,6 +29,8 @@ def test_root_no_trailing_slash_redirects_to_app(base_url):
 
 def test_firmware_dir_does_not_index(base_url):
     """autoindex off — /rebooter/firmware/ must 403, not list contents."""
+    if "/rebooter" not in base_url:
+        pytest.skip("nginx-served firmware dir — prefixed deployment only")
     r = requests.get(f"{base_url}/firmware/", timeout=10)
     assert r.status_code == 403
 
