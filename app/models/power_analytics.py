@@ -21,7 +21,14 @@ from app.models._helpers import ts_column
 class DevicePowerSample(Base):
     __tablename__ = "device_power_samples"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Same SQLite-variant trick as DevicePowerRollup / DeviceHeartbeat —
+    # Postgres production uses BIGINT with a sequence; the SQLite test
+    # path needs INTEGER PRIMARY KEY for ROWID-alias autoincrement.
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     device_id: Mapped[str] = mapped_column(
         String(40),
         ForeignKey("devices.id", ondelete="CASCADE"),
