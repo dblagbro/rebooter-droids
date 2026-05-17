@@ -65,6 +65,11 @@ def _heartbeat_state_for(
 ) -> str:
     if last_heartbeat_at is None:
         return "never"
+    # Postgres returns the TIMESTAMPTZ column tz-aware; SQLite (the
+    # in-process test backend) returns it naive. Treat naive as UTC so
+    # the subtraction never raises — a no-op against a real deployment.
+    if last_heartbeat_at.tzinfo is None:
+        last_heartbeat_at = last_heartbeat_at.replace(tzinfo=timezone.utc)
     if (now - last_heartbeat_at).total_seconds() < offline_threshold_seconds:
         return "online"
     return "offline"

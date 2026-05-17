@@ -5,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 — in-process tests).
+pytestmark = pytest.mark.ci
+
 from app.config import Settings
 from app.db import get_engine, init_engine, session_scope
 from app.models import Base, Device, DeviceHeartbeat, FirmwareRelease
@@ -45,6 +48,7 @@ def _test_settings(tmp_path) -> Settings:
         session_idle_timeout_seconds=3600,
         cors_allowed_origins=(),
         cookie_domain=None,
+        session_cookie_secure=True,
     )
 
 
@@ -55,7 +59,15 @@ def isolated_hub_db(tmp_path):
     engine = get_engine()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    return settings
+    # The device-list RBAC filter reads Flask's `g` for the current
+    # user. Under HTTP requests and APScheduler jobs an app context
+    # always exists; an in-process test has none, so push a bare one —
+    # `g.get("current_user")` then resolves to None (system context,
+    # unfiltered) instead of raising "outside application context".
+    import flask
+
+    with flask.Flask(__name__).app_context():
+        yield settings
 
 
 def _seed_device_and_release(
