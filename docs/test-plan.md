@@ -89,7 +89,9 @@ twice against a from-scratch instance (fresh Postgres + populated DB):
   tests (the `_rules_forms` form→JSON builders, schedule recurrence
   math, the `device_power` bitfield/taxonomy helpers, the watchdog
   `run_probe` dispatch table — network seams monkeypatched, the
-  `commands._validate_payload` schema checks) need no fixture;
+  `commands._validate_payload` schema checks, the canonical
+  probe-kind registry contract — `KNOWN_PROBE_KINDS` ==
+  `DISPATCHED_PROBE_KINDS` + per-kind `_validate_probe`) need no fixture;
   DB-backed service tests (`create_rule` validation, the
   `upsert_announcement` state machine, the `enrollment`
   mint/consume/revoke service, the `device_power` query/rollup

@@ -324,6 +324,71 @@ def _validate_probe(probe: dict) -> None:
             _require_int("window_seconds", low=30, high=86400)
         return
 
+    # v0.5.89 (BUG-058): the remaining runtime-supported integration
+    # probe kinds. Required fields mirror what each `_probe_*` handler
+    # in watchdog_runtime/_probes_integrations.py reads.
+    if kind in ("ha_numeric_above", "ha_numeric_below"):
+        _require("source_id")
+        _require("entity_id")
+        # HA numeric attributes span temperatures, percentages, watts —
+        # the value is genuinely unbounded, so the range is only a
+        # sanity cap against a fat-fingered exponent.
+        _require_numeric("threshold", low=-1_000_000, high=1_000_000)
+        return
+
+    if kind in ("solar_production_above", "solar_production_below"):
+        _require("source_id")
+        _require_numeric("threshold_w", low=0, high=1_000_000)
+        return
+
+    if kind == "snmp_interface_down":
+        _require("source_id")
+        _require("interface")
+        return
+
+    if kind in ("snmp_throughput_above", "snmp_throughput_below"):
+        _require("source_id")
+        _require("interface")
+        _require_numeric("threshold_bps", low=0, high=1_000_000_000_000)
+        return
+
+    if kind == "snmp_error_rate_above":
+        _require("source_id")
+        _require("interface")
+        _require_numeric("threshold_errors_per_min", low=0, high=1_000_000_000)
+        return
+
+    if kind == "media_session_active":
+        _require("source_id")
+        return
+
+    if kind == "webhook_field_equals":
+        _require("source_id")
+        _require("field")
+        # `expected` is optional — the runtime defaults a missing value
+        # to "" and an empty-string comparison is still a valid rule.
+        return
+
+    if kind == "mqtt_topic_equals":
+        _require("source_id")
+        _require("topic")
+        # `expected_value` optional — same rationale as webhook above.
+        return
+
+    if kind == "epg_show_airing":
+        # EPG reads the shared TVMaze cache, not a per-source row, so
+        # `show` is the only required field; `network` is an optional
+        # disambiguator.
+        _require("show")
+        return
+
+    if kind == "host_awake":
+        # TCP-connect alias — `host` required, `port` defaults to 22.
+        _require("host")
+        if "port" in probe:
+            _require_int("port", low=1, high=65535)
+        return
+
     # Unknown but kind-was-in-canonical (defensive — shouldn't reach
     # here because create_rule's KNOWN_PROBE_KINDS gate fires first).
     # Future kinds that get added to KNOWN_PROBE_KINDS without a
@@ -654,6 +719,60 @@ def _probe_to_phrase(p: dict) -> str:
         return (
             f"device `{p.get('device_id','?')}` drawing near-zero "
             f"(< {p.get('near_zero_threshold_w', 0.5)} W) while relay is on"
+        )
+    # v0.5.89 (BUG-058): the remaining canonical integration probes.
+    if k in ("ha_numeric_above", "ha_numeric_below"):
+        op = ">" if k == "ha_numeric_above" else "<"
+        attr = p.get("attribute")
+        what = f"`{p.get('entity_id','?')}`" + (f" attribute `{attr}`" if attr else "")
+        return (
+            f"Home Assistant source `{p.get('source_id','?')}` entity "
+            f"{what} {op} {p.get('threshold','?')}"
+        )
+    if k in ("solar_production_above", "solar_production_below"):
+        op = ">" if k == "solar_production_above" else "<"
+        return (
+            f"solar source `{p.get('source_id','?')}` producing "
+            f"{op} {p.get('threshold_w','?')} W"
+        )
+    if k == "snmp_interface_down":
+        return (
+            f"SNMP source `{p.get('source_id','?')}` interface "
+            f"`{p.get('interface','?')}` is down"
+        )
+    if k in ("snmp_throughput_above", "snmp_throughput_below"):
+        op = ">" if k == "snmp_throughput_above" else "<"
+        return (
+            f"SNMP source `{p.get('source_id','?')}` interface "
+            f"`{p.get('interface','?')}` {p.get('direction','total')} throughput "
+            f"{op} {p.get('threshold_bps','?')} bps"
+        )
+    if k == "snmp_error_rate_above":
+        return (
+            f"SNMP source `{p.get('source_id','?')}` interface "
+            f"`{p.get('interface','?')}` error rate > "
+            f"{p.get('threshold_errors_per_min','?')} errors/min"
+        )
+    if k == "media_session_active":
+        return f"media source `{p.get('source_id','?')}` has an active session"
+    if k == "webhook_field_equals":
+        return (
+            f"webhook source `{p.get('source_id','?')}` field "
+            f"`{p.get('field','?')}` equals `{p.get('expected','')}`"
+        )
+    if k == "mqtt_topic_equals":
+        return (
+            f"MQTT source `{p.get('source_id','?')}` topic "
+            f"`{p.get('topic','?')}` equals `{p.get('expected_value','')}`"
+        )
+    if k == "epg_show_airing":
+        network = p.get("network")
+        suffix = f" on `{network}`" if network else ""
+        return f"EPG shows `{p.get('show','?')}` currently airing{suffix}"
+    if k == "host_awake":
+        return (
+            f"TCP connect to `{p.get('host','?')}:{p.get('port', 22)}` "
+            f"(host is awake)"
         )
     return f"unknown probe '{k}'"
 
