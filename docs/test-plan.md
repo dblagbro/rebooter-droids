@@ -1,7 +1,7 @@
 # Test plan
 
-Status: **2026-05-15** — first CI gate live (P-QA charter,
-`docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
+Status: **2026-05-16** — CI gate widened to ~230 tests / 33 files
+(P-QA gate-2; charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
 tested. It replaces the prior per-sweep verdict-logging version of this
@@ -49,19 +49,29 @@ On every push to `main` and every pull request, CI:
 ### What `-m ci` covers
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
-instance** — currently the registration / device-facing surface:
+instance**. As of the gate-2 widening (v0.5.79) that is **~230 tests
+across 33 files** — every test file confirmed to pass `pytest -m ci`
+twice against a from-scratch instance (fresh Postgres + populated DB):
 
-| File | Covers |
-|---|---|
-| `test_v0568_adoption_token_redelivery.py` | End-to-end adoption: announce → adopt → register → heartbeat, plus the lost-response and stranded-pickup recovery paths. |
-| `test_device_api.py` | Full device-API round-trip + negative paths (register/heartbeat/commands/events/power-samples auth + validation). |
-| `test_v027_heartbeat_state.py` | `online` / `offline` / `never` heartbeat-state derivation. |
+- **Registration / device surface** — `test_device_api.py`,
+  `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
+  (the original gate-1 set: the v0.5.36 `site_id` NOT NULL regression
+  that 500'd `/register` for ~32 versions can no longer merge silently).
+- **Admin API + RBAC + auth** — invites, password reset, session
+  revoke/shadow, role bindings, CORS, mass-action gate, per-record audit.
+- **Watchdog rules + schedules** — CRUD, validation, the JSON editor,
+  the structured edit form (`test_v0578`), probe validation, integration
+  probe kinds. *These are the tests that caught the v0.5.77/.78
+  regressions — now they gate.*
+- **Status / devices / power / firmware UI** and the B11 sync
+  applier/emission/natural-key in-process tests.
 
-**21 tests.** This is deliberately the registration-critical surface:
-it is the exact class of bug that shipped in v0.5.36 (the `site_id`
-NOT NULL regression that 500'd `/register` for ~32 versions, uncaught)
-and was found in v0.5.68 only by *writing* the end-to-end adoption
-test. That regression can no longer merge silently.
+Two structural fixes made the gate-2 widening possible (both default to
+the production-safe value; the CI app boot opts out):
+`REBOOTER_SESSION_COOKIE_SECURE=0` (the Secure session cookie is never
+sent over the gate's `http://localhost`) and
+`REBOOTER_RATE_LIMIT_EXEMPT_IPS='*'` (33 test modules each log in — that
+trips the 30/min auth limiter).
 
 ### Running it locally
 
@@ -75,6 +85,8 @@ docker run -d --name rd-ci-app --network rd-ci -p 18090:8090 \
   -e REBOOTER_SECRET_KEY=ci-not-a-secret \
   -e REBOOTER_BOOTSTRAP_ADMIN_EMAIL=ci-admin@example.com \
   -e REBOOTER_BOOTSTRAP_ADMIN_PASSWORD=ci-Adm1n-pw \
+  -e REBOOTER_SESSION_COOKIE_SECURE=0 \
+  -e REBOOTER_RATE_LIMIT_EXEMPT_IPS='*' \
   dblagbro/rebooter-droids:latest
 
 # 2. run the gate
@@ -89,33 +101,47 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
 
 ## Known coverage gaps (the honest list)
 
-1. **~56 of the ~59 test files are not in the CI gate.** They assume
-   the live deployment's accumulated data or pre-date current markup,
-   so they fail against a fresh instance — not because the app is
-   broken, but because the tests are brittle (HTML-string assertions,
-   data-state assumptions).
+1. **~30 of the ~64 test files are still not in the CI gate** (gate-3
+   backlog). They fall into three buckets, each needing real work
+   before they can gate:
+   - *Brittle HTML-string / data-state assertions* — most of the
+     `0P`-all-fail files (`test_v0432_history_export_search`,
+     `test_v0430_history_sources`, `test_v0431_enrol_wizard`,
+     `test_v0425_runtime_smtp`, `test_v0427_history_chips`,
+     `test_v0500_role_bindings`, `test_v0502/0503`, `test_v0433`, …).
+     They assume accumulated live-deployment data or pre-date current
+     markup.
+   - *Timing / wall-clock e2e* — `test_v0417_schedule_runtime_e2e`,
+     `test_v0414_watchdog_runtime_e2e`, `test_v042_watchdog_runtime`:
+     race the 30 s APScheduler tick, so they flake. They do not belong
+     in a deterministic gate without a time-injection seam.
+   - *Order-dependent* — `test_v034_bulk_actions` asserts `/app/groups`
+     shows bulk-form scaffolding, which only renders with a group
+     present; gate it once it seeds its own group.
 2. **No in-process unit tests.** Service-layer logic
    (`announcements`, `enrollment`, `watchdog`, `device_power`, …) has
    no fast unit coverage — every test pays a full HTTP round-trip.
 3. **Playwright `responsive` tests are not in CI** — they need a
-   browser image; deferred until the gate is otherwise stable.
+   browser image (the gate's `pip install -e ".[dev]"` has no
+   playwright, so they skip cleanly); deferred.
 4. **`qa-notes.md` is unmaintained** (~105 K tokens). Not deleted yet
    (it has historical value) but it is not a plan.
 
-## How to widen the gate
+## How to widen the gate further (gate-3)
 
 The path, in priority order:
 
-1. **Triage the existing files.** For each non-`ci` file: run it
-   against a fresh ephemeral instance. If it passes, add
-   `pytestmark = pytest.mark.ci`. If it fails only on a stale
-   HTML-string assertion, fix the assertion or drop the test. If it
-   genuinely needs live-deployment data, leave it unmarked and note
-   why.
+1. **Fix the brittle files.** For each `0P` file: run it against a
+   fresh ephemeral instance, then either seed the data it assumes or
+   replace the stale HTML-string assertion, and add `pytestmark =
+   pytest.mark.ci`. The gate-2 widening already triaged every file;
+   this is the per-file repair work.
 2. **Add a `tests/unit/` tree** of in-process tests (Flask test client
    + a transactional test DB) for the service layer — fast, no HTTP,
    no Docker. This is where adoption/enrollment edge cases belong.
-3. **Add the Playwright `responsive` tests to CI** behind a browser
-   step once (1) and (2) are stable.
+3. **Add a time-injection seam** so the watchdog/schedule runtime e2e
+   tests are deterministic, then gate them.
+4. **Add the Playwright `responsive` tests to CI** behind a browser
+   step once the above are stable.
 
 Each step is independently shippable; do them in order.

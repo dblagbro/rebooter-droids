@@ -74,7 +74,9 @@ def create_app() -> Flask:
     app.config["SETTINGS"] = settings
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["SESSION_COOKIE_SECURE"] = True
+    # Secure-only by default; the CI gate runs on plain http and opts
+    # out via REBOOTER_SESSION_COOKIE_SECURE=0 (see app/config.py).
+    app.config["SESSION_COOKIE_SECURE"] = settings.session_cookie_secure
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     # v0.3.3 (P3.1): rebooter-specific cookie name + optional cross-
     # subdomain scope so the session carries between www and www2.

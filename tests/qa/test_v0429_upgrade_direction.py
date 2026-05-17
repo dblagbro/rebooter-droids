@@ -19,6 +19,11 @@ existing v0.4.28 test against the live cluster.
 """
 
 from __future__ import annotations
+import pytest
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-2 widening).
+pytestmark = pytest.mark.ci
+
 
 
 def test_is_upgrade_strict_numeric_order():

@@ -9,11 +9,18 @@ name: CI
 # silently. This gate makes that class of bug fail the build.
 #
 # Scope: it builds the application image, boots it against a throwaway
-# Postgres, and runs the `-m ci` test bucket — the suite's
-# registration / device-API / heartbeat tests, verified green against
-# a fresh ephemeral instance. The other ~56 test files are live-
-# deployment integration tests not yet CI-runnable; widening the gate
-# is tracked in docs/test-plan.md.
+# Postgres, and runs the `-m ci` test bucket against that fresh
+# instance. As of the gate-2 widening (v0.5.79) that bucket is ~230
+# tests / 33 files — registration, admin API, RBAC/auth, watchdog
+# rules + schedules, and the status/devices/firmware UI. The remaining
+# ~30 files (brittle HTML asserts, timing-flaky e2e, order-dependent)
+# are the gate-3 backlog in docs/test-plan.md.
+#
+# The app boot below sets REBOOTER_SESSION_COOKIE_SECURE=0 (the Secure
+# cookie isn't sent over the gate's plain http://localhost) and
+# REBOOTER_RATE_LIMIT_EXEMPT_IPS='*' (33 test modules each log in,
+# which would trip the 30/min auth limiter). Both default to the
+# production-safe value; only this throwaway instance opts out.
 
 on:
   push:
@@ -48,6 +55,8 @@ jobs:
             -e REBOOTER_SECRET_KEY=ci-not-a-secret \
             -e REBOOTER_BOOTSTRAP_ADMIN_EMAIL=ci-admin@example.com \
             -e REBOOTER_BOOTSTRAP_ADMIN_PASSWORD=ci-Adm1n-pw \
+            -e REBOOTER_SESSION_COOKIE_SECURE=0 \
+            -e REBOOTER_RATE_LIMIT_EXEMPT_IPS='*' \
             rebooter-droids:ci
 
       - name: Wait for the app to be healthy

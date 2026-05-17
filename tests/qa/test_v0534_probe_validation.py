@@ -23,6 +23,10 @@ from __future__ import annotations
 import pytest
 import requests
 
+# v0.5.79: in the `-m ci` gate (P-QA gate-2 widening).
+pytestmark = pytest.mark.ci
+
+
 
 # ── BUG-054 retest ─────────────────────────────────────────────────────
 
