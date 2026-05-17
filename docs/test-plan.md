@@ -1,7 +1,8 @@
 # Test plan
 
-Status: **2026-05-16** — CI gate widened to ~230 tests / 33 files
-(P-QA gate-2; charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
+Status: **2026-05-17** — CI gate at ~241 tests / 36 files (P-QA gate-2
+widening + gate-3 history files; charter
+`docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
 tested. It replaces the prior per-sweep verdict-logging version of this
@@ -49,9 +50,10 @@ On every push to `main` and every pull request, CI:
 ### What `-m ci` covers
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
-instance**. As of the gate-2 widening (v0.5.79) that is **~230 tests
-across 33 files** — every test file confirmed to pass `pytest -m ci`
-twice against a from-scratch instance (fresh Postgres + populated DB):
+instance**. As of the gate-2 widening (v0.5.79) plus the gate-3 history
+files, that is **~241 tests across 36 files** — every test file
+confirmed to pass `pytest -m ci` twice against a from-scratch instance
+(fresh Postgres + populated DB):
 
 - **Registration / device surface** — `test_device_api.py`,
   `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
@@ -65,6 +67,10 @@ twice against a from-scratch instance (fresh Postgres + populated DB):
   regressions — now they gate.*
 - **Status / devices / power / firmware UI** and the B11 sync
   applier/emission/natural-key in-process tests.
+- **History feed** — chip-filter, multi-source picker, CSV/JSON export,
+  free-text search (`test_v0427/0430/0432`). These seed their own
+  `watchdog_rule.*` audit activity via a module-scoped autouse fixture
+  rather than assuming live data — the pattern for the rest of gate-3.
 
 Two structural fixes made the gate-2 widening possible (both default to
 the production-safe value; the CI app boot opts out):
@@ -101,16 +107,20 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
 
 ## Known coverage gaps (the honest list)
 
-1. **~30 of the ~64 test files are still not in the CI gate** (gate-3
+1. **~27 of the ~64 test files are still not in the CI gate** (gate-3
    backlog). They fall into three buckets, each needing real work
    before they can gate:
-   - *Brittle HTML-string / data-state assertions* — most of the
-     `0P`-all-fail files (`test_v0432_history_export_search`,
-     `test_v0430_history_sources`, `test_v0431_enrol_wizard`,
-     `test_v0425_runtime_smtp`, `test_v0427_history_chips`,
-     `test_v0500_role_bindings`, `test_v0502/0503`, `test_v0433`, …).
-     They assume accumulated live-deployment data or pre-date current
-     markup.
+   - *Brittle HTML-string / data-state assertions* — the remaining
+     `0P`-all-fail files (`test_v0431_enrol_wizard`,
+     `test_v0425_runtime_smtp`, `test_v0500_role_bindings`,
+     `test_v0502/0503`, `test_v0433`, …). They assume accumulated
+     live-deployment data or pre-date current markup. The three history
+     files (`test_v0427/0430/0432`) were the first of this bucket
+     fixed — three root causes: a `_login()` helper hardcoding creds
+     instead of honouring `REBOOTER_QA_EMAIL/PASS`; no seeded audit
+     data on a fresh instance; and a `<td><code>` regex that missed the
+     `data-label="Action"` attribute added by the responsive-table
+     reflow. Same three checks apply to the rest of this bucket.
    - *Timing / wall-clock e2e* — `test_v0417_schedule_runtime_e2e`,
      `test_v0414_watchdog_runtime_e2e`, `test_v042_watchdog_runtime`:
      race the 30 s APScheduler tick, so they flake. They do not belong
