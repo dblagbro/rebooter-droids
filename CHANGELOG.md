@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.75] - 2026-05-16
+
+### Changed — P-UI Tier C: consistency (defect walkthrough #9, #11)
+
+Tier C of the walkthrough. Measuring the live pages first showed **two of the five flagged defects were not real** — the walkthrough over-read them from scaled-down screenshots:
+
+- **#7 (page width "jumps 640↔1150px") — not a defect.** `<main>` is a uniform `max-width:1100px` on every page; measured 1100 on Status, Devices, Sites, Rules, Login alike. The "narrow vs wide" impression was content density, not container width.
+- **#8 (desktop "wastes space", "table squeezed to 640px") — not a defect.** Data tables are `width:100%` of the 1100px main. No change.
+- **#10 (breadcrumbs "inconsistent") — already coherent.** Every sub-page uses the same `← Parent` pattern (`← Devices`, `← Groups`, `← Sites`, `← Users`, …); top-nav-level pages correctly have none (the nav is the navigation). No structural change.
+
+The two genuine defects are fixed:
+
+- **#11 — destructive buttons no longer look like primary actions.** `Delete` (Sites, Firmware), `Remove` (Group members) and `Reject` (signup requests) were plain primary-blue buttons — a destructive action indistinguishable from a normal one. All now use `btn-danger` (red); the Reject button's inline red is replaced by the class.
+- **#9 — form fields widened.** The `max-width` cap on inputs/selects was 320px, which read as unfinished inside a full-width card. Raised to 30rem (≈480px) for inputs/selects and 44rem for textareas — a normal, scannable field width.
+
+### Notes
+- Tiers A, B, C done. Tier D (form UX) and Tier E (content/polish) remain.
+
 ## [0.5.74] - 2026-05-16
 
 ### Changed — P-UI Tier B: mobile layout (defect walkthrough #3, #4, #6)
