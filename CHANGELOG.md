@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — P-QA: a `tests/unit/` in-process unit-test tree
+
+Started the unit-test tree the gate-3 plan called for. `tests/unit/`
+holds fast in-process service-layer tests — no HTTP, no Docker — in two
+tiers: pure-function tests that need no fixture (the `_rules_forms`
+form→JSON builders, schedule recurrence math) and DB-backed tests that
+take a `hub_db` isolated-SQLite fixture (`create_rule` validation).
+Every test under `tests/unit/` is auto-tagged `ci` by the tree's
+conftest, so new unit files gate without a per-file marker. First
+batch: 29 tests across 3 files, runs in ~2 s. Gate is now ~412 tests /
+59 files. Test-only change — no app code.
+
 ## [0.5.82] - 2026-05-17
 
 ### Changed — P-QA gate-3: timing-e2e files into the CI gate (time-injection seam)

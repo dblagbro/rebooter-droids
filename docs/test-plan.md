@@ -1,8 +1,8 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~383 tests / 56 files (P-QA gate-2
-widening + gate-3 0P-bucket, partial-fail, in-process & timing-e2e
-fixes; charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
+Status: **2026-05-17** — CI gate at ~412 tests / 59 files (P-QA gate-2
+widening + gate-3 fixes + a `tests/unit/` tree; charter
+`docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
 tested. It replaces the prior per-sweep verdict-logging version of this
@@ -50,11 +50,10 @@ On every push to `main` and every pull request, CI:
 ### What `-m ci` covers
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
-instance**. As of the gate-2 widening (v0.5.79) plus the gate-3
-0P-bucket, partial-fail, in-process and timing-e2e fixes, that is
-**~383 tests across 56 files** — every test file confirmed to pass
-`pytest -m ci` twice against a from-scratch instance (fresh Postgres +
-populated DB):
+instance**. As of the gate-2 widening (v0.5.79), the gate-3 fixes and
+the `tests/unit/` tree, that is **~412 tests across 59 files** — every
+test file confirmed to pass `pytest -m ci` twice against a from-scratch
+instance (fresh Postgres + populated DB):
 
 - **Registration / device surface** — `test_device_api.py`,
   `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
@@ -86,6 +85,12 @@ populated DB):
   shell / theme picker (`test_v030`). The genuinely nginx-layer tests
   in these files `pytest.skip` when the base URL isn't the
   `/rebooter`-prefixed deployment.
+- **`tests/unit/`** — the in-process unit-test tree. Pure-function
+  tests (the `_rules_forms` form→JSON builders, schedule recurrence
+  math) need no fixture; DB-backed service tests (`create_rule`
+  validation) take the `hub_db` isolated-SQLite fixture. Every test
+  under `tests/unit/` is auto-tagged `ci` by its conftest — no HTTP, no
+  Docker, runs in ~2 s.
 
 Two structural fixes made the gate-2 widening possible (both default to
 the production-safe value; the CI app boot opts out):
@@ -155,9 +160,12 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
    - *Order-dependent* — `test_v034_bulk_actions` asserts `/app/groups`
      shows bulk-form scaffolding, which only renders with a group
      present; gate it once it seeds its own group.
-2. **No in-process unit tests.** Service-layer logic
-   (`announcements`, `enrollment`, `watchdog`, `device_power`, …) has
-   no fast unit coverage — every test pays a full HTTP round-trip.
+2. **In-process unit coverage is young.** `tests/unit/` exists and
+   covers the `_rules_forms` builders, schedule recurrence math and
+   `create_rule` validation — but most service-layer logic
+   (`announcements`, `enrollment`, `device_power`, the watchdog probe
+   dispatch, …) still has only HTTP coverage. Growing `tests/unit/` is
+   ongoing.
 3. **Playwright `responsive` tests are not in CI** — they need a
    browser image (the gate's `pip install -e ".[dev]"` has no
    playwright, so they skip cleanly); deferred.
@@ -173,12 +181,11 @@ The path, in priority order:
    replace the stale HTML-string assertion, and add `pytestmark =
    pytest.mark.ci`. The gate-2 widening already triaged every file;
    this is the per-file repair work.
-2. **Add a `tests/unit/` tree** of in-process tests (Flask test client
-   + a transactional test DB) for the service layer — fast, no HTTP,
-   no Docker. This is where adoption/enrollment edge cases belong.
-3. **Add a time-injection seam** so the watchdog/schedule runtime e2e
-   tests are deterministic, then gate them.
-4. **Add the Playwright `responsive` tests to CI** behind a browser
+2. **Grow `tests/unit/`.** The tree is started (v0.5.82) — keep adding
+   service-layer coverage there: it's fast, no HTTP, no Docker, and
+   auto-gated. Adoption/enrollment edge cases, the watchdog probe
+   dispatch and the announce state machine all belong here.
+3. **Add the Playwright `responsive` tests to CI** behind a browser
    step once the above are stable.
 
 Each step is independently shippable; do them in order.
