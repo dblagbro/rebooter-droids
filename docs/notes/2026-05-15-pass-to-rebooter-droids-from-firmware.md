@@ -16,12 +16,26 @@ What is solid now:
 - low-load current semantics are explicit in the newer dev line
 - `.48` and `.69` are both verified on `0.1.29-dev-central-safe`
 - `.48` survived central re-enable on `0.1.29` past the old crash window
+- `.67` and `.30` have now also crossed from the old `0.1.25` recovery line to
+  healthy `0.1.29` steady-state operation with live small-load power telemetry
+- `.69` has been reconnected to the hub and is now online with real power rows,
+  but it is currently doing so under a new live row (`lab-69`) because its old
+  central identity had been lost from the device
 
 What is not yet fully closed:
 
-- `.67`, `.30`, and `.225` have not yet all been revalidated on `0.1.29`
-- the long-running capture still shows `.67`, `.30`, and currently `.225` on the
-  older recovery line, so broad rollout is still premature
+- `.225` is still the main outlier on `0.1.29`
+- with both central and power enabled, `.225` still re-enters
+  `recovery_mode` with `reset_reason = "Exception"`
+- the hub now has a duplicate-identity cleanup question for `.69`:
+  - live row: `dev_01KRQBRSG1BZ5SR87QQ2KSSVFT` (`lab-69`)
+  - stale row: `dev_01KR9VZKGW72DS7DAQEFAV3T58` (`Erica's R.L. Speaker`)
+- the long-running capture now shows:
+  - `.48` healthy on `0.1.29`
+  - `.67` healthy on `0.1.29`
+  - `.69` healthy on `0.1.29`
+  - `.30` healthy on `0.1.29`
+  - `.225` still in `recovery_mode` on `0.1.29`
 - `.48` central stability is now verified, but real CSE7766 visibility on that
   exact unit still needs a no-serial-adapter check
 
@@ -47,6 +61,15 @@ What is not yet fully closed:
   - `.48` OTA to `0.1.29` passed and survived central re-enable for 200+ seconds
     without reproducing the prior delayed crash window
   - `.69` OTA to `0.1.29` also passed cleanly
+  - widening pass after that:
+    - `.67` reached healthy `0.1.29` operation and is now reporting about
+      `119.6V / 2.3W`
+    - `.30` reached healthy `0.1.29` operation and is now reporting about
+      `119.8V / 5.0W`
+    - `.69` was re-enrolled into central and is now back online on the hub with
+      live CSE7766 rows at about `119.1V / 0W`
+    - `.225` remains the residual exception/recovery outlier and should be
+      treated as the blocker for broader confidence
 
 Current shared artifacts:
 
@@ -85,13 +108,17 @@ Analytics / UI implication:
 1. Treat the `0.1.25` recovery-line devices as unstable for product conclusions.
 2. Prefer `0.1.29` evidence when reasoning about the current device heartbeat /
    timing / recovery contract.
-3. Keep cross-modal timing work pointed at the new wall-clock fields, not only
+3. Treat `.225` as the remaining blocker instead of assuming the whole line is
+   still suspect.
+4. Clean up or intentionally preserve the stale pre-re-enrol `.69` row; do not
+   leave the duplicate identity ambiguous by accident.
+5. Keep cross-modal timing work pointed at the new wall-clock fields, not only
    uptime-relative timestamps.
-4. Treat the current G2 sample as promising but early:
+6. Treat the current G2 sample as promising but early:
    - `.48` low-RTT samples are currently averaging about `+10.6 ms`
    - `.69` low-RTT samples are currently averaging about `-21.7 ms`
    - keep measuring before locking architecture assumptions
-5. Keep `A4`, `E5`, and `G2` alive as research deliverables:
+7. Keep `A4`, `E5`, and `G2` alive as research deliverables:
    - Enphase PLC link quality
    - Theengs / free BLE covariates
    - empirical timing measurement
@@ -108,7 +135,10 @@ Priority order still looks like:
 ## Firmware-side next steps
 
 1. keep the 24-hour capture running
-2. move `.67` to `0.1.29` as the next speaker-device proof target
-3. revalidate `.225` on `0.1.29` with central and power both enabled
-4. then move the remaining `0.1.25` recovery-line devices forward
-5. once a third stable device exists on the new line, widen the G2 timing pass
+2. treat `.225` as the primary residual blocker on `0.1.29`
+3. decide what to do with the duplicate `.69` hub identity
+4. keep the G2 timing pass running on `.48` and `.69`
+5. improve the local OTA harness so reboot-shortened connections are not
+   mislabeled as upload failures
+6. only after `.225` is better understood, decide whether to widen power-enabled
+   rollout to more Erica speaker devices

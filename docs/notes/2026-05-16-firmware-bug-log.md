@@ -423,4 +423,42 @@ project.
 - recommended fix:
   - teach the harness to weigh the post-boot firmware version and reboot timing
     more heavily than the raw HTTP client exception in this edge case.
-- status: confirmed; tooling follow-up pending
+- status: mitigated in `scripts/qa-ota-stress.ps1`; the harness now records an
+  effective acceptance result when the target clearly rebooted and came back
+
+### 14. Central-enabled long soak still degrades into recovery mode under repeated transport failures
+
+- date: 2026-05-16
+- title: repeated central transport failures still drive later auto-recovery on `0.1.29`
+- severity: high
+- area/component: central client / long-run transport failure handling
+- environment/context:
+  - `0.1.29-dev-central-safe`
+  - observed across `.48`, `.67`, `.69`, `.30`, `.225`
+  - split-tested most directly on `http://192.168.1.225`
+- reproduction steps:
+  1. Run the central-enabled line through a long soak with the device enrolled.
+  2. Allow repeated heartbeat / poll / firmware-check / power-upload work to continue.
+  3. Observe device status and captured event snapshots over time.
+- expected result:
+  - the device should remain stable even if some central transport attempts fail.
+- actual result:
+  - `.225` stays healthy with `central.enabled=false` and `power.enabled=false`,
+    but still returns to `recovery_mode` with `central.enabled=true` even when
+    `power.enabled=false`.
+  - the completed overnight soak later showed `.48`, `.67`, `.69`, and `.30`
+    also ending in `recovery_mode=true`.
+- evidence:
+  - `C:\dev\rebooter-firmware\docs\overnight-capture-and-root-cause-readout-2026-05-16.md`
+  - `C:\Users\Administrator\Documents\Codex\2026-04-18-all-projets-on-this-windows-pc\power-capture-2026-05-15-live\summary.json`
+  - captured event snapshots under `power-capture-2026-05-15-live\events-*.json`
+- likely cause if known:
+  - repeated central transport failures still create enough heap churn and/or
+    fragmentation to drive later early-boot failures and auto-recovery, even
+    after the earlier `0.1.29` event-log persistence mitigation.
+- recommended fix:
+  - reduce transport-failure amplification under sustained outage
+  - widen failure backoff for firmware-check / heartbeat / poll / power transport
+  - trim repeated failure logging on the hot path
+  - rerun a small controlled soak after the next mitigation
+- status: open; this is now the primary firmware blocker
