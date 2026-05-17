@@ -158,8 +158,8 @@
 </div>
 {% endif %}
 
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add a Roku</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add a Roku</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <input type="hidden" name="kind" value="roku">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -185,11 +185,11 @@
     now</em> after adding to verify reachability — the next live
     sample will appear above.
   </p>
-</div>
+</details>
 
 {# ── Home Assistant (v0.5.23) ──────────────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add a Home Assistant instance</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add a Home Assistant instance</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <input type="hidden" name="kind" value="home_assistant">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -221,11 +221,11 @@
     and caches a compact entity dictionary the watchdog probe
     <code>ha_state_is</code> can match against.
   </p>
-</div>
+</details>
 
 {# ── Weather alerts (NWS) ──────────────────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add a Weather feed (NWS active alerts)</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add a Weather feed (NWS active alerts)</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <input type="hidden" name="kind" value="weather">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -254,11 +254,11 @@
     with optional <code>event_contains</code> and
     <code>min_severity</code>.
   </p>
-</div>
+</details>
 
 {# ── iCal / WebCal ────────────────────────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add an iCal / WebCal feed</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add an iCal / WebCal feed</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <input type="hidden" name="kind" value="ical">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -283,11 +283,11 @@
     retained. Rule probe: <code>ical_event_active</code> with
     <code>summary_contains</code> filter.
   </p>
-</div>
+</details>
 
 {# ── SolarEdge (cloud) ────────────────────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add a SolarEdge site (cloud)</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add a SolarEdge site (cloud)</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <input type="hidden" name="kind" value="solaredge">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -316,11 +316,11 @@
     keep the interval ≥ 300 s. Rule probe:
     <code>solar_production_above</code> / <code>solar_production_below</code>.
   </p>
-</div>
+</details>
 
 {# ── Enphase Envoy (local) ────────────────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add an Enphase Envoy (local)</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add an Enphase Envoy (local)</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <input type="hidden" name="kind" value="enphase_envoy">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -353,11 +353,11 @@
     others fall back to the inverter sum. Rule probe:
     <code>solar_production_above</code> / <code>solar_production_below</code>.
   </p>
-</div>
+</details>
 
 {# ── SNMP (router / managed switch) ───────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add a router / managed switch (SNMP)</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add a router / managed switch (SNMP)</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <input type="hidden" name="kind" value="snmp">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -444,11 +444,11 @@
     <code>snmp_throughput_above</code>/<code>below</code>,
     <code>snmp_error_rate_above</code>.
   </p>
-</div>
+</details>
 
 {# ── Webhook integrations (Plex / Jellyfin / iOS Shortcuts) ───────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add a webhook integration (Plex / Jellyfin / iOS Shortcuts)</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add a webhook integration (Plex / Jellyfin / iOS Shortcuts)</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap">
     <label style="display:flex; flex-direction:column; gap:.2rem">
       <span class="muted" style="font-size:.75rem">Type</span>
@@ -490,11 +490,11 @@
     <code>webhook_field_equals</code> (generic — match any JSON field, e.g.
     iOS Shortcut <code>state=home</code>).
   </p>
-</div>
+</details>
 
 {# ── MQTT broker subscriber ───────────────────────────────────────── #}
-<div class="v3-card" style="margin-top:1rem">
-  <h3>Add an MQTT broker subscriber</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>Add an MQTT broker subscriber</summary>
   <form method="post" action="{{ url_for('admin_ui.settings_integrations_add_submit') }}" class="actions" style="flex-wrap:wrap; align-items:flex-start">
     <input type="hidden" name="kind" value="mqtt">
     <label style="display:flex; flex-direction:column; gap:.2rem">
@@ -533,7 +533,7 @@
     on the next container restart (the subscriber list is read at
     start-up).
   </p>
-</div>
+</details>
 
 {# ── TV Guide (EPG) ───────────────────────────────────────────────── #}
 <div class="v3-card" style="margin-top:1rem">
@@ -563,8 +563,8 @@
   </p>
 </div>
 
-<div class="v3-card" style="margin-top:1rem">
-  <h3>How to use this in a watchdog rule</h3>
+<details class="v3-card" style="margin-top:1rem">
+  <summary>How to use this in a watchdog rule</summary>
   <p>
     Add a probe of kind <code>roku_app_active</code> to a watchdog
     rule:
@@ -616,5 +616,5 @@
     from the last two samples — point the action at the modem's plug for
     auto-recovery.
   </p>
-</div>
+</details>
 {% endblock %}

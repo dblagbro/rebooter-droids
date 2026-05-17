@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.77] - 2026-05-16
+
+### Changed — P-UI Tier E: content & polish (defect walkthrough #16–#23)
+
+The final tier of the walkthrough — the content/polish defects. As in Tier C, measuring the live pages first showed **two of the eight were over-flagged** and one was softer than written:
+
+- **#16 — dev-docs copy is out of the Settings → Overview card.** It told operators about `docs/webui-redesign-plan.md`, "P5/P6 placeholder copy in v0.3.0", `docs/redesign-continuation-plan.md`, per-line version numbers (`v0.4.10`, `v0.4.1`), "TOTP/OIDC queued", "env-var-driven", and "awaiting your architecture pick on RFC-004". Rewritten to plain operator-facing copy: each section now has a one-line "what it's for" description with no internal references.
+- **#17 — the Rules "What's coming next" roadmap card is gone.** It listed unshipped backlog items (`B6.3`, `B17 Layer 2`) and a "Recent ships" version log (`v0.4.2 … v0.5.19`) — internal release notes surfaced on an operator page. Card deleted.
+- **#20 — integration add-forms collapse.** The Integrations page was an endless scroll of ten fully-expanded add-forms (Roku, Home Assistant, Weather, iCal, SolarEdge, Enphase, SNMP, webhook, MQTT) plus a long reference card. Each is now a `<details>` — the page opens as a short list of headings; click one to expand its form. No JS (native `<details>`).
+- **#21 — the sign-in card no longer spans the full page.** `.auth` had no `max-width`, so the login form stretched across the full 1100px main with the fields stranded top-left. Constrained to a centred 26rem box.
+- **#22 — badges no longer wrap into a misshapen pill.** Added `white-space:nowrap` to `.badge` so a two-word badge stays on one line inside its rounded pill.
+- **#23 — attention items get one snooze-duration picker.** The "Needs attention" list repeated three near-identical buttons per item (`Snooze 1h`, `Snooze 24h`, `Ack`). The two snooze buttons are now a single duration `<select>` (1 hour / 24 hours) + one `Snooze` button; `Ack` is relabelled `Acknowledge`. Same `snooze_seconds` form field — no backend change.
+
+Over-flagged, corrected on inspection (no change needed):
+
+- **#18 (device-detail tabs "don't work") — they do.** The `.v3-tabbar` entries are anchor-jump links and all eight matching `<section id="…">` targets (overview, power, watchdog, schedule, audit, failsafe, events, settings) exist. Clicking a tab scrolls to its section as designed.
+- **#19 (history "has no pagination") — it is capped.** `history_page()` already limits to `limit=int(request.args.get("limit") or 200)` and a CSV export exists. Not unbounded.
+
+### Found, not fixed (out of Tier E scope)
+
+- Status page totals row hardcodes **"0 active rules / watchdogs ship in P4"** — stale dev copy now that rules ship. Fixing it properly needs a live rule count from the backend, not a template tweak; logged for a follow-up rather than shipped as a wrong-but-prettier number.
+
+### Notes
+- Tiers A, B, C, D, E of the P-UI defect walkthrough are now done. Only #15 (structured rule-edit form) remains deferred as a standalone Phase-2B feature build.
+
 ## [0.5.76] - 2026-05-16
 
 ### Changed — P-UI Tier D: form UX (defect walkthrough #12, #13, #14)
