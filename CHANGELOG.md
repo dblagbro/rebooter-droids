@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — P-QA: end-to-end device-adoption regression test
+
+`tests/qa/test_v0589_adoption_e2e.py` — the charter's (P-REG)
+highest-value missing test. It drives the complete bring-up as **one
+continuous flow**: device announces (unauthenticated) → operator sees
+it in pending-adoption → operator adopts (token minted) → device's
+next announce poll picks up the enrollment token → device registers →
+device sends its first heartbeat → the hub reports it `active` +
+`online`; plus the announcement closing out as `registered` and the
+spent enrollment token being rejected on replay (`409
+enrollment_consumed`).
+
+Every prior test exercised a single hop of this ~60 KB path
+(`announcements.py` / `pending_adoption.py` / `enrollment.py` /
+`device_api.py`); a break in the *seam between* hops — like the
+v0.5.36→v0.5.68 siteless-token regression that 500'd `/register` for
+32 versions — could merge silently. This test gates that seam.
+`pytest.mark.ci` — runs on every push. Gate is now ~618 tests.
+Test-only change: no app code touched, so no version bump / redeploy.
+
 ## [0.5.89] - 2026-05-17
 
 ### Fixed — BUG-058: probe-kind validation/dispatch divergence
