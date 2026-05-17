@@ -41,8 +41,26 @@ marking, the no-mark path, expiry exclusion); `record_result`
 (result storage + command status update, bad-status and
 unknown-command errors); and `expire_overdue_commands`. The DB-backed
 cases use the `hub_db` isolated-SQLite fixture. Test-only change: no
-app code touched, so no version bump / redeploy — the gate widens to
-~518 tests on the next CI run.
+app code touched, so no version bump / redeploy.
+
+### Added — P-QA: in-process unit tests for the heartbeat-ingest service
+
+`tests/unit/test_heartbeats_service.py` (17 tests) covers
+`app/services/heartbeats.py` — `record_heartbeat` and
+`latest_heartbeat`. Coverage: the unknown-device `LookupError`, the
+`DeviceHeartbeat` history-row write, the Device firmware/IP update
+(and that a blank payload field never clobbers last-known truth), the
+status-field copy onto the history row, the Device hot-column refresh
+(and its partial-payload preservation), `last_event_at` ISO parsing
+plus malformed-timestamp tolerance, the `reported_config` stash
+(dict-only), the recovery-transition detection (`last_known_good_restored`
+and `recovery_exit` triggers, and that a steady-state heartbeat fires
+no push), and `latest_heartbeat` newest-by-`received_at` selection.
+The deferred `device_config.maybe_push_after_recovery` is swapped for
+a spy via an autouse fixture so the commands/audit chain stays out.
+DB-backed cases use the `hub_db` isolated-SQLite fixture. Test-only
+change: no app code touched, so no version bump / redeploy — the gate
+widens to ~535 tests on the next CI run.
 
 ## [0.5.86] - 2026-05-17
 
