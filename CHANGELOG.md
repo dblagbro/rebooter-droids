@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.73] - 2026-05-16
+
+### Fixed — P-UI Tier A: broken pages (defect walkthrough #1, #2)
+
+First fixes from the P-UI defect walkthrough (`docs/notes/2026-05-16-pui-defect-walkthrough.md`).
+
+- **`/app/power` returned HTTP 500 (defect #1).** `templates/power.html` did `{% for v in d.values %}` — Jinja resolved `d.values` to the dict's `.values` *method* (a non-iterable builtin) instead of the dict's `"values"` key, so the fleet-power page rendered a raw JSON error to the operator. Fixed with subscript access `d['values']` (2 occurrences).
+- **CSP silently blocked inline `<script>` (defect #2).** The page CSP is `script-src 'self'`; four inline `<script>` blocks were blocked, so their JS never ran — dead were the rule-create form's probe-kind field switching / add-remove-target rows / target filter, the pending-adoption auto-refresh, and the user-detail role-scope picker. Extracted all four to static files loaded with `defer` (behaviour-preserving, defensive null-guards added):
+  - `static/js/pending_adoption_refresh.js`
+  - `static/js/rules_create_probe.js`
+  - `static/js/rules_create_target.js`
+  - `static/js/user_detail_scope.js`
+
+### Notes
+- Tier A of the walkthrough is done. Tiers B–E remain; Tier B (mobile) gets a dedicated research + design pass before any code.
+
 ## [0.5.72] - 2026-05-16
 
 ### Fixed — B11 bootstrap-seam: applier reconciles divergent ids, sync-cursor errors stop

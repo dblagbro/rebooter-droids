@@ -109,7 +109,7 @@
   {# Compute peak across whole dataset for y-scale. #}
   {% set all_vals = [] %}
   {% for d in fr.avg_w_by_day %}
-    {% for v in d.values %}
+    {% for v in d['values'] %}
       {% if v is not none %}{% set _ = all_vals.append(v) %}{% endif %}
     {% endfor %}
   {% endfor %}
@@ -123,7 +123,7 @@
     {% for d in fr.avg_w_by_day %}
       {% set bx = loop.index0 * bar_step %}
       {% set running = 0 %}
-      {% for v in d.values %}
+      {% for v in d['values'] %}
         {% if v is not none and v > 0 %}
           {% set seg_h = (v / vmax) * (ch - 6) %}
           {% set seg_y = ch - running - seg_h %}
