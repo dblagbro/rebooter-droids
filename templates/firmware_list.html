@@ -56,7 +56,7 @@
   <tbody>
   {% for r in releases %}
     <tr>
-      <td>
+      <td data-label="Version">
         <a href="{{ r.download_url }}">{{ r.version }}</a>
         {% if r.mirrors %}
           <details style="display:inline; margin-left:.5rem">
@@ -75,10 +75,10 @@
           </details>
         {% endif %}
       </td>
-      <td><span class="badge">{{ r.channel }}</span></td>
-      <td><code style="font-size:0.75rem">{{ r.sha256[:16] }}…</code></td>
-      <td>{{ r.created_at }}</td>
-      <td>
+      <td data-label="Channel"><span class="badge">{{ r.channel }}</span></td>
+      <td data-label="SHA256"><code style="font-size:0.75rem">{{ r.sha256[:16] }}…</code></td>
+      <td data-label="Created">{{ r.created_at }}</td>
+      <td data-label="Deploy">
         <form method="post" action="{{ url_for('admin_ui.firmware_deploy_submit') }}"
               data-firmware-deploy-confirm>
           <input type="hidden" name="release_id" value="{{ r.id }}">
@@ -120,10 +120,10 @@
   <tbody>
   {% for d in deployments %}
     <tr>
-      <td>{{ d.created_at }}</td>
-      <td>{{ d.release.version if d.release else '—' }} ({{ d.channel }})</td>
-      <td><span class="badge">{{ d.target_type }}{% if d.target_id %} · {{ d.target_id[:14] }}{% endif %}</span></td>
-      <td>
+      <td data-label="When">{{ d.created_at }}</td>
+      <td data-label="Release">{{ d.release.version if d.release else '—' }} ({{ d.channel }})</td>
+      <td data-label="Target"><span class="badge">{{ d.target_type }}{% if d.target_id %} · {{ d.target_id[:14] }}{% endif %}</span></td>
+      <td data-label="Progress">
         <span class="badge green">{{ d.counts.completed or 0 }} done</span>
         <span class="badge amber">{{ d.counts.delivered or 0 }} delivered</span>
         <span class="badge">{{ d.counts.pending or 0 }} pending</span>

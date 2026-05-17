@@ -130,15 +130,15 @@
   <tbody>
   {% for e in events %}
     <tr>
-      <td>{{ e.at }}</td>
-      {% if source == 'all' %}<td><span class="badge">{{ e.source }}</span></td>{% endif %}
-      <td>{{ e.actor or '—' }}</td>
-      <td><code>{{ e.action }}</code></td>
-      <td>
+      <td data-label="When">{{ e.at }}</td>
+      {% if source == 'all' %}<td data-label="Source"><span class="badge">{{ e.source }}</span></td>{% endif %}
+      <td data-label="Actor">{{ e.actor or '—' }}</td>
+      <td data-label="Action"><code>{{ e.action }}</code></td>
+      <td data-label="Target">
         {% if e.target_type %}<span class="badge">{{ e.target_type }}</span>{% endif %}
         {% if e.target_id %}<span class="muted">{{ e.target_id }}</span>{% endif %}
       </td>
-      <td class="muted">{{ e.ip or '—' }}</td>
+      <td class="muted" data-label="IP">{{ e.ip or '—' }}</td>
     </tr>
   {% endfor %}
   </tbody>

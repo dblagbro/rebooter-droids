@@ -21,9 +21,9 @@
   <tbody>
   {% for s in sites %}
     <tr>
-      <td><a href="{{ url_for('admin_ui.site_detail_page', site_id=s.id) }}">{{ s.name }}</a></td>
-      <td>{{ s.description or '—' }}</td>
-      <td>{{ s.created_at }}</td>
+      <td data-label="Name"><a href="{{ url_for('admin_ui.site_detail_page', site_id=s.id) }}">{{ s.name }}</a></td>
+      <td data-label="Description">{{ s.description or '—' }}</td>
+      <td data-label="Created">{{ s.created_at }}</td>
       <td>
         <form method="post" action="{{ url_for('admin_ui.delete_site_submit', site_id=s.id) }}">
           <button type="submit">Delete</button>
