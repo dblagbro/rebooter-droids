@@ -85,9 +85,6 @@ def test_nightly_prune_job(hub_db):
     old_timestamp = now - timedelta(days=2)
     with session_scope() as session:
         event = AuditEvent(
-            # AuditEvent.id is a BigInteger autoincrement PK — SQLite only
-            # autoincrements INTEGER PKs, so supply one explicitly here.
-            id=900001,
             at=old_timestamp,
             actor_user_id=None,
             actor_email_snapshot="test-prune@example.com",

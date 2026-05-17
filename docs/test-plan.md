@@ -1,8 +1,8 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~433 tests / 62 files, run behind
-nginx (P-QA gate-2 widening + gate-3 fixes + a `tests/unit/` tree;
-charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
+Status: **2026-05-17** — CI gate at ~450 tests / 63 files, run behind
+nginx (P-QA gate-2 widening + gate-3 fixes + a growing `tests/unit/`
+tree; charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
 tested. It replaces the prior per-sweep verdict-logging version of this
@@ -88,8 +88,9 @@ twice against a from-scratch instance (fresh Postgres + populated DB):
 - **`tests/unit/`** — the in-process unit-test tree. Pure-function
   tests (the `_rules_forms` form→JSON builders, schedule recurrence
   math) need no fixture; DB-backed service tests (`create_rule`
-  validation, the `upsert_announcement` state machine) take the
-  `hub_db` isolated-SQLite fixture. Every test under `tests/unit/` is
+  validation, the `upsert_announcement` state machine, the
+  `enrollment` mint/consume/revoke service) take the `hub_db`
+  isolated-SQLite fixture. Every test under `tests/unit/` is
   auto-tagged `ci` by its conftest — no HTTP, no Docker, runs in ~3 s.
 
 Two structural fixes made the gate-2 widening possible (both default to
@@ -172,11 +173,11 @@ docker volume rm rd-ci-firmware && docker network rm rd-ci
      shows bulk-form scaffolding, which only renders with a group
      present; gate it once it seeds its own group.
 2. **In-process unit coverage is young.** `tests/unit/` exists and
-   covers the `_rules_forms` builders, schedule recurrence math and
-   `create_rule` validation — but most service-layer logic
-   (`announcements`, `enrollment`, `device_power`, the watchdog probe
-   dispatch, …) still has only HTTP coverage. Growing `tests/unit/` is
-   ongoing.
+   covers the `_rules_forms` builders, schedule recurrence math,
+   `create_rule` validation, the `upsert_announcement` state machine
+   and the `enrollment` mint/consume/revoke service — but other
+   service-layer logic (`device_power`, the watchdog probe dispatch,
+   …) still has only HTTP coverage. Growing `tests/unit/` is ongoing.
 3. **Playwright `responsive` tests are not in CI** — they need a
    browser image (the gate's `pip install -e ".[dev]"` has no
    playwright, so they skip cleanly); deferred.
