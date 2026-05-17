@@ -19,18 +19,48 @@ These tests assert:
 
 from __future__ import annotations
 
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-3 — history files).
+pytestmark = pytest.mark.ci
 
 
 def _login(base_url: str) -> requests.Session:
     s = requests.Session()
     r = s.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200, r.text
     return s
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _seed_history(base_url):
+    """A fresh CI instance starts with an empty history feed. Seed a
+    few `watchdog_rule.*` audit events (create + delete a rule) so the
+    audit-source and chip-filter assertions below have rows to work
+    with — instead of assuming live-deployment data."""
+    s = _login(base_url)
+    for i in range(2):
+        r = s.post(
+            f"{base_url}/api/v1/admin/rules",
+            json={
+                "name": f"qa-history-seed-{i}",
+                "probe": {"kind": "internet"},
+                "target": {"kind": "tag", "tag": "qa-history-seed"},
+                "action": {"kind": "notify_only"},
+            },
+            timeout=10,
+        )
+        assert r.status_code == 201, r.text
+        s.delete(
+            f"{base_url}/api/v1/admin/rules/{r.json()['data']['id']}", timeout=10
+        )
 
 
 def test_source_picker_chip_nav_renders(base_url):
@@ -53,7 +83,7 @@ def test_watchdog_probe_source_surfaces_probe_rows(base_url):
     assert "v3-chip-active" in body
     # Probe rows have actions of the form `watchdog_probe.<outcome>`
     import re
-    actions = re.findall(r"<td><code>([^<]+)</code></td>", body)
+    actions = re.findall(r"<td[^>]*><code>([^<]+)</code></td>", body)
     if actions:
         bad = [a for a in actions if not a.startswith("watchdog_probe.")]
         assert not bad, f"non-watchdog_probe rows leaked: {bad[:5]}"
@@ -77,7 +107,7 @@ def test_audit_action_prefix_filter_still_works(base_url):
         timeout=10,
     ).text
     import re
-    actions = re.findall(r"<td><code>([^<]+)</code></td>", body)
+    actions = re.findall(r"<td[^>]*><code>([^<]+)</code></td>", body)
     assert actions, "expected audit rows for watchdog_rule prefix"
     bad = [a for a in actions if not a.startswith("watchdog_rule.")]
     assert not bad, f"v0.4.27 chip filter regressed: {bad[:5]}"
