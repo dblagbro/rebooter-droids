@@ -32,6 +32,7 @@ class Settings:
     session_idle_timeout_seconds: int
     cors_allowed_origins: tuple[str, ...]
     cookie_domain: str | None
+    session_cookie_secure: bool
 
 
 @lru_cache
@@ -109,4 +110,12 @@ def load_settings() -> Settings:
         # collisions with peer apps on shared subdomains using the
         # Flask default `session`.
         cookie_domain=(os.environ.get("REBOOTER_COOKIE_DOMAIN", "").strip() or None),
+        # Secure-only session cookie. Defaults ON (production is HTTPS).
+        # The CI gate boots the app on plain http://localhost, where a
+        # Secure cookie is never sent back — it sets this to 0 so the
+        # cookie-authenticated HTTP tests can run in the `-m ci` gate.
+        session_cookie_secure=(
+            os.environ.get("REBOOTER_SESSION_COOKIE_SECURE", "1").strip().lower()
+            not in ("0", "false", "no", "off")
+        ),
     )

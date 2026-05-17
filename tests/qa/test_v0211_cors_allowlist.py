@@ -25,6 +25,11 @@ from __future__ import annotations
 import os
 
 import requests
+import pytest
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-2 widening).
+pytestmark = pytest.mark.ci
+
 
 
 def test_default_no_allowlist_does_not_echo_origin(base_url):

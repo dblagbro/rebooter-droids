@@ -23,6 +23,11 @@ import requests
 
 from .conftest import unique_suffix
 
+# NB: not in the `-m ci` gate — this is a wall-clock e2e test racing the
+# 30s APScheduler tick; it flakes when the test's waits don't align with
+# a tick boundary. Timing e2e tests don't belong in a deterministic gate.
+
+
 
 SKIP_E2E = os.environ.get("SKIP_E2E", "").strip().lower() in ("1", "true", "yes")
 

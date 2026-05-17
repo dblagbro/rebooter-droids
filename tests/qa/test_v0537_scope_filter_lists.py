@@ -29,6 +29,10 @@ from __future__ import annotations
 import pytest
 import requests
 
+# v0.5.79: in the `-m ci` gate (P-QA gate-2 widening).
+pytestmark = pytest.mark.ci
+
+
 
 def _ver_tuple(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.split("-")[0].split("."))
