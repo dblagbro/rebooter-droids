@@ -10,6 +10,11 @@ These verify, against a live instance:
 - fields the structured form doesn't surface (max_retries, description)
   survive a structured save untouched — no silent data loss.
 
+Auth: Bearer headers throughout. The `-m ci` gate runs over
+`http://localhost`, where the Secure session cookie isn't sent — so
+cookie auth would 401. The shared auth resolver accepts Bearer on the
+`/app/*` UI routes too, so Bearer works everywhere.
+
 Runs in the `-m ci` gate.
 """
 
@@ -23,26 +28,13 @@ from .conftest import unique_suffix
 pytestmark = pytest.mark.ci
 
 
-@pytest.fixture(scope="module")
-def shell_session(base_url, admin_creds):
-    s = requests.Session()
-    email, pw = admin_creds
-    r = s.post(
-        f"{base_url}/api/v1/auth/login",
-        json={"email": email, "password": pw},
-        timeout=10,
-    )
-    assert r.status_code == 200, r.text
-    return s
-
-
 @pytest.fixture
-def rule(base_url, shell_session):
+def rule(base_url, admin_headers):
     """A ping-probe rule with a non-default max_retries + a description —
     neither is surfaced by the structured form, so they let us prove the
     structured save preserves un-surfaced fields."""
     name = f"qa0578-{unique_suffix()}"
-    r = shell_session.post(
+    r = requests.post(
         f"{base_url}/api/v1/admin/rules",
         json={
             "name": name,
@@ -53,26 +45,31 @@ def rule(base_url, shell_session):
             "max_retries": 7,
             "description": "qa0578-preserve-me",
         },
+        headers=admin_headers,
         timeout=10,
     )
     assert r.status_code == 201, r.text
     created = r.json()["data"]
     yield created
-    shell_session.delete(
-        f"{base_url}/api/v1/admin/rules/{created['id']}", timeout=10
+    requests.delete(
+        f"{base_url}/api/v1/admin/rules/{created['id']}",
+        headers=admin_headers,
+        timeout=10,
     )
 
 
-def _get_rule(base_url, shell_session, rule_id):
-    rows = shell_session.get(
-        f"{base_url}/api/v1/admin/rules", timeout=10
+def _get_rule(base_url, admin_headers, rule_id):
+    rows = requests.get(
+        f"{base_url}/api/v1/admin/rules", headers=admin_headers, timeout=10
     ).json()["data"]
     return next((x for x in rows if x["id"] == rule_id), None)
 
 
-def test_edit_page_renders_structured_form(base_url, shell_session, rule):
-    r = shell_session.get(
-        f"{base_url}/app/rules/{rule['id']}/edit", timeout=10
+def test_edit_page_renders_structured_form(base_url, admin_headers, rule):
+    r = requests.get(
+        f"{base_url}/app/rules/{rule['id']}/edit",
+        headers=admin_headers,
+        timeout=10,
     )
     assert r.status_code == 200, r.text
     body = r.text
@@ -85,9 +82,9 @@ def test_edit_page_renders_structured_form(base_url, shell_session, rule):
     assert 'name="rule_json"' in body
 
 
-def test_structured_edit_updates_rule(base_url, shell_session, rule):
+def test_structured_edit_updates_rule(base_url, admin_headers, rule):
     new_name = f"{rule['name']}-edited"
-    r = shell_session.post(
+    r = requests.post(
         f"{base_url}/app/rules/{rule['id']}/edit-form",
         data={
             "name": new_name,
@@ -103,10 +100,12 @@ def test_structured_edit_updates_rule(base_url, shell_session, rule):
             "window_seconds": "60",
             "cooldown_seconds": "300",
         },
+        headers=admin_headers,
+        allow_redirects=False,
         timeout=10,
     )
-    assert r.status_code == 200, r.text  # 302 → rules page → 200
-    updated = _get_rule(base_url, shell_session, rule["id"])
+    assert r.status_code in (302, 303), r.text  # redirect → rules page
+    updated = _get_rule(base_url, admin_headers, rule["id"])
     assert updated is not None
     assert updated["name"] == new_name
     assert updated["probe"]["kind"] == "ping"
@@ -116,10 +115,10 @@ def test_structured_edit_updates_rule(base_url, shell_session, rule):
     assert updated["failure_threshold"] == 5
 
 
-def test_structured_edit_preserves_unsurfaced_fields(base_url, shell_session, rule):
+def test_structured_edit_preserves_unsurfaced_fields(base_url, admin_headers, rule):
     """max_retries + description aren't in the structured form — a
     structured save must carry them through untouched."""
-    r = shell_session.post(
+    r = requests.post(
         f"{base_url}/app/rules/{rule['id']}/edit-form",
         data={
             "name": rule["name"],
@@ -135,10 +134,12 @@ def test_structured_edit_preserves_unsurfaced_fields(base_url, shell_session, ru
             "window_seconds": "60",
             "cooldown_seconds": "300",
         },
+        headers=admin_headers,
+        allow_redirects=False,
         timeout=10,
     )
-    assert r.status_code == 200, r.text
-    updated = _get_rule(base_url, shell_session, rule["id"])
+    assert r.status_code in (302, 303), r.text
+    updated = _get_rule(base_url, admin_headers, rule["id"])
     assert updated is not None
     assert updated["max_retries"] == 7, "max_retries must survive a structured save"
     assert updated["description"] == "qa0578-preserve-me"
