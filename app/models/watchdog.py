@@ -179,7 +179,15 @@ class WatchdogProbeEvent(Base):
     inserts come from the probe runtime in v0.4.1+."""
     __tablename__ = "watchdog_probe_events"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # BigInteger on Postgres (BIGSERIAL); Integer on SQLite so the PK
+    # autoincrements there too — SQLite only treats an INTEGER PK as the
+    # auto-rowid alias. Lets the runtime insert events under in-process
+    # SQLite tests. No effect on a Postgres deployment.
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     rule_id: Mapped[str] = mapped_column(
         String(40),
         ForeignKey("watchdog_rules.id", ondelete="CASCADE"),

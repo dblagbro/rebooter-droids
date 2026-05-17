@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, ForeignKey, Index, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
@@ -12,7 +20,13 @@ from app.models._helpers import ts_column
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # BigInteger on Postgres; Integer on SQLite so the PK autoincrements
+    # under in-process tests (SQLite only auto-rowids an INTEGER PK).
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     at: Mapped[datetime] = ts_column()
 
     # actor_user_id is nullable — device-API actions can land here too.

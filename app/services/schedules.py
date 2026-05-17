@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import Schedule
+from app.models._helpers import as_aware
 from app.models.schedules import (
     KIND_MAINTENANCE,
     KIND_POWER_CYCLE,
@@ -187,7 +188,8 @@ def compute_next_run_at(s: Schedule, *, now: datetime) -> datetime | None:
             return None
         if s.last_run_at is not None:
             return None  # one-shot already fired
-        return s.start_at if s.start_at > now else None
+        start_at = as_aware(s.start_at)
+        return start_at if start_at > now else None
 
     if s.recurrence in (REC_DAILY, REC_WEEKLY):
         if not s.at_time_utc:

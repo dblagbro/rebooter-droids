@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.81] - 2026-05-17
+## [0.5.82] - 2026-05-17
+
+### Changed — P-QA gate-3: timing-e2e files into the CI gate (time-injection seam)
+
+`test_v0414_watchdog_runtime_e2e` and `test_v0417_schedule_runtime_e2e` were wall-clock tests that slept ~25–100 s waiting for the real APScheduler tick — flaky whenever the sleeps didn't line up with a tick boundary. They are now deterministic in-process tests (+6 tests; gate ~383 / 56 files); the watchdog e2e runs in **under a second** instead of ~75 s.
+
+The seam: **`watchdog_runtime.tick()` and `schedule_runtime.tick()` now take an optional `now`.** Both already threaded a single `now` through every cadence / cooldown / window check, so this is just lifting that to a parameter. The APScheduler jobs call `tick()` with no argument and get wall-clock time exactly as before; the in-process tests pass an explicit `now` and step the rule / schedule state machine forward by hand against an isolated SQLite DB.
+
+### Fixed
+
+- **`WatchdogProbeEvent.id` and `AuditEvent.id` now autoincrement under SQLite.** They are `BigInteger` autoincrement PKs; SQLite only treats an `INTEGER` PK as the auto-rowid alias, so the runtime couldn't insert probe events in an in-process test. Both use `BigInteger().with_variant(Integer, "sqlite")` — `BIGINT` on Postgres (unchanged), `INTEGER` on SQLite.
+- **The watchdog + schedule runtime tolerate naive datetimes.** `_rule_is_due`, the cooldown gate, `schedule_runtime`'s due-check + maintenance-window reconciler, and `compute_next_run_at` all subtracted/compared a DB-read datetime against `now`. Postgres returns `TIMESTAMPTZ` aware; SQLite returns it naive, which raised `TypeError`. A shared `as_aware()` helper coerces naive → UTC at each comparison site — a no-op against a real deployment.
+
+
 
 ### Changed — P-QA gate-3: in-process collection-error files into the CI gate
 

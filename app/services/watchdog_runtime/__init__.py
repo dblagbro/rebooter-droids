@@ -72,9 +72,15 @@ from app.services.watchdog_runtime._state import (
 log = logging.getLogger(__name__)
 
 
-def tick() -> dict:
+def tick(now: datetime | None = None) -> dict:
     """Top-of-tick dispatcher. Returns a tiny stats dict for the
-    APScheduler job log line + tests."""
+    APScheduler job log line + tests.
+
+    v0.5.82: `now` is injectable. The APScheduler job calls `tick()`
+    with no argument and gets wall-clock time (unchanged); in-process
+    tests pass an explicit `now` to drive the rule state machine
+    deterministically — every cadence / cooldown / maintenance-window
+    check below already keys off this single `now`."""
     if os.environ.get("REBOOTER_WATCHDOG_DISABLED") == "1":
         return {"disabled": True}
 
@@ -85,7 +91,8 @@ def tick() -> dict:
     if runtime_flags.is_maintenance_mode_active():
         return {"disabled": False, "maintenance_mode": True, "considered": 0}
 
-    now = datetime.now(timezone.utc)
+    if now is None:
+        now = datetime.now(timezone.utc)
     stats = {"considered": 0, "probed": 0, "fired": 0, "errors": 0, "in_window": 0}
 
     with session_scope() as session:
