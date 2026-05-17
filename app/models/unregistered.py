@@ -24,7 +24,13 @@ class UnregisteredAuthAttempt(Base):
 
     __tablename__ = "unregistered_auth_attempts"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # BigInteger on Postgres; Integer on SQLite so the PK autoincrements
+    # under in-process tests (SQLite only auto-rowids an INTEGER PK).
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     # device_id the caller claimed (from query/body), may be None if unparseable.
     # Capped at 80 chars to bound storage; real device_ids are ULIDs (~30 chars).
     claimed_device_id: Mapped[str | None] = mapped_column(String(80), nullable=True)

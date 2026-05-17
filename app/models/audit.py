@@ -53,7 +53,12 @@ Index("ix_audit_target", AuditEvent.target_type, AuditEvent.target_id)
 class AuditEventArchive(Base):
     __tablename__ = "audit_events_archive"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # BigInteger on Postgres; Integer on SQLite — keeps the archive
+    # table's schema consistent with AuditEvent above. Archive rows are
+    # inserted with an explicit id copied from the source event.
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True
+    )
     at: Mapped[datetime] = ts_column(default_now=False, nullable=False)
 
     actor_user_id: Mapped[str | None] = mapped_column(String(40), nullable=True)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, BigInteger, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
@@ -12,7 +12,13 @@ from app.models._helpers import ts_column
 class DeviceEvent(Base):
     __tablename__ = "device_events"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # BigInteger on Postgres; Integer on SQLite so the PK autoincrements
+    # under in-process tests (SQLite only auto-rowids an INTEGER PK).
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     device_id: Mapped[str] = mapped_column(
         String(40),
         ForeignKey("devices.id", ondelete="CASCADE"),
