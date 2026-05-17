@@ -28,17 +28,23 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import Schedule
+from app.models._helpers import as_aware
 from app.models.schedules import KIND_MAINTENANCE, KIND_POWER_CYCLE
 from app.services.schedules import compute_next_run_at
 
 log = logging.getLogger(__name__)
 
 
-def tick() -> dict:
+def tick(now: datetime | None = None) -> dict:
+    """v0.5.82: `now` is injectable — the APScheduler job calls `tick()`
+    with no argument (wall-clock, unchanged); in-process tests pass an
+    explicit `now` to drive schedule firing + maintenance-window
+    reconciliation deterministically."""
     if os.environ.get("REBOOTER_SCHEDULER_DISABLED") == "1":
         return {"disabled": True}
 
-    now = datetime.now(timezone.utc)
+    if now is None:
+        now = datetime.now(timezone.utc)
     stats = {"fired": 0, "errors": 0, "considered": 0}
 
     with session_scope() as session:
@@ -52,7 +58,7 @@ def tick() -> dict:
                 s.next_run_at = compute_next_run_at(s, now=now)
                 continue
 
-            if s.next_run_at > now:
+            if as_aware(s.next_run_at) > now:
                 continue  # not yet due
 
             try:
@@ -136,9 +142,10 @@ def _reconcile_maintenance_flag(session, schedules, now: datetime) -> None:
             continue
         if s.last_run_at is None:
             continue
-        window_end = s.last_run_at + timedelta(seconds=s.duration_seconds)
-        if s.last_run_at <= now <= window_end:
-            active_window_start = s.last_run_at
+        last_run_at = as_aware(s.last_run_at)
+        window_end = last_run_at + timedelta(seconds=s.duration_seconds)
+        if last_run_at <= now <= window_end:
+            active_window_start = last_run_at
             break
 
     current = runtime_flags.is_maintenance_mode_active()

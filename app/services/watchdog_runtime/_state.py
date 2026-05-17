@@ -14,13 +14,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.models import WatchdogProbeEvent, WatchdogRule
+from app.models._helpers import as_aware
 from app.models.watchdog import RULE_STATUS_ARMED, RULE_STATUS_FIRING
 
 
 def _rule_is_due(rule: WatchdogRule, now: datetime) -> bool:
     if rule.last_probed_at is None:
         return True
-    return (now - rule.last_probed_at) >= timedelta(seconds=rule.window_seconds)
+    return (now - as_aware(rule.last_probed_at)) >= timedelta(
+        seconds=rule.window_seconds
+    )
 
 
 def _in_maintenance_window(rule: WatchdogRule, now: datetime) -> bool:
@@ -96,7 +99,9 @@ def _update_state_and_maybe_fire(
 
     # Cooldown gate.
     if rule.last_action_at is not None:
-        if (now - rule.last_action_at) < timedelta(seconds=rule.cooldown_seconds):
+        if (now - as_aware(rule.last_action_at)) < timedelta(
+            seconds=rule.cooldown_seconds
+        ):
             record_event(
                 session, rule, "cooldown_skip",
                 {"failure_streak": rule.failure_streak}, now,
