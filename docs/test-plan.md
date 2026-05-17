@@ -222,15 +222,16 @@ then (b) add the per-test skips for the config-disabled assertions.
    health-feed verdict logic — now unblocked), `external_sensors`
    (`_query` / `_pollers` — now unblocked), the watchdog
    tick/state-transition loop, and `deployments`.
-3. **No single end-to-end adoption test.** The
+3. **End-to-end adoption test — DONE.** The
    announce → pending-adoption → adopt → token-mint → `/register` →
-   first-heartbeat → "online" flow spans ~60 KB across
-   `announcements.py` / `pending_adoption.py` / `enrollment.py` /
-   `device_api.py` and has **no test driving it as one flow**
-   (`architecture.md` / charter P-REG). This is the highest-value
-   missing test — the v0.5.36→v0.5.68 regression (siteless-token
-   adoption 500'd for 32 versions) is exactly what such a test
-   would have caught.
+   first-heartbeat → "online" flow (~60 KB across `announcements.py`
+   / `pending_adoption.py` / `enrollment.py` / `device_api.py`) is now
+   driven as one flow by `tests/qa/test_v0589_adoption_e2e.py`, gated
+   into `-m ci`. It also covers the seam failures — the spent
+   enrollment token is rejected on replay, and the announcement
+   closes out as `registered`. This was the charter's (P-REG)
+   highest-value missing test; the v0.5.36→v0.5.68 siteless-token
+   regression is the class of bug it guards.
 4. **Playwright `responsive` tests are not in CI** — they need a
    browser image (the gate's `pip install -e ".[dev]"` has no
    playwright, so they skip cleanly); deferred. One is also stale
