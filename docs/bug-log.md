@@ -815,7 +815,7 @@ order found.
 - **Date:** 2026-05-15
 - **Severity:** medium (latent operator footgun via JSON editor)
 - **Area:** `app/services/watchdog_runtime/_probes.py::run_probe`
-- **Status:** **open — discovered 2026-05-15 regression sweep (R3b)**
+- **Status:** **fixed in v0.5.34** (verified 2026-05-17 regression sweep — see note at end of entry)
 - **Environment:** live hub `0.5.33` against
   `https://www.voipguru.org/rebooter`.
 - **Repro:**
@@ -864,7 +864,7 @@ order found.
 - **Severity:** medium (operator UX footgun; rules silently never
   fire OR fire wrong-target if action is `cycle`/`hold_off`)
 - **Area:** `app/services/watchdog.py::create_rule` + `update_rule`
-- **Status:** **open — discovered 2026-05-15 regression sweep (R9)**
+- **Status:** **fixed** (verified 2026-05-17 regression sweep — see note at end of entry)
 - **Environment:** live hub `0.5.33`.
 - **Repro:**
   ```bash
@@ -981,3 +981,217 @@ order found.
 - Auto-rebind path — covered by `test_v0420_*` but not re-run live
   this sweep (would require minting a real device + simulating
   token loss; covered in the v0.5.24 merge ship's verification).
+
+---
+
+# 2026-05-17 — Post-refactor regression validation sweep (v0.5.86)
+
+Deep regression / release-hardening pass after the v0.5.67–v0.5.86
+refactor + QA arc (rule-form extraction, external_sensors split,
+watchdog_runtime split, admin blueprint split, services subpackages,
+`tests/unit/` tree). Method: full `tests/` suite (598 tests) against a
+fresh nginx-fronted Postgres replica; live API negative testing;
+static bug-class audit; doc cross-check.
+
+**Headline:** no product regression from the refactors. Full suite
+593/598 pass — all 5 failures are test-quality/environmental, not
+product defects (see test-plan.md "Known non-gated failures"). API
+negative paths are uniformly clean (consistent envelope, correct
+4xx, zero 500s). Six new issues recorded below; none are release
+blockers.
+
+## BUG-054 / BUG-055 — status correction (2026-05-17)
+
+Both were still tagged `open` in this log but are **fixed in the
+shipped code** — verified live this sweep:
+
+- **BUG-054** — `POST /api/v1/admin/rules` with `probe.kind="custom"`
+  now returns `400 validation_failed` ("probe.kind must be one of
+  …"). Option A was taken: `custom` was dropped from
+  `KNOWN_PROBE_KINDS` in **v0.5.34** (`watchdog.py:608` comment
+  confirms). Status line corrected above.
+- **BUG-055** — per-kind probe-field validation is now present:
+  `power_above` with `threshold_w:"oops"` → `400` ("probe.threshold_w
+  must be numeric (got str)"); `ping` with no `host` → `400`. Status
+  line corrected above. Exact fix version not recorded in the log —
+  a follow-up to backfill.
+
+This is itself a process defect — see **BUG-061**.
+
+## BUG-056 — `schedule_runtime._fire_power_cycle` swallows per-device enqueue failures silently
+
+- **Date:** 2026-05-17
+- **Severity:** medium (reliability + observability of the core
+  scheduled-reboot feature)
+- **Area:** `app/services/schedule_runtime.py:117-119`
+- **Status:** **fixed in v0.5.87** — the per-device except now
+  `log.exception`s and counts failures; `last_outcome` reports
+  `enqueued:N failed:M`.
+- **Detail:** `_fire_power_cycle` fans a scheduled `relay_cycle` out
+  across the resolved target devices in a per-device loop. Each
+  `enqueue_for_device(...)` call is wrapped in `except Exception:
+  pass`. If enqueue raises for a device — `DeviceLockedError`
+  (device `is_protected`), `LookupError` (device id no longer
+  exists), or any DB error — that device is silently skipped: no
+  log line, no event row, no error counter. The function returns
+  `enqueued:N`; when `N < len(device_ids)` the shortfall is
+  invisible to the operator.
+- **Expected:** a scheduled reboot that fails to enqueue for a
+  device should be logged (and ideally surfaced — the watchdog
+  equivalent `watchdog_runtime/_actions.py:42-43` does
+  `log.exception(...)`).
+- **Actual:** silent. A schedule the operator believes is arming a
+  protected device simply never does, with nothing in the logs.
+- **Cause:** asymmetry — the watchdog action path logs its
+  exceptions; the schedule fan-out path swallows them.
+- **Recommended fix:** `log.exception("scheduled relay_cycle enqueue
+  failed for device %s", did)` inside the except, and fold a failure
+  count into the return string (`enqueued:N skipped:M`).
+
+## BUG-057 — error.html navigation links escape the app under the `/rebooter` prefix
+
+- **Date:** 2026-05-17
+- **Severity:** low-medium (error page is a dead-end that ejects the
+  user from the app)
+- **Area:** `templates/error.html:12` and `:18`
+- **Status:** **fixed in v0.5.87** — both links now use
+  `url_for('admin_ui.index')`; verified resolving to `/rebooter/app/`
+  on a fresh prefixed replica.
+- **Detail:** The error page (rendered for 404/403/500) has a brand
+  link `<a class="brand" href="/">` and a `<a href="/">Back to
+  dashboard</a>`. The app is deployed under the `/rebooter` URL
+  prefix; `/` is the **voipguru.org host root**, a different site.
+  Clicking either link from a rebooter error page leaves the app
+  entirely instead of returning to `/rebooter/app/`.
+- **Expected:** links resolve within the app — `{{ request.script_root }}/app/`
+  or a `url_for('admin_ui.index')`.
+- **Evidence:** every other template + every Python `redirect()`
+  uses `url_for` (prefix-safe); `error.html` is the lone exception.
+  The app's own `root_redirect` at `/` *does* honour the prefix —
+  but `error.html` hardcodes `/` so it never reaches that route.
+- **Recommended fix:** swap both hrefs to `url_for('admin_ui.index')`
+  (the error template renders inside an app request context, so
+  `url_for` is available).
+
+## BUG-058 — `KNOWN_PROBE_KINDS` (create-rule validation) diverges from the `run_probe` dispatch table
+
+- **Date:** 2026-05-17
+- **Severity:** medium (probe-kind surface inconsistency; runtime
+  branches unreachable via the validated create path)
+- **Area:** `app/services/watchdog.py::KNOWN_PROBE_KINDS` vs
+  `app/services/watchdog_runtime/_probes.py::run_probe`
+- **Status:** **open**
+- **Detail:** `create_rule` validates `probe.kind` against
+  `KNOWN_PROBE_KINDS` — **13 kinds** (`internet, ping, tcp, http,
+  dns, gateway, roku_app_active, ha_state_is, weather_alert_active,
+  ical_event_active, power_above, power_below, power_zero_while_on`).
+  But `run_probe` dispatches **~25 kinds** — it additionally handles
+  `ha_numeric_above`, `ha_numeric_below`, `solar_production_above`,
+  `solar_production_below`, `snmp_interface_down`,
+  `snmp_throughput_above`, `snmp_throughput_below`,
+  `snmp_error_rate_above`, `media_session_active`,
+  `webhook_field_equals`, `mqtt_topic_equals`, `epg_show_airing`,
+  and `host_awake`. Those ~12 kinds have full runtime handlers in
+  `_probes_integrations.py` / `_probes.py` but **cannot be created
+  through the validated API path** — `POST /api/v1/admin/rules`
+  rejects them with `400`.
+- **Impact:** either ~12 runtime dispatch branches are dead code, or
+  there is a missing create surface for kinds the runtime fully
+  supports. (BUG-054 was the inverse — a kind accepted at create
+  with no runtime branch — fixed by *removing* the kind; this is the
+  same divergence in the other direction.) Compounding it, the
+  `templates/rules/edit.html` probe-shape reference card documents
+  only ~7 kinds (noted stale in `refactor-log.md`). Three sources of
+  truth, all different.
+- **Recommended fix:** establish one canonical probe-kind registry
+  (kind → {validator, runtime dispatcher, form builder, doc blurb})
+  and derive `KNOWN_PROBE_KINDS`, `run_probe`'s dispatch, and the
+  reference card from it. Short-term: decide per-kind whether each of
+  the 12 should be createable; add to `KNOWN_PROBE_KINDS` (with
+  per-kind field validation) or remove the runtime branch.
+
+## BUG-059 — Latent SQLite-incompatible code blocks `tests/unit/` coverage expansion
+
+- **Date:** 2026-05-17
+- **Severity:** medium (test-blocking; prod-safe on Postgres)
+- **Area:** multiple — see list
+- **Status:** **open**
+- **Detail:** Production runs exclusively on Postgres, where all of
+  the following are correct. But the active QA initiative builds
+  `tests/unit/` against an **isolated-SQLite** fixture (`hub_db`),
+  and each of these crashes on SQLite — so the listed services
+  cannot get in-process unit coverage until they are fixed. This is
+  the same defect class as the already-fixed enrollment
+  (`as_aware`, v0.5.85) and `DevicePowerSample.id` (`with_variant`,
+  v0.5.86) issues; the established fix patterns already exist in the
+  codebase.
+  - **(A) Naive vs tz-aware datetime** — DB-read datetimes compared
+    against an aware `now` without `app.models._helpers.as_aware()`
+    (Postgres `TIMESTAMPTZ` reads aware, SQLite reads naive →
+    `TypeError`): `invitations.py:158`, `invitations.py:184`,
+    `password_resets.py:102`, `inbox.py:154`, `inbox.py:168`,
+    `inbox.py:187`, `inbox.py:201`, `external_sensors/_query.py:41`,
+    `external_sensors/_pollers.py:122`.
+  - **(B) `BigInteger` PK without `.with_variant(Integer,"sqlite")`**
+    (does not autoincrement on SQLite): `events.py:15` (`DeviceEvent`),
+    `unregistered.py:27` (`UnregisteredAuthAttempt`), `audit.py:56`
+    (`AuditEventArchive`).
+  - **(C) Unconditional Postgres `ON CONFLICT`** —
+    `unregistered.py:54` uses `dialects.postgresql.insert(...)
+    .on_conflict_do_update(...)` with no dialect branch (contrast
+    `device_power.py:689-714`, which branches sqlite/postgres for the
+    same upsert).
+- **Expected:** services use `as_aware()`, the `with_variant` PK
+  pattern, and dialect-branched upserts consistently, so the
+  in-process test fixture can exercise them.
+- **Recommended fix:** apply the three established patterns at the
+  listed sites; then add `tests/unit/` coverage for the
+  invitations, password-resets, inbox, external-sensors, events and
+  unregistered services (currently HTTP-only).
+- **Note:** `bootstrap.py` (`pg_advisory_lock`, `ADD COLUMN IF NOT
+  EXISTS`, `information_schema`, `DELETE … USING`) is Postgres-only
+  *by design* — SQLite is not a supported app runtime, only a test
+  models backend. Not a bug; documented in qa-notes.md.
+
+## BUG-060 — Logout token/session revocation failures are swallowed silently
+
+- **Date:** 2026-05-17
+- **Severity:** medium (security observability)
+- **Area:** `app/blueprints/auth.py:79-80` and `:86-87`;
+  `app/blueprints/admin/auth_ui.py:215-216`
+- **Status:** **fixed in v0.5.87** — all three sites now
+  `log.exception` the revocation failure (logout still succeeds for
+  the user).
+- **Detail:** The logout handlers wrap `revoke_all_tokens(user_id)`
+  and `sessions_service.revoke_one(sid)` in `except Exception:
+  pass`. If server-side revocation fails, the user's JWT / session
+  remains valid, the user is told they are logged out, and nothing
+  is logged — the operator has no signal that a logout did not fully
+  take effect.
+- **Expected:** a failed revocation is logged at error level (logout
+  should still return success to the user, but the failure must be
+  observable).
+- **Recommended fix:** replace `pass` with `log.exception("token/
+  session revocation failed during logout for user %s", user_id)`.
+
+## BUG-061 — bug-log.md not maintained: fixed bugs left tagged `open`
+
+- **Date:** 2026-05-17
+- **Severity:** low (process / documentation integrity)
+- **Area:** `docs/bug-log.md`
+- **Status:** **fixed this sweep** (BUG-054, BUG-055 status lines
+  corrected above)
+- **Detail:** BUG-054 (fixed v0.5.34) and BUG-055 (fixed, version
+  unrecorded) were both still tagged `open` in this log months
+  after the code shipped the fix. BUG-052 had the same drift,
+  caught and noted in its own "Doc-cleanup note" on 2026-05-15 — yet
+  054/055 slipped through the same sweep. A bug log that lies about
+  status is worse than no log: it sends the next engineer to
+  re-investigate closed issues and undermines trust in the `open`
+  entries that *are* real.
+- **Recommended fix:** the release-cut process (`tools/cut-rebooter-
+  release.sh`) should require, or at least prompt for, a bug-log
+  status update when a commit message references a `BUG-NNN`. Also:
+  bug numbers 039, 047, 049 are unused (gaps) — harmless but worth a
+  one-line "reserved/skipped" note to stop future readers hunting
+  for them.
