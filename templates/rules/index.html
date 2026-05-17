@@ -510,23 +510,4 @@
 {% set empty_body = "Create a rule above. Watchdog rules monitor an internet connection or a host, and when ready (v0.4.1+) automatically power-cycle a device when the check fails." %}
 {% include "_components/empty_state.html" %}
 {% endif %}
-
-<div class="v3-card" style="margin-top:1.5rem">
-  <h2>What's coming next</h2>
-  <ul class="muted">
-    <li><strong>Notifications</strong> — fire-on-trigger via SMTP (already wired for invitations) / webhook / Web Push.</li>
-    <li><strong>Tag-as-target</strong> dispatch (currently shaped, not enforced — needs a <code>device_tags</code> primitive to actually resolve to devices; B6.3 in BACKLOG).</li>
-    <li><strong>EPG (TVMaze / Schedules Direct) probe</strong> — B17 Layer 2: pair with <code>roku_app_active</code> for "what show is on right now" rules.</li>
-  </ul>
-  <p class="muted" style="font-size:.85rem; margin-top:.5rem">
-    Recent ships: <strong>v0.4.2</strong> probe runtime (B6) ·
-    <strong>v0.4.7</strong> maintenance windows (B7) ·
-    <strong>v0.4.8</strong> schedules primitive (B8) ·
-    <strong>v0.4.9</strong> JSON editor (B9) ·
-    <strong>v0.5.9</strong> multi-target internet probe ·
-    <strong>v0.5.13</strong> real ICMP ping (B6.1) ·
-    <strong>v0.5.17</strong> Roku ECP integration (B17 Layer 1) ·
-    <strong>v0.5.19</strong> rule Edit flow + chips + richer event details + filterable target picker.
-  </p>
-</div>
 {% endblock %}

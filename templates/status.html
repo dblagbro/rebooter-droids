@@ -74,18 +74,20 @@
          when the viewer can't write (operators/viewers) — they can
          still see attention items, just not silence them. #}
       {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
-      <div class="v3-attention-ack" style="margin-top:.4rem; display:flex; gap:.3rem; flex-wrap:wrap; font-size:.85rem">
-        <form method="post" action="{{ url_for('admin_ui.ack_attention_submit', attention_id=item.id) }}" style="display:inline">
-          <input type="hidden" name="snooze_seconds" value="3600">
-          <button type="submit" class="btn-secondary" title="Hide this item for 1 hour">Snooze 1h</button>
-        </form>
-        <form method="post" action="{{ url_for('admin_ui.ack_attention_submit', attention_id=item.id) }}" style="display:inline">
-          <input type="hidden" name="snooze_seconds" value="86400">
-          <button type="submit" class="btn-secondary" title="Hide this item for 24 hours">Snooze 24h</button>
+      {# P-UI Tier E #23: one snooze duration picker instead of two
+         near-identical Snooze buttons — same snooze_seconds field. #}
+      <div class="v3-attention-ack" style="margin-top:.4rem; display:flex; gap:.4rem; flex-wrap:wrap; font-size:.85rem; align-items:center">
+        <form method="post" action="{{ url_for('admin_ui.ack_attention_submit', attention_id=item.id) }}"
+              style="display:inline-flex; gap:.3rem; align-items:center">
+          <select name="snooze_seconds" aria-label="Snooze duration" style="font-size:.85rem">
+            <option value="3600">1 hour</option>
+            <option value="86400">24 hours</option>
+          </select>
+          <button type="submit" class="btn-secondary" title="Hide this item for the chosen time">Snooze</button>
         </form>
         <form method="post" action="{{ url_for('admin_ui.ack_attention_submit', attention_id=item.id) }}" style="display:inline"
               data-confirm-message="Acknowledge {{ item.title }} permanently? It will only re-surface if the underlying state changes (e.g. device comes back online) or you clear it manually.">
-          <button type="submit" class="btn-secondary" title="Acknowledge until cleared manually or underlying state changes">Ack</button>
+          <button type="submit" class="btn-secondary" title="Acknowledge until cleared manually or underlying state changes">Acknowledge</button>
         </form>
       </div>
       {% endif %}
