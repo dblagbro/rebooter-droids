@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — P-QA: in-process unit tests for inbox + external_sensors
+
+Two new `tests/unit/` files (23 tests) covering the last two services
+BUG-059 had blocked from `hub_db` (SQLite) coverage:
+
+- `test_inbox_service.py` (8 tests) — `health_and_attention`: the
+  empty-fleet verdict, every device-age bucket (online /
+  offline-short / offline-long / enrollment-pending / device-never),
+  QA-fixture exclusion, and an explicit guard that the verdict is
+  never `unknown` on a real fleet (the BUG-059(A) `as_aware` symptom
+  was a silent fallback to `verdict="unknown"`).
+- `test_external_sensors_service.py` (15 tests) — `create_source`
+  (per-kind validation), `list_sources` / `delete_source` /
+  `set_enabled`, the `_query` reads (`latest_sample` freshness,
+  `last_two_samples` incl. the `as_aware` stale-newer site,
+  `latest_sample_for_topic`), and `poll_all_due`'s due-check (the
+  `as_aware` `last_polled_at` site — `poll_source` monkeypatched so no
+  network).
+
+Closes the BUG-059 follow-up — all six previously-blocked services
+(invitations, password_resets, events, unregistered, inbox,
+external_sensors) now have in-process coverage. Gate is now ~641
+tests. Test-only change: no app code touched, so no version bump /
+redeploy.
+
 ### Added — P-QA: end-to-end device-adoption regression test
 
 `tests/qa/test_v0589_adoption_e2e.py` — the charter's (P-REG)

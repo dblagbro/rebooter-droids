@@ -97,8 +97,10 @@ twice against a from-scratch instance (fresh Postgres + populated DB):
   mint/consume/revoke service, the `device_power` query/rollup
   surface, the `commands` enqueue/cancel/result/expiry queue, the
   `heartbeats` ingest path, the `unregistered` tracker, the `events`
-  ingest/query service, the `invitations` mint/redeem service and the
-  `password_resets` service) take the `hub_db` isolated-SQLite fixture.
+  ingest/query service, the `invitations` mint/redeem service, the
+  `password_resets` service, the `inbox` health/attention feed and the
+  `external_sensors` registry + sample reads + poll-due check) take
+  the `hub_db` isolated-SQLite fixture.
   Every test under `tests/unit/` is auto-tagged `ci` by its conftest —
   no HTTP, no Docker, runs in ~13 s.
 
@@ -212,15 +214,15 @@ then (b) add the per-test skips for the config-disabled assertions.
      present; gate it once it seeds its own group.
 2. **In-process unit coverage is growing.** `tests/unit/` covers the
    `_rules_forms` builders, schedule recurrence math, `create_rule`
-   validation, the `upsert_announcement` state machine, the
-   `enrollment`, `device_power`, `commands`, `heartbeats`,
-   `unregistered`, `events`, `invitations` and `password_resets`
+   validation, the canonical probe-kind registry, the
+   `upsert_announcement` state machine, the `enrollment`,
+   `device_power`, `commands`, `heartbeats`, `unregistered`, `events`,
+   `invitations`, `password_resets`, `inbox` and `external_sensors`
    services, and the watchdog `run_probe` dispatcher. **BUG-059 is
    fixed** (v0.5.88) — the `as_aware` / `with_variant` / dialect-branch
-   landmines that crashed the SQLite test backend are cleared. Still
-   HTTP-only and worth `tests/unit/` coverage next: `inbox` (the
-   health-feed verdict logic — now unblocked), `external_sensors`
-   (`_query` / `_pollers` — now unblocked), the watchdog
+   landmines that crashed the SQLite test backend are cleared, and all
+   six previously-blocked services now have coverage. Still HTTP-only
+   and worth `tests/unit/` coverage next: the watchdog
    tick/state-transition loop, and `deployments`.
 3. **End-to-end adoption test — DONE.** The
    announce → pending-adoption → adopt → token-mint → `/register` →
