@@ -49,6 +49,67 @@ from app.services.watchdog import (
 )
 
 
+# v0.5.77 (#15): probe kinds the structured rule form can round-trip.
+# A rule whose probe.kind is outside this set (host_awake,
+# mqtt_topic_equals, epg_show_airing, …) gets the JSON editor only — the
+# structured form has no field block for it and would silently rebuild
+# it as `internet` on save.
+STRUCTURED_PROBE_KINDS = frozenset({
+    "internet", "ping", "tcp", "http", "dns", "gateway",
+    "roku_app_active", "ha_state_is", "weather_alert_active",
+    "ical_event_active", "power_above", "power_below", "power_zero_while_on",
+})
+
+
+def _sources_by_kind() -> dict:
+    """Kind-filtered integration-source pickers shared by the rule
+    create + edit forms. Lazy import keeps the rules import graph small."""
+    from app.services import external_sensors as ext_svc
+
+    all_sources = ext_svc.list_sources()
+    return {
+        "roku": [s for s in all_sources if s["kind"] == "roku"],
+        "home_assistant": [s for s in all_sources if s["kind"] == "home_assistant"],
+        "weather": [s for s in all_sources if s["kind"] == "weather"],
+        "ical": [s for s in all_sources if s["kind"] == "ical"],
+    }
+
+
+def _render_rule_edit(rule: dict, *, rule_json: str, json_editor_error: str | None = None):
+    """Render the rule edit page — structured form + JSON editor.
+
+    Single render path so every entry point (initial GET, JSON-editor
+    validation failure) gives the structured form the same context."""
+    p = rule.get("probe") or {}
+    pk = p.get("kind")
+    # The structured form has one `probe_arg` text field; which probe key
+    # it maps to depends on the probe kind.
+    if pk == "ping":
+        probe_arg = p.get("host") or ""
+    elif pk == "tcp":
+        probe_arg = f"{p.get('host', '')}:{p.get('port', '')}" if p.get("host") else ""
+    elif pk == "http":
+        probe_arg = p.get("url") or ""
+    elif pk == "dns":
+        probe_arg = p.get("hostname") or ""
+    else:
+        probe_arg = ""
+    return render_template(
+        "rules/edit.html",
+        **_ctx({
+            "active": "rules",
+            "rule": rule,
+            "rule_json": rule_json,
+            "json_editor_error": json_editor_error,
+            "devices": svc_list_devices(include_qa_fixtures=False),
+            "groups": svc_list_groups(),
+            "sources_by_kind": _sources_by_kind(),
+            "probe_arg": probe_arg,
+            "probe_form_supported": pk in STRUCTURED_PROBE_KINDS,
+        }),
+    )
+
+
 # ── UI ─────────────────────────────────────────────────────────────────────
 
 @admin_ui_bp.get("/rules")
@@ -63,17 +124,7 @@ def rules_page():
         r["recent_events"] = svc_list_events(r["id"], limit=10)
         rules_with_events.append(r)
     # v0.5.28 (Phase 2B): kind-filtered source pickers for the
-    # integration probes. Lazy import keeps the rules page's import
-    # graph small.
-    from app.services import external_sensors as ext_svc
-
-    all_sources = ext_svc.list_sources()
-    sources_by_kind = {
-        "roku": [s for s in all_sources if s["kind"] == "roku"],
-        "home_assistant": [s for s in all_sources if s["kind"] == "home_assistant"],
-        "weather": [s for s in all_sources if s["kind"] == "weather"],
-        "ical": [s for s in all_sources if s["kind"] == "ical"],
-    }
+    # integration probes.
     return render_template(
         "rules/index.html",
         **_ctx({
@@ -81,7 +132,7 @@ def rules_page():
             "rules": rules_with_events,
             "devices": devices,
             "groups": groups,
-            "sources_by_kind": sources_by_kind,
+            "sources_by_kind": _sources_by_kind(),
         }),
     )
 
@@ -160,6 +211,10 @@ def rules_create_json_submit():
                 "rules": rules_with_events,
                 "devices": svc_list_devices(include_qa_fixtures=False),
                 "groups": svc_list_groups(),
+                # The create form's integration-probe blocks need this;
+                # omitting it 500s the page under StrictUndefined when a
+                # bad-JSON submit re-renders here (latent since v0.5.28).
+                "sources_by_kind": _sources_by_kind(),
                 "json_editor_value": raw,
                 "json_editor_error": msg,
             }),
@@ -210,16 +265,17 @@ def rules_create_json_submit():
 @admin_ui_bp.get("/rules/<rule_id>/edit")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def rules_edit_page(rule_id: str):
-    """v0.5.19 (Rules UX phase): edit a rule via the JSON editor —
-    pre-fills the textarea with the current rule body so the operator
-    can tweak any field instead of delete-and-recreate.
+    """v0.5.77 (#15): structured edit form mirroring the create form,
+    pre-populated from the rule. The JSON editor stays as the advanced
+    escape hatch — and the only editor for probe kinds the structured
+    form can't round-trip (`probe_form_supported` is False).
     """
     import json
 
     rule = svc_get_rule(rule_id)
     if rule is None:
         abort(404)
-    # Build the editor body — strip server-side runtime fields the
+    # Build the JSON-editor body — strip server-side runtime fields the
     # operator can't and shouldn't override.
     body = {
         "name": rule["name"],
@@ -236,14 +292,7 @@ def rules_edit_page(rule_id: str):
         "escalation": rule.get("escalation") or {"kind": "stop"},
         "maintenance_windows": rule.get("maintenance_windows") or [],
     }
-    return render_template(
-        "rules/edit.html",
-        **_ctx({
-            "active": "rules",
-            "rule": rule,
-            "rule_json": json.dumps(body, indent=2),
-        }),
-    )
+    return _render_rule_edit(rule, rule_json=json.dumps(body, indent=2))
 
 
 @admin_ui_bp.post("/rules/<rule_id>/edit")
@@ -257,15 +306,7 @@ def rules_edit_submit(rule_id: str):
         rule = svc_get_rule(rule_id)
         if rule is None:
             abort(404)
-        return render_template(
-            "rules/edit.html",
-            **_ctx({
-                "active": "rules",
-                "rule": rule,
-                "rule_json": raw or "",
-                "json_editor_error": msg,
-            }),
-        )
+        return _render_rule_edit(rule, rule_json=raw or "", json_editor_error=msg)
 
     if not raw:
         return _err("Paste a JSON body first.")
@@ -306,6 +347,66 @@ def rules_edit_submit(rule_id: str):
         target_type="watchdog_rule",
         target_id=rule_id,
         details={"name": rule["name"], "via": "json_editor"},
+    )
+    flash(f"Rule updated: {rule['sentence']}", "info")
+    return redirect(url_for("admin_ui.rules_page"))
+
+
+@admin_ui_bp.post("/rules/<rule_id>/edit-form")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def rules_edit_form_submit(rule_id: str):
+    """v0.5.77 (#15): structured-form rule update. Mirrors
+    `rules_create_submit` — reuses the same `_rules_forms` builders —
+    but calls `update_rule`. Fields the structured form doesn't surface
+    (escalation, retry tuning, description, site) are carried over from
+    the existing rule, so a structured save never silently drops them.
+    """
+    existing = svc_get_rule(rule_id)
+    if existing is None:
+        abort(404)
+    name = (request.form.get("name") or "").strip()
+    try:
+        probe = build_probe_from_form(request.form)
+        target = build_target_from_form(request.form)
+        action = build_action_from_form(request.form)
+        maint_windows = build_maintenance_windows_from_form(request.form)
+    except RuleFormError as e:
+        flash(str(e), "error")
+        return redirect(url_for("admin_ui.rules_edit_page", rule_id=rule_id))
+
+    try:
+        rule = svc_update_rule(
+            rule_id,
+            name=name,
+            probe=probe,
+            target=target,
+            action=action,
+            failure_threshold=int(request.form.get("failure_threshold") or 3),
+            recovery_threshold=int(request.form.get("recovery_threshold") or 2),
+            window_seconds=int(request.form.get("window_seconds") or 60),
+            cooldown_seconds=int(request.form.get("cooldown_seconds") or 300),
+            # Not surfaced in the structured form — preserve as-is.
+            max_retries=existing["max_retries"],
+            retry_delay_seconds=existing["retry_delay_seconds"],
+            escalation=existing.get("escalation"),
+            description=existing.get("description"),
+            site_id=existing.get("site_id"),
+            maintenance_windows=maint_windows,
+            updated_by_user_id=g.current_user.id,
+        )
+    except WatchdogValidationError as e:
+        flash(str(e), "error")
+        return redirect(url_for("admin_ui.rules_edit_page", rule_id=rule_id))
+    if rule is None:
+        abort(404)
+
+    audit_service.record(
+        "watchdog_rule.updated",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="watchdog_rule",
+        target_id=rule_id,
+        details={"name": rule["name"], "via": "edit_form"},
     )
     flash(f"Rule updated: {rule['sentence']}", "info")
     return redirect(url_for("admin_ui.rules_page"))
