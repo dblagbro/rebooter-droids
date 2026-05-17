@@ -1,8 +1,8 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~430 tests / 61 files (P-QA gate-2
-widening + gate-3 fixes + a growing `tests/unit/` tree; charter
-`docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
+Status: **2026-05-17** — CI gate at ~433 tests / 62 files, run behind
+nginx (P-QA gate-2 widening + gate-3 fixes + a `tests/unit/` tree;
+charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
 tested. It replaces the prior per-sweep verdict-logging version of this
@@ -35,7 +35,7 @@ snapshot tests against production cannot gate a change, and until
 | Firmware delivery `/rebooter/firmware/*.bin` | curl + sha256 verify |
 | Postgres schema / bootstrap idempotency | `Base.metadata.create_all()` + `_PENDING_COLUMNS` on cold start — **exercised by the CI gate** (fresh DB each run) |
 | APScheduler ticks (watchdog, schedules, sensors, rollups, sync) | wall-clock + log inspection |
-| nginx routing / prefix-strip | curl with explicit hosts |
+| nginx routing / prefix-strip / firmware static | **in the CI gate** — the gate runs behind nginx (`ci/nginx.conf`) |
 
 ## The CI gate (GitHub Actions — `.github/workflows/ci.yml`)
 
@@ -50,10 +50,10 @@ On every push to `main` and every pull request, CI:
 ### What `-m ci` covers
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
-instance**. As of the gate-2 widening (v0.5.79), the gate-3 fixes and
-the `tests/unit/` tree, that is **~430 tests across 61 files** — every
-test file confirmed to pass `pytest -m ci` twice against a from-scratch
-instance (fresh Postgres + populated DB):
+instance**. As of the gate-2 widening (v0.5.79), the gate-3 fixes, the
+`tests/unit/` tree and the nginx front (v0.5.84), that is **~433 tests
+across 62 files** — every test file confirmed to pass `pytest -m ci`
+twice against a from-scratch instance (fresh Postgres + populated DB):
 
 - **Registration / device surface** — `test_device_api.py`,
   `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
@@ -101,52 +101,68 @@ trips the 30/min auth limiter).
 
 ### Running it locally
 
+Mirror the CI job — Postgres + app + nginx, the app fronted under
+`/rebooter`. `ci/nginx.conf` pins the upstream to `rd-ci-app`, so use
+that container name. (CI publishes nginx on host :8080; pick any free
+host port locally and match it in the two URLs below.)
+
 ```bash
-# 1. boot a throwaway instance
+NGX_PORT=18080   # any free host port
+
+# 1. boot the stack
 docker network create rd-ci
 docker run -d --name rd-ci-pg --network rd-ci \
   -e POSTGRES_USER=rebooter -e POSTGRES_PASSWORD=cipw -e POSTGRES_DB=rebooter postgres:16
-docker run -d --name rd-ci-app --network rd-ci -p 18090:8090 \
+docker run -d --name rd-ci-app --network rd-ci -p 8090:8090 \
+  -v rd-ci-firmware:/data/firmware \
   -e REBOOTER_DATABASE_URL=postgresql+psycopg://rebooter:cipw@rd-ci-pg:5432/rebooter \
   -e REBOOTER_SECRET_KEY=ci-not-a-secret \
   -e REBOOTER_BOOTSTRAP_ADMIN_EMAIL=ci-admin@example.com \
   -e REBOOTER_BOOTSTRAP_ADMIN_PASSWORD=ci-Adm1n-pw \
   -e REBOOTER_SESSION_COOKIE_SECURE=0 \
   -e REBOOTER_RATE_LIMIT_EXEMPT_IPS='*' \
+  -e REBOOTER_FIRMWARE_PUBLIC_BASE=http://localhost:${NGX_PORT}/rebooter/firmware \
   dblagbro/rebooter-droids:latest
+# nginx must start after the app (its upstream name resolves at boot)
+sleep 8
+docker run -d --name rd-ci-nginx --network rd-ci -p ${NGX_PORT}:80 \
+  -v rd-ci-firmware:/data/firmware:ro \
+  -v "$PWD/ci/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+  nginx:alpine
 
-# 2. run the gate
-REBOOTER_QA_BASE=http://localhost:18090 \
+# 2. run the gate against nginx
+REBOOTER_QA_BASE=http://localhost:${NGX_PORT}/rebooter \
 REBOOTER_QA_EMAIL=ci-admin@example.com \
 REBOOTER_QA_PASS=ci-Adm1n-pw \
   pytest -m ci -v
 
-# 3. clean up — only the rd-ci-* containers
-docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
+# 3. clean up — only the rd-ci-* containers + volume
+docker rm -f rd-ci-app rd-ci-pg rd-ci-nginx
+docker volume rm rd-ci-firmware && docker network rm rd-ci
 ```
 
 ## Known coverage gaps (the honest list)
 
-1. **~5 of the ~64 test files are still not in the CI gate** (gate-3
-   backlog). The `0P`-all-fail, partial-fail, in-process and timing-e2e
-   buckets are now fixed and gated; what's left needs more than an
-   assertion tweak. The fix checklist that cleared the gated files:
-   (a) the per-file `_login()` must honour `REBOOTER_QA_EMAIL/PASS`,
-   not hardcoded creds; (b) seed any data the test assumes with a
-   module-scoped autouse fixture (a fresh instance has none); (c) widen
-   HTML regexes — the responsive reflow added `data-label` attributes,
-   so `<td><code>` must become `<td[^>]*><code>`; (d) `pytest.skip`
-   genuinely nginx-layer tests when the base URL is not the
-   `/rebooter`-prefixed deployment; (e) in-process tests use an
-   isolated SQLite DB + `init_engine` + a bare Flask app context (see
-   `test_v0514` / `test_v0536`); (f) the watchdog + schedule runtimes
-   take an injectable `now` so timing e2e is deterministic in-process
-   (see `test_v0414` / `test_v0417`). The remainder:
+1. **~4 of the ~64 test files are still not in the CI gate** (gate-3
+   backlog). The `0P`-all-fail, partial-fail, in-process, timing-e2e
+   and nginx-layer buckets are now fixed and gated; what's left needs
+   more than an assertion tweak. The fix checklist that cleared the
+   gated files: (a) the per-file `_login()` must honour
+   `REBOOTER_QA_EMAIL/PASS`, not hardcoded creds; (b) seed any data the
+   test assumes with a module-scoped autouse fixture; (c) widen HTML
+   regexes — the responsive reflow added `data-label` attributes, so
+   `<td><code>` must become `<td[^>]*><code>`; (d) in-process tests use
+   an isolated SQLite DB + `init_engine` + a bare Flask app context
+   (see `test_v0514` / `test_v0536`); (e) the watchdog + schedule
+   runtimes take an injectable `now` so timing e2e is deterministic
+   in-process (see `test_v0414` / `test_v0417`); (f) the gate runs
+   behind nginx (`ci/nginx.conf`), so the prefix-proxy and firmware
+   static-serving tests run for real. The remainder:
    - *CI-environment-incompatible* — `test_hardening_probes` has a
      rate-limit test (the gate sets `RATE_LIMIT_EXEMPT_IPS=*`) and a
-     cookie-`Secure` test (the gate sets `SESSION_COOKIE_SECURE=0`);
-     `test_v039_firmware_mirrors` hardcodes the live `voipguru.org`
-     firmware URLs. These need per-test skips or an nginx-in-CI step.
+     cookie-`Secure` test (the gate sets `SESSION_COOKIE_SECURE=0`) —
+     both assert behaviour the gate's own config deliberately disables,
+     so they need per-test skips keyed on those settings.
    - *Server-side probe target* — `test_v042_watchdog_runtime`'s one
      failure (`test_probe_now_http_success`) probes `base_url` from
      inside the app container, which can't reach the host-mapped port.
