@@ -14,18 +14,48 @@ import csv
 import io
 import json
 
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-3 — history files).
+pytestmark = pytest.mark.ci
 
 
 def _login(base_url: str) -> requests.Session:
     s = requests.Session()
     r = s.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200, r.text
     return s
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _seed_history(base_url):
+    """A fresh CI instance starts with an empty history feed. Seed a
+    few `watchdog_rule.*` audit events (create + delete a rule) so the
+    export and search assertions below have rows to work with —
+    instead of assuming live-deployment data."""
+    s = _login(base_url)
+    for i in range(2):
+        r = s.post(
+            f"{base_url}/api/v1/admin/rules",
+            json={
+                "name": f"qa-history-seed-{i}",
+                "probe": {"kind": "internet"},
+                "target": {"kind": "tag", "tag": "qa-history-seed"},
+                "action": {"kind": "notify_only"},
+            },
+            timeout=10,
+        )
+        assert r.status_code == 201, r.text
+        s.delete(
+            f"{base_url}/api/v1/admin/rules/{r.json()['data']['id']}", timeout=10
+        )
 
 
 def test_export_csv_streams_with_attachment_header(base_url):
@@ -83,8 +113,8 @@ def test_search_narrows_audit_rows(base_url):
     # The "all" non-search view should have at least one row not
     # matching watchdog_rule (since the audit table holds many
     # action families); the search view should be a strict subset.
-    base_rows = base.count("<td><code>")
-    searched_rows = searched.count("<td><code>")
+    base_rows = base.count('<td data-label="Action"><code>')
+    searched_rows = searched.count('<td data-label="Action"><code>')
     assert searched_rows <= base_rows, (
         f"search did not narrow: base={base_rows} search={searched_rows}"
     )
@@ -93,7 +123,7 @@ def test_search_narrows_audit_rows(base_url):
     # — we relax this by allowing a match anywhere in the action OR
     # the row's details (which is the C3 contract).
     import re
-    actions = re.findall(r"<td><code>([^<]+)</code></td>", searched)
+    actions = re.findall(r"<td[^>]*><code>([^<]+)</code></td>", searched)
     # The search view should at minimum contain "watchdog" somewhere
     # in either action or surrounding context. Just assert non-empty
     # since the cluster has plenty of watchdog_rule.* rows.

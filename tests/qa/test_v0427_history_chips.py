@@ -2,18 +2,48 @@
 
 from __future__ import annotations
 
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-3 — history files).
+pytestmark = pytest.mark.ci
 
 
 def _login(base_url: str) -> requests.Session:
     s = requests.Session()
     r = s.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200, r.text
     return s
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _seed_history(base_url):
+    """A fresh CI instance starts with an empty history feed. Seed a
+    few `watchdog_rule.*` audit events (create + delete a rule) so the
+    prefix-filter assertions below have rows to work with — instead of
+    assuming live-deployment data."""
+    s = _login(base_url)
+    for i in range(2):
+        r = s.post(
+            f"{base_url}/api/v1/admin/rules",
+            json={
+                "name": f"qa-history-seed-{i}",
+                "probe": {"kind": "internet"},
+                "target": {"kind": "tag", "tag": "qa-history-seed"},
+                "action": {"kind": "notify_only"},
+            },
+            timeout=10,
+        )
+        assert r.status_code == 201, r.text
+        s.delete(
+            f"{base_url}/api/v1/admin/rules/{r.json()['data']['id']}", timeout=10
+        )
 
 
 def test_history_page_renders_chip_nav(base_url):
@@ -55,7 +85,7 @@ def test_history_action_prefix_filter_narrows_results(base_url):
     # Sanity: every action shown on the filtered page starts with the
     # prefix. Cheap check — pluck out <code>...</code> action cells.
     import re
-    actions = re.findall(r"<td><code>([^<]+)</code></td>", wd_body)
+    actions = re.findall(r"<td[^>]*><code>([^<]+)</code></td>", wd_body)
     assert actions, "expected at least one event row on history page"
     bad = [a for a in actions if not a.startswith("watchdog_rule.")]
     assert not bad, f"non-watchdog_rule actions leaked through filter: {bad[:5]}"

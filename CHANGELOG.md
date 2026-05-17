@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — P-QA gate-3: history test files
+
+Brought the three history test files into the `-m ci` gate
+(`test_v0427_history_chips`, `test_v0430_history_sources`,
+`test_v0432_history_export_search`) — +11 tests, gate now ~241 / 36
+files. Test-only change; no app code touched. Three root causes fixed,
+the same checklist the rest of the gate-3 backlog needs:
+
+- the per-file `_login()` helper hardcoded `dblagbro@gmail.com` instead
+  of honouring `REBOOTER_QA_EMAIL`/`REBOOTER_QA_PASS` — every test 401'd
+  against the CI admin;
+- the tests assumed live-deployment audit data; a fresh instance has
+  none. Added a module-scoped autouse fixture that seeds `watchdog_rule.*`
+  audit activity (create + delete a rule);
+- a `<td><code>` row-parsing regex missed the `data-label="Action"`
+  attribute the responsive-table reflow added — widened to `<td[^>]*>`.
+
 ## [0.5.79] - 2026-05-16
 
 ### Changed — P-QA gate-2: widen the CI gate
