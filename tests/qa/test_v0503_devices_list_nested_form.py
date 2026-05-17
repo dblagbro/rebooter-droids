@@ -36,18 +36,50 @@ These tests:
 from __future__ import annotations
 
 import re
+
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-3 brittle-file fixes).
+pytestmark = pytest.mark.ci
 
 
 def _login(base_url: str) -> requests.Session:
     s = requests.Session()
     r = s.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200, r.text
     return s
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _seed_device(base_url):
+    """The checkbox / bulk-form assertions below need at least one
+    device row on `/app/devices`. A fresh CI instance has none — register
+    one through the enrollment flow (mint a token, then register)."""
+    s = _login(base_url)
+    et = s.post(
+        f"{base_url}/api/v1/admin/enrollment-tokens",
+        json={"display_name_hint": "qa0503-seed", "note": "qa"},
+        timeout=10,
+    )
+    assert et.status_code in (200, 201), et.text
+    reg = requests.post(
+        f"{base_url}/api/v1/device/register",
+        json={
+            "enrollment_token": et.json()["data"]["enrollment_token"],
+            "hardware_model": "sonoff_s31",
+            "firmware_version": "0.1.0",
+            "display_name": "qa0503 seed device",
+        },
+        timeout=10,
+    )
+    assert reg.status_code == 201, reg.text
 
 
 def test_devices_list_has_no_nested_forms(base_url):

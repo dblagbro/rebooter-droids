@@ -1,7 +1,7 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~241 tests / 36 files (P-QA gate-2
-widening + gate-3 history files; charter
+Status: **2026-05-17** — CI gate at ~256 tests / 44 files (P-QA gate-2
+widening + gate-3 history & brittle-file fixes; charter
 `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
@@ -51,9 +51,9 @@ On every push to `main` and every pull request, CI:
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
 instance**. As of the gate-2 widening (v0.5.79) plus the gate-3 history
-files, that is **~241 tests across 36 files** — every test file
-confirmed to pass `pytest -m ci` twice against a from-scratch instance
-(fresh Postgres + populated DB):
+and brittle-file fixes, that is **~256 tests across 44 files** — every
+test file confirmed to pass `pytest -m ci` twice against a from-scratch
+instance (fresh Postgres + populated DB):
 
 - **Registration / device surface** — `test_device_api.py`,
   `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
@@ -70,7 +70,14 @@ confirmed to pass `pytest -m ci` twice against a from-scratch instance
 - **History feed** — chip-filter, multi-source picker, CSV/JSON export,
   free-text search (`test_v0427/0430/0432`). These seed their own
   `watchdog_rule.*` audit activity via a module-scoped autouse fixture
-  rather than assuming live data — the pattern for the rest of gate-3.
+  rather than assuming live data.
+- **Settings / wizard / RBAC surfaces** (gate-3 brittle bucket) —
+  runtime SMTP (`test_v0425`), the per-device upgrade button
+  (`test_v0428`), the enrol wizard (`test_v0431`), the firmware settings
+  tab (`test_v0433`), role-binding back-compat (`test_v0500`),
+  pending-adoption count (`test_v0502`), the devices-list nested-form
+  fix (`test_v0503` — seeds its own device), and the scanned-release
+  URL guard (`test_v0511` — skips when no firmware artifacts exist).
 
 Two structural fixes made the gate-2 widening possible (both default to
 the production-safe value; the CI app boot opts out):
@@ -107,20 +114,27 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
 
 ## Known coverage gaps (the honest list)
 
-1. **~27 of the ~64 test files are still not in the CI gate** (gate-3
+1. **~19 of the ~64 test files are still not in the CI gate** (gate-3
    backlog). They fall into three buckets, each needing real work
    before they can gate:
-   - *Brittle HTML-string / data-state assertions* — the remaining
-     `0P`-all-fail files (`test_v0431_enrol_wizard`,
-     `test_v0425_runtime_smtp`, `test_v0500_role_bindings`,
-     `test_v0502/0503`, `test_v0433`, …). They assume accumulated
-     live-deployment data or pre-date current markup. The three history
-     files (`test_v0427/0430/0432`) were the first of this bucket
-     fixed — three root causes: a `_login()` helper hardcoding creds
-     instead of honouring `REBOOTER_QA_EMAIL/PASS`; no seeded audit
-     data on a fresh instance; and a `<td><code>` regex that missed the
-     `data-label="Action"` attribute added by the responsive-table
-     reflow. Same three checks apply to the rest of this bucket.
+   - *Brittle — one failing test in an otherwise-green file* — the
+     partial-fail files (`test_admin_api`, `test_auth_negative`,
+     `test_hardening_probes`, `test_routing_and_nginx`, `test_smoke`,
+     `test_v02_rbac_invites`, `test_v030_redesign_p1_shell`,
+     `test_v039_firmware_mirrors`, `test_v0411_input_validation`,
+     `test_v0420_announce_adopt`, `test_v047_…`). Each is one stale
+     assertion away from gateable. The whole `0P`-all-fail bucket —
+     the history files (`test_v0427/0430/0432`) and the settings/RBAC
+     files (`test_v0425/0428/0431/0433/0500/0502/0503/0511`) — is now
+     fixed and gated. The fix checklist that cleared them: (a) the
+     per-file `_login()` must honour `REBOOTER_QA_EMAIL/PASS`, not
+     hardcoded creds; (b) seed any data the test assumes with a
+     module-scoped autouse fixture (a fresh instance has none);
+     (c) widen HTML regexes — the responsive reflow added `data-label`
+     attributes, so `<td><code>` must become `<td[^>]*><code>`.
+   - *In-process collection errors* — `test_v0514_deployment_…` and
+     `test_v0536_site_not_null_…` import `app.*` and need a DB engine
+     fixture; they error at collection on a bare runner.
    - *Timing / wall-clock e2e* — `test_v0417_schedule_runtime_e2e`,
      `test_v0414_watchdog_runtime_e2e`, `test_v042_watchdog_runtime`:
      race the 30 s APScheduler tick, so they flake. They do not belong

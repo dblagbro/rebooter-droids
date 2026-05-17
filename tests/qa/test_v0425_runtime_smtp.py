@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-3 brittle-file fixes).
+pytestmark = pytest.mark.ci
 
 
 def test_notifications_page_renders_editable_form(base_url, admin_headers):
@@ -12,7 +18,7 @@ def test_notifications_page_renders_editable_form(base_url, admin_headers):
     cs = requests.Session()
     r = cs.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200
@@ -36,7 +42,7 @@ def test_save_and_clear_round_trip(base_url, admin_headers):
     cs = requests.Session()
     cs.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
 

@@ -18,14 +18,20 @@ Tests verify:
 
 from __future__ import annotations
 
+import pytest
 import requests
+
+from .conftest import ADMIN_EMAIL, ADMIN_PASS
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-3 brittle-file fixes).
+pytestmark = pytest.mark.ci
 
 
 def _login(base_url: str) -> requests.Session:
     s = requests.Session()
     r = s.post(
         f"{base_url}/api/v1/auth/login",
-        json={"email": "dblagbro@gmail.com", "password": "Super*120120"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
         timeout=10,
     )
     assert r.status_code == 200, r.text
@@ -43,7 +49,7 @@ def test_role_bindings_table_exists_and_backfilled(base_url):
     r = s.get(f"{base_url}/api/v1/auth/me", timeout=10)
     assert r.status_code == 200, r.text
     me = r.json().get("data", {})
-    assert me.get("email") == "dblagbro@gmail.com"
+    assert me.get("email") == ADMIN_EMAIL
     # Version sanity check — confirms the v0.5.0 image is actually
     # what's serving this test.
     ver = s.get(f"{base_url}/api/v1/version", timeout=10).json()["data"]
