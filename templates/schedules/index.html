@@ -29,20 +29,20 @@
           <option value="once">once</option>
         </select>
       </label>
-      <label>At time UTC (HH:MM, daily/weekly) <input type="time" name="at_time_utc"></label>
-      <label>Weekdays (weekly only):
+      <label id="sched-at-time">At time UTC (HH:MM) <input type="time" name="at_time_utc"></label>
+      <label id="sched-weekdays">Weekdays
         <span style="display:inline-flex; gap:.4rem; flex-wrap:wrap; margin-left:.4rem">
         {% for i, name in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
-          <label style="font-size:.85rem"><input type="checkbox" name="weekdays" value="{{ i }}"> {{ name }}</label>
+          <label style="font-size:.85rem; margin:0"><input type="checkbox" name="weekdays" value="{{ i }}"> {{ name }}</label>
         {% endfor %}
         </span>
       </label>
-      <label>Start at (one-shot only) <input type="datetime-local" name="start_at"></label>
-      <label>Duration seconds (maintenance only) <input type="number" name="duration_seconds" value="3600" min="0" max="86400"></label>
+      <label id="sched-start-at">Start at <input type="datetime-local" name="start_at"></label>
+      <label id="sched-duration">Duration seconds <input type="number" name="duration_seconds" value="3600" min="0" max="86400"></label>
     </fieldset>
 
-    <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
-      <legend>Target (power_cycle only)</legend>
+    <fieldset id="sched-target" style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
+      <legend>Target</legend>
       <label>Kind
         <select name="target_kind">
           <option value="">—</option>
@@ -73,6 +73,7 @@
     <button type="submit">Create schedule</button>
   </form>
 </section>
+<script src="{{ url_for('static', filename='js/schedules_form.js') }}" defer></script>
 {% endif %}
 
 <h2>Schedules</h2>
