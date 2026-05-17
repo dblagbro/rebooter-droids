@@ -184,8 +184,12 @@ def create_app() -> Flask:
 
     @app.get("/")
     def root_redirect():
-        from flask import redirect
-        return redirect("/app/", code=302)
+        # v0.5.84: prefix-aware. Hardcoded `/app/` sent a device or
+        # browser hitting the deployment root to the host root, not the
+        # `/rebooter`-mounted app — a 404 behind the prefix. `script_root`
+        # is the SCRIPT_NAME the proxy set (`/rebooter`, or "" bare).
+        from flask import redirect, request
+        return redirect(f"{request.script_root}/app/", code=302)
 
     @app.get("/favicon.ico")
     @app.get("/apple-touch-icon.png")
