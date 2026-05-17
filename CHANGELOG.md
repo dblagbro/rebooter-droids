@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.79] - 2026-05-16
+
+### Changed — P-QA gate-2: widen the CI gate
+
+The `-m ci` gate covered 21 tests / 3 files — the registration/device surface. It missed everything else, including the watchdog/rules tests that *would* have caught the v0.5.77 and v0.5.78 regressions had they been gated. Widened it to **~230 tests / 33 files**.
+
+Two structural fixes made the rest of the suite CI-runnable — both default to the production-safe value; only the throwaway CI instance opts out:
+
+- **`SESSION_COOKIE_SECURE` is now env-configurable** (`REBOOTER_SESSION_COOKIE_SECURE`, default `1`). It was hardcoded `True`, so the Secure session cookie was never sent over the CI gate's plain `http://localhost` — every cookie-authenticated HTTP test 401'd. CI sets it `0`.
+- **The rate-limit exempt list accepts a `*` wildcard.** 33 test modules each log in; that tripped the 30/min auth limiter with `429`s. CI sets `REBOOTER_RATE_LIMIT_EXEMPT_IPS='*'`.
+
+Every newly-gated file was verified by running `pytest -m ci` twice against a from-scratch instance (fresh Postgres, then populated DB) — a faithful CI replica. Triage caught two tests that pass only by luck and were **left out** of the gate, with the reason recorded in each file: `test_v034_bulk_actions` (order-dependent — `/app/groups` scaffolding needs a pre-existing group) and `test_v0417_schedule_runtime_e2e` (wall-clock race against the 30 s APScheduler tick). The remaining ~30 files (brittle HTML-string asserts, timing-flaky e2e) are the gate-3 backlog in `docs/test-plan.md`.
+
 ## [0.5.78] - 2026-05-16
 
 ### Added — #15: structured rule-edit form (P-UI walkthrough, Phase 2B)

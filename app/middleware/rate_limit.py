@@ -54,8 +54,13 @@ def _key_func() -> str:
 def _is_exempt() -> bool:
     """Per-request exemption check. Returns True iff the client IP
     is in REBOOTER_RATE_LIMIT_EXEMPT_IPS — Flask-Limiter then skips
-    the entire decorator chain for this request."""
-    return _key_func() in _exempt_ips()
+    the entire decorator chain for this request.
+
+    A literal `*` entry exempts every client: the CI gate sets this on
+    its throwaway instance so the test suite's many logins don't trip
+    the 30/min auth limiter."""
+    exempt = _exempt_ips()
+    return "*" in exempt or _key_func() in exempt
 
 
 limiter = Limiter(

@@ -19,6 +19,13 @@ import requests
 
 from .conftest import unique_suffix
 
+# NB: not in the `-m ci` gate — test_list_page_renders_bulk_form_scaffolding
+# asserts `/app/groups` shows bulk-form scaffolding, which only renders
+# when a group already exists. It passes in a full suite run (an earlier
+# test leaves a group behind) but fails on a fresh instance. Gate it once
+# the test seeds its own group. (P-QA gate-3.)
+
+
 
 @pytest.fixture(scope="module")
 def shell_session(base_url, admin_creds):

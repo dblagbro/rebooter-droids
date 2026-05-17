@@ -16,6 +16,11 @@ from __future__ import annotations
 import requests
 
 from .conftest import unique_suffix
+import pytest
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-2 widening).
+pytestmark = pytest.mark.ci
+
 
 
 def _enroll_device(base_url, admin_headers, hint: str) -> dict:

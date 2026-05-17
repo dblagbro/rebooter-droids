@@ -24,6 +24,11 @@ import base64
 import json
 
 import requests
+import pytest
+
+# v0.5.79: in the `-m ci` gate (P-QA gate-2 widening).
+pytestmark = pytest.mark.ci
+
 
 
 def _decode_jwt_payload(jwt_str: str) -> dict:
