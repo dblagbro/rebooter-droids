@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.config import Settings
 from app.db import session_scope
 from app.models import Device, DeviceCredential, EnrollmentToken
+from app.models._helpers import as_aware
 
 log = logging.getLogger(__name__)
 
@@ -210,7 +211,9 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
             raise EnrollmentError("enrollment_invalid", "Enrollment token is not recognized.")
         if et.consumed_at is not None:
             raise EnrollmentError("enrollment_consumed", "Enrollment token already used.")
-        if et.expires_at <= now:
+        # as_aware: Postgres returns expires_at tz-aware, SQLite naive —
+        # coerce so the comparison can't raise (no-op on a deployment).
+        if as_aware(et.expires_at) <= now:
             raise EnrollmentError("enrollment_expired", "Enrollment token has expired.")
 
         resolved_name = (
