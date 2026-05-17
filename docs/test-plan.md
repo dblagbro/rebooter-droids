@@ -94,7 +94,9 @@ twice against a from-scratch instance (fresh Postgres + populated DB):
   `upsert_announcement` state machine, the `enrollment`
   mint/consume/revoke service, the `device_power` query/rollup
   surface, the `commands` enqueue/cancel/result/expiry queue, the
-  `heartbeats` ingest path) take the `hub_db` isolated-SQLite fixture.
+  `heartbeats` ingest path, the `unregistered` tracker, the `events`
+  ingest/query service, the `invitations` mint/redeem service and the
+  `password_resets` service) take the `hub_db` isolated-SQLite fixture.
   Every test under `tests/unit/` is auto-tagged `ci` by its conftest —
   no HTTP, no Docker, runs in ~13 s.
 
@@ -206,21 +208,18 @@ then (b) add the per-test skips for the config-disabled assertions.
    - *Order-dependent* — `test_v034_bulk_actions` asserts `/app/groups`
      shows bulk-form scaffolding, which only renders with a group
      present; gate it once it seeds its own group.
-2. **In-process unit coverage is young.** `tests/unit/` exists and
-   covers the `_rules_forms` builders, schedule recurrence math,
-   `create_rule` validation, the `upsert_announcement` state machine,
-   the `enrollment` mint/consume/revoke service, the `device_power`
-   query/rollup surface, the watchdog `run_probe` dispatcher, the
-   `commands` queue and the `heartbeats` ingest path — but other
-   service-layer logic (`events` ingest, the watchdog
-   tick/state-transition loop, `deployments`, …) still has only HTTP
-   coverage. Growing `tests/unit/` is ongoing. **Blocker:** the
-   `invitations`, `password_resets`, `inbox`, `external_sensors`,
-   `events` and `unregistered` services cannot get `hub_db`
-   (SQLite) coverage until **BUG-059** is fixed — they carry
-   naive/aware datetime comparisons, non-variant `BigInteger` PKs,
-   and an unconditional Postgres `ON CONFLICT` that crash on the
-   SQLite test backend.
+2. **In-process unit coverage is growing.** `tests/unit/` covers the
+   `_rules_forms` builders, schedule recurrence math, `create_rule`
+   validation, the `upsert_announcement` state machine, the
+   `enrollment`, `device_power`, `commands`, `heartbeats`,
+   `unregistered`, `events`, `invitations` and `password_resets`
+   services, and the watchdog `run_probe` dispatcher. **BUG-059 is
+   fixed** (v0.5.88) — the `as_aware` / `with_variant` / dialect-branch
+   landmines that crashed the SQLite test backend are cleared. Still
+   HTTP-only and worth `tests/unit/` coverage next: `inbox` (the
+   health-feed verdict logic — now unblocked), `external_sensors`
+   (`_query` / `_pollers` — now unblocked), the watchdog
+   tick/state-transition loop, and `deployments`.
 3. **No single end-to-end adoption test.** The
    announce → pending-adoption → adopt → token-mint → `/register` →
    first-heartbeat → "online" flow spans ~60 KB across

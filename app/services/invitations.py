@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.config import Settings
 from app.db import session_scope
 from app.models import Invitation
+from app.models._helpers import as_aware
 from app.models.users import ALL_ROLES
 from app.services.users import UserError, create_user
 
@@ -155,7 +156,11 @@ def lookup_pending(token: str) -> Invitation | None:
     now = datetime.now(timezone.utc)
     with session_scope() as session:
         inv = session.scalar(select(Invitation).where(Invitation.token_hash == h))
-        if inv is None or inv.consumed_at is not None or inv.expires_at <= now:
+        if (
+            inv is None
+            or inv.consumed_at is not None
+            or as_aware(inv.expires_at) <= now
+        ):
             return None
         session.expunge(inv)
         return inv
@@ -181,7 +186,7 @@ def redeem_invitation(
             raise InvitationError("invitation_invalid", "invitation token is not recognized")
         if inv.consumed_at is not None:
             raise InvitationError("invitation_consumed", "invitation already used")
-        if inv.expires_at <= now:
+        if as_aware(inv.expires_at) <= now:
             raise InvitationError("invitation_expired", "invitation has expired")
 
         try:

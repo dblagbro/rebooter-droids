@@ -1115,7 +1115,12 @@ This is itself a process defect — see **BUG-061**.
 - **Date:** 2026-05-17
 - **Severity:** medium (test-blocking; prod-safe on Postgres)
 - **Area:** multiple — see list
-- **Status:** **open**
+- **Status:** **fixed in v0.5.88** — all three sub-parts (A: nine
+  `as_aware` sites; B: three `BigInteger` PK variants; C: the
+  dialect-branched `unregistered.record` upsert) applied. Proven by
+  four new `tests/unit/` files (35 tests) for unregistered / events /
+  invitations / password_resets. `inbox` + `external_sensors` are
+  unblocked; their unit coverage is the next follow-up.
 - **Detail:** Production runs exclusively on Postgres, where all of
   the following are correct. But the active QA initiative builds
   `tests/unit/` against an **isolated-SQLite** fixture (`hub_db`),

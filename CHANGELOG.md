@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.88] - 2026-05-17
+
+### Fixed — BUG-059: SQLite-incompatible code blocking `tests/unit/` coverage
+
+The 2026-05-17 regression sweep filed BUG-059 — a cluster of code that
+is correct on Postgres (production) but crashes on the SQLite
+in-process test backend, blocking unit coverage of six services. All
+three sub-parts fixed; production behaviour is unchanged.
+
+- **(A) naive/aware datetime** — nine DB-read datetimes compared
+  against a tz-aware `now` without `as_aware()` coercion now use it:
+  `invitations.py` (`lookup_pending`, `redeem_invitation`),
+  `password_resets.py` (`consume_reset`), `inbox.py` (the four
+  health-feed age comparisons), `external_sensors/_query.py`
+  (counter-delta freshness) and `external_sensors/_pollers.py`
+  (`poll_all_due` due-check).
+- **(B) `BigInteger` primary keys** — `DeviceEvent.id`,
+  `UnregisteredAuthAttempt.id` and `AuditEventArchive.id` now use
+  `BigInteger().with_variant(Integer(), "sqlite")` so the PK
+  autoincrements on SQLite (it only ROWID-aliases an `INTEGER` PK).
+- **(C) unconditional Postgres `ON CONFLICT`** —
+  `unregistered.record()` now branches the upsert by dialect
+  (`sqlite_insert` vs `pg_insert`), like `device_power.py`.
+
+### Added — P-QA: in-process unit tests for the unblocked services
+
+Four new `tests/unit/` files (35 tests) covering the services that
+BUG-059 had blocked — and proving every fix pattern:
+`test_unregistered_service.py` (record upsert + autoincrement PK —
+proves B + C), `test_events_service.py` (ingest/query — proves B),
+`test_invitations_service.py` (mint/lookup/redeem incl. the expiry
+path — proves A), `test_password_resets_service.py`
+(request/consume/expire incl. the expiry path — proves A). The CI
+gate is now ~570 tests. `inbox` and `external_sensors` are now
+unblocked too — their `tests/unit/` coverage is the next follow-up.
+
 ## [0.5.87] - 2026-05-17
 
 ### Fixed — post-refactor regression sweep: quick-win remediations

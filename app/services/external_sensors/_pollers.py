@@ -25,6 +25,7 @@ from sqlalchemy import select
 
 from app.db import session_scope
 from app.models import ExternalSensorSample, ExternalSensorSource
+from app.models._helpers import as_aware
 from app.models.external_sensors import SUBSCRIBER_KINDS, WEBHOOK_KINDS
 from app.services.external_sensors._common import _iso
 
@@ -119,7 +120,7 @@ def poll_all_due() -> dict:
             if src.last_polled_at is None:
                 due_ids.append(src.id)
                 continue
-            elapsed = (now - src.last_polled_at).total_seconds()
+            elapsed = (now - as_aware(src.last_polled_at)).total_seconds()
             if elapsed >= src.poll_interval_seconds:
                 due_ids.append(src.id)
             else:

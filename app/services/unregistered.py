@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.db import session_scope
 from app.models import UnregisteredAuthAttempt
@@ -51,7 +52,14 @@ def record(
         ua = _sanitize(user_agent, _MAX_USER_AGENT_LEN)
         now = datetime.now(timezone.utc)
         with session_scope() as session:
-            stmt = pg_insert(UnregisteredAuthAttempt).values(
+            # BUG-059: branch the upsert by dialect — `pg_insert`
+            # compiled against a SQLite engine raises. Both the
+            # postgresql and sqlite `insert` variants expose the same
+            # `on_conflict_do_update` API. Postgres in production;
+            # SQLite under the in-process unit tests.
+            dialect = session.bind.dialect.name if session.bind else "postgresql"
+            insert_fn = sqlite_insert if dialect == "sqlite" else pg_insert
+            stmt = insert_fn(UnregisteredAuthAttempt).values(
                 claimed_device_id=cdi,
                 source_ip=ip,
                 endpoint=ep,
