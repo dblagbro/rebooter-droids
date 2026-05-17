@@ -1,7 +1,7 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~412 tests / 59 files (P-QA gate-2
-widening + gate-3 fixes + a `tests/unit/` tree; charter
+Status: **2026-05-17** — CI gate at ~430 tests / 61 files (P-QA gate-2
+widening + gate-3 fixes + a growing `tests/unit/` tree; charter
 `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
@@ -51,7 +51,7 @@ On every push to `main` and every pull request, CI:
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
 instance**. As of the gate-2 widening (v0.5.79), the gate-3 fixes and
-the `tests/unit/` tree, that is **~412 tests across 59 files** — every
+the `tests/unit/` tree, that is **~430 tests across 61 files** — every
 test file confirmed to pass `pytest -m ci` twice against a from-scratch
 instance (fresh Postgres + populated DB):
 
@@ -88,9 +88,9 @@ instance (fresh Postgres + populated DB):
 - **`tests/unit/`** — the in-process unit-test tree. Pure-function
   tests (the `_rules_forms` form→JSON builders, schedule recurrence
   math) need no fixture; DB-backed service tests (`create_rule`
-  validation) take the `hub_db` isolated-SQLite fixture. Every test
-  under `tests/unit/` is auto-tagged `ci` by its conftest — no HTTP, no
-  Docker, runs in ~2 s.
+  validation, the `upsert_announcement` state machine) take the
+  `hub_db` isolated-SQLite fixture. Every test under `tests/unit/` is
+  auto-tagged `ci` by its conftest — no HTTP, no Docker, runs in ~3 s.
 
 Two structural fixes made the gate-2 widening possible (both default to
 the production-safe value; the CI app boot opts out):
@@ -127,7 +127,7 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
 
 ## Known coverage gaps (the honest list)
 
-1. **~7 of the ~64 test files are still not in the CI gate** (gate-3
+1. **~5 of the ~64 test files are still not in the CI gate** (gate-3
    backlog). The `0P`-all-fail, partial-fail, in-process and timing-e2e
    buckets are now fixed and gated; what's left needs more than an
    assertion tweak. The fix checklist that cleared the gated files:
@@ -147,11 +147,6 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
      cookie-`Secure` test (the gate sets `SESSION_COOKIE_SECURE=0`);
      `test_v039_firmware_mirrors` hardcodes the live `voipguru.org`
      firmware URLs. These need per-test skips or an nginx-in-CI step.
-   - *Behaviour question* — `test_v0420_announce_adopt`: two tests
-     expect a repeat `/announce` of an adopted-not-registered device
-     to return `awaiting_register`; a fresh instance returns `adopted`
-     both times. Needs the announce-lifecycle owner to confirm intended
-     behaviour before the assertion (or the code) is corrected.
    - *Server-side probe target* — `test_v042_watchdog_runtime`'s one
      failure (`test_probe_now_http_success`) probes `base_url` from
      inside the app container, which can't reach the host-mapped port.
