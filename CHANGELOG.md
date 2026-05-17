@@ -22,8 +22,27 @@ rejection, the 8-target cap), and every probe's no-input guard
 `_probe_dns` empty hostname, `_probe_ping` missing host). The
 socket-level helpers are monkeypatched where a test exercises dispatch
 past the network call — no real packets, runs in ~0.3 s. Test-only
-change: no app code touched, so no version bump / redeploy — the gate
-widens to ~492 tests on the next CI run.
+change: no app code touched, so no version bump / redeploy.
+
+### Added — P-QA: in-process unit tests for the device-command service
+
+`tests/unit/test_commands_service.py` (26 tests) covers
+`app/services/commands.py` — the command queue. Coverage: the pure
+`_validate_payload` schema checks for every validated command type
+(`set_mode`, `apply_config`, `relay_cycle`, the LAN-bridge
+`lan_scan` / `lan_proxy` / `lan_ota_push`, and simple-type
+passthrough); `enqueue_for_device` (pending-command creation, the
+unsupported-type and unknown-device errors, the `is_protected` power
+lockout + `override_lockout`, the `set_hold_off` flag flip,
+power-on auto-clearing `is_held_off`, custom TTL); `enqueue_for_group`
+fan-out and protected-device skipping; `cancel_pending_command`
+(pending-only, unknown-id); `list_pending_for_device` (delivery
+marking, the no-mark path, expiry exclusion); `record_result`
+(result storage + command status update, bad-status and
+unknown-command errors); and `expire_overdue_commands`. The DB-backed
+cases use the `hub_db` isolated-SQLite fixture. Test-only change: no
+app code touched, so no version bump / redeploy — the gate widens to
+~518 tests on the next CI run.
 
 ## [0.5.86] - 2026-05-17
 
