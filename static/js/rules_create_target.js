@@ -24,6 +24,9 @@
         input.name = 'target_id';
         input.id = 'target_id';
         input.placeholder = 'tag name';
+        // v0.5.77 (#15): the edit form pre-fills the existing tag via
+        // data-tag-value on the <select>; the create form has none → ''.
+        input.value = sel.getAttribute('data-tag-value') || '';
         sel.parentNode.replaceChild(input, sel);
         sel = input;
         filter.style.display = 'none';

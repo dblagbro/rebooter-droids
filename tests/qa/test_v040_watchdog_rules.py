@@ -252,8 +252,9 @@ def test_rules_page_renders_form_and_advertises_runtime_pending(
         or "DO NOT fire" in body  # back-compat with v0.4.0/.1 deploys
         or "do not fire yet" in body.lower()
     )
-    # Coming-soon section is still present (different items now)
-    assert "coming next" in body.lower() or "v0.4.1+" in body or "queued" in body.lower()
+    # NB: the old "What's coming next" roadmap card was removed in
+    # v0.5.77 (P-UI walkthrough #17) — it was internal release-log
+    # content on an operator page, so there's nothing to assert here.
 
 
 def test_rules_page_lists_created_rule_with_sentence(base_url, shell_session):
