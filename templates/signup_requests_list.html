@@ -66,7 +66,7 @@
       <form method="post" action="{{ url_for('admin_ui.signup_request_reject_submit', request_id=r.id) }}"
             style="display:inline;margin-left:0.25rem"
             data-confirm-message="Reject signup request from {{ r.email }}?">
-        <button type="submit" style="padding:0.4rem 0.8rem;background:#dc2626">Reject</button>
+        <button type="submit" class="btn-danger" style="padding:0.4rem 0.8rem">Reject</button>
       </form>
       {% else %}
         —
