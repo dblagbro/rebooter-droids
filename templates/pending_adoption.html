@@ -10,24 +10,7 @@
    backgrounded, (b) any input/textarea is focused, or (c) a typed-
    confirm prompt or modal-style dialog is mid-interaction — those
    would otherwise eat operator keystrokes. #}
-<script>
-  (function () {
-    var INTERVAL_MS = 3000;
-    function shouldSkip() {
-      if (document.hidden) return true;
-      var ae = document.activeElement;
-      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return true;
-      // any open <dialog> or confirm prompt — avoid stomping
-      if (document.querySelector('dialog[open]')) return true;
-      return false;
-    }
-    setInterval(function () {
-      if (!shouldSkip()) {
-        window.location.reload();
-      }
-    }, INTERVAL_MS);
-  })();
-</script>
+<script src="{{ url_for('static', filename='js/pending_adoption_refresh.js') }}" defer></script>
 
 {% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
 {% set state_counts = state_counts or {} %}
