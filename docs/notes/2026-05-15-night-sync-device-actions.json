@@ -1,0 +1,1605 @@
+{
+  "started_at": "2026-05-15T23:02:36",
+  "actions": [
+    {
+      "device": "192.168.1.67",
+      "action": "enable_power",
+      "status": 200,
+      "body": {
+        "ok": true
+      }
+    },
+    {
+      "device": "192.168.1.30",
+      "action": "enable_power",
+      "status": 200,
+      "body": {
+        "ok": true
+      }
+    },
+    {
+      "device": "192.168.1.69",
+      "action": "reenroll_enable_central",
+      "status": 200,
+      "body": {
+        "ok": true
+      },
+      "enrollment_token": "et_l-OjivDhmb1x-YNzVHOBQQxWq7GuXbpv"
+    },
+    {
+      "device": "192.168.1.225",
+      "action": "disable_power_for_stability",
+      "status": 200,
+      "body": {
+        "ok": true
+      }
+    },
+    {
+      "device": "192.168.1.225",
+      "action": "reboot_after_disable_power",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "rebooting": true
+      }
+    }
+  ],
+  "snapshots": [
+    {
+      "t_plus_seconds": 15,
+      "device_states": [
+        {
+          "ip": "192.168.1.67",
+          "device_name": "Erica's F.L Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "heartbeat_ok",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 2016,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.30",
+          "device_name": "Rebooter",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 5.018852,
+          "uptime_seconds": 1253,
+          "reset_reason": "Exception"
+        },
+        {
+          "ip": "192.168.1.69",
+          "device_name": "Erica's R.L. Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 13262,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.225",
+          "device_name": "Rebooter",
+          "recovery_mode": false,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": false,
+          "power_source": "none",
+          "power_power_w": null,
+          "uptime_seconds": 8,
+          "reset_reason": "Software/System restart"
+        }
+      ],
+      "hub": [
+        {
+          "id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+          "display_name": "lab-69",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 2,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14500,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:02:52Z",
+            "rssi_dbm": -54,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:02:52Z",
+            "sampled_uptime_seconds": 13248,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+          "display_name": "Rebooter - renamed test",
+          "local_ip": "192.168.1.48",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 8,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14472,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:02:47Z",
+            "rssi_dbm": -55,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:02:47Z",
+            "sampled_uptime_seconds": 13851,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KR9VZKGW72DS7DAQEFAV3T58",
+          "display_name": "Erica's R.L. Speaker",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "offline",
+          "latest_power_sample": null
+        },
+        {
+          "id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+          "display_name": "Erica's F.L Speaker",
+          "local_ip": "192.168.1.67",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 4,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 1375,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14490,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:02:50Z",
+            "rssi_dbm": -35,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:02:50Z",
+            "sampled_uptime_seconds": 1998,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.53
+          }
+        },
+        {
+          "id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+          "display_name": "Erica's Subwoofer",
+          "local_ip": "192.168.1.30",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 5,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 90380,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14480,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 4.97,
+            "pf": 0.0,
+            "received_at": "2026-05-16T03:02:49Z",
+            "rssi_dbm": -41,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:02:49Z",
+            "sampled_uptime_seconds": 1236,
+            "source": "steady",
+            "source_flags": 214,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6,
+                7
+              ],
+              "raw": 214
+            },
+            "source_kind": "real",
+            "v_v": 119.73
+          }
+        },
+        {
+          "id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+          "display_name": "Erica's F.R Speaker",
+          "local_ip": "192.168.1.225",
+          "heartbeat_state": "offline",
+          "latest_power_sample": {
+            "age_seconds": 14433,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 3,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 3766,
+            "is_stale": true,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-15T23:02:21Z",
+            "rssi_dbm": -38,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-15T23:02:21Z",
+            "sampled_uptime_seconds": 15,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.02
+          }
+        }
+      ]
+    },
+    {
+      "t_plus_seconds": 30,
+      "device_states": [
+        {
+          "ip": "192.168.1.67",
+          "device_name": "Erica's F.L Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "heartbeat_ok",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 2034,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.30",
+          "device_name": "Rebooter",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 4.996836,
+          "uptime_seconds": 1270,
+          "reset_reason": "Exception"
+        },
+        {
+          "ip": "192.168.1.69",
+          "device_name": "Erica's R.L. Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 13280,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.225",
+          "device_name": "Rebooter",
+          "recovery_mode": true,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "recovery_mode",
+          "power_analytics_enabled": true,
+          "power_source": "none",
+          "power_power_w": null,
+          "uptime_seconds": 17,
+          "reset_reason": "Software/System restart"
+        }
+      ],
+      "hub": [
+        {
+          "id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+          "display_name": "lab-69",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 10,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 187177,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14535,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:03:02Z",
+            "rssi_dbm": -53,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:03:02Z",
+            "sampled_uptime_seconds": 13259,
+            "source": "steady",
+            "source_flags": 86,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6
+              ],
+              "raw": 86
+            },
+            "source_kind": "real",
+            "v_v": 118.92
+          }
+        },
+        {
+          "id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+          "display_name": "Rebooter - renamed test",
+          "local_ip": "192.168.1.48",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 6,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14543,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:03:07Z",
+            "rssi_dbm": -54,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:03:07Z",
+            "sampled_uptime_seconds": 13871,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KR9VZKGW72DS7DAQEFAV3T58",
+          "display_name": "Erica's R.L. Speaker",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "offline",
+          "latest_power_sample": null
+        },
+        {
+          "id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+          "display_name": "Erica's F.L Speaker",
+          "local_ip": "192.168.1.67",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 1391,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14559,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:03:11Z",
+            "rssi_dbm": -35,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:03:11Z",
+            "sampled_uptime_seconds": 2024,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.37
+          }
+        },
+        {
+          "id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+          "display_name": "Erica's Subwoofer",
+          "local_ip": "192.168.1.30",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 3,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 90407,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14550,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 4.99,
+            "pf": 0.0,
+            "received_at": "2026-05-16T03:03:09Z",
+            "rssi_dbm": -30,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:03:09Z",
+            "sampled_uptime_seconds": 1256,
+            "source": "steady",
+            "source_flags": 214,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6,
+                7
+              ],
+              "raw": 214
+            },
+            "source_kind": "real",
+            "v_v": 119.73
+          }
+        },
+        {
+          "id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+          "display_name": "Erica's F.R Speaker",
+          "local_ip": "192.168.1.225",
+          "heartbeat_state": "offline",
+          "latest_power_sample": {
+            "age_seconds": 14451,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 3,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 3766,
+            "is_stale": true,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-15T23:02:21Z",
+            "rssi_dbm": -38,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-15T23:02:21Z",
+            "sampled_uptime_seconds": 15,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.02
+          }
+        }
+      ]
+    },
+    {
+      "t_plus_seconds": 60,
+      "device_states": [
+        {
+          "ip": "192.168.1.67",
+          "device_name": "Erica's F.L Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 2062,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.30",
+          "device_name": "Rebooter",
+          "recovery_mode": false,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 17,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.69",
+          "device_name": "Erica's R.L. Speaker",
+          "recovery_mode": false,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "heartbeat_ok",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 14,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.225",
+          "device_name": "Rebooter",
+          "recovery_mode": true,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "recovery_mode",
+          "power_analytics_enabled": true,
+          "power_source": "none",
+          "power_power_w": null,
+          "uptime_seconds": 45,
+          "reset_reason": "Software/System restart"
+        }
+      ],
+      "hub": [
+        {
+          "id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+          "display_name": "lab-69",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 17,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 187177,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14591,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:03:24Z",
+            "rssi_dbm": -56,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:03:24Z",
+            "sampled_uptime_seconds": 13281,
+            "source": "steady",
+            "source_flags": 86,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6
+              ],
+              "raw": 86
+            },
+            "source_kind": "real",
+            "v_v": 118.84
+          }
+        },
+        {
+          "id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+          "display_name": "Rebooter - renamed test",
+          "local_ip": "192.168.1.48",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 3,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14616,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:03:37Z",
+            "rssi_dbm": -56,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:03:37Z",
+            "sampled_uptime_seconds": 13902,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KR9VZKGW72DS7DAQEFAV3T58",
+          "display_name": "Erica's R.L. Speaker",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "offline",
+          "latest_power_sample": null
+        },
+        {
+          "id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+          "display_name": "Erica's F.L Speaker",
+          "local_ip": "192.168.1.67",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 8,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 1403,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14608,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:03:33Z",
+            "rssi_dbm": -36,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:03:33Z",
+            "sampled_uptime_seconds": 2042,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.45
+          }
+        },
+        {
+          "id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+          "display_name": "Erica's Subwoofer",
+          "local_ip": "192.168.1.30",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14624,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:03:40Z",
+            "rssi_dbm": -29,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:03:40Z",
+            "sampled_uptime_seconds": 4,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+          "display_name": "Erica's F.R Speaker",
+          "local_ip": "192.168.1.225",
+          "heartbeat_state": "offline",
+          "latest_power_sample": {
+            "age_seconds": 14479,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 3,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 3766,
+            "is_stale": true,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-15T23:02:21Z",
+            "rssi_dbm": -38,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-15T23:02:21Z",
+            "sampled_uptime_seconds": 15,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.02
+          }
+        }
+      ]
+    },
+    {
+      "t_plus_seconds": 120,
+      "device_states": [
+        {
+          "ip": "192.168.1.67",
+          "device_name": "Erica's F.L Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 51,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.30",
+          "device_name": "Rebooter",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 4.9269,
+          "uptime_seconds": 76,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.69",
+          "device_name": "Erica's R.L. Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 72,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.225",
+          "device_name": "Rebooter",
+          "recovery_mode": true,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "recovery_mode",
+          "power_analytics_enabled": true,
+          "power_source": "none",
+          "power_power_w": null,
+          "uptime_seconds": 104,
+          "reset_reason": "Software/System restart"
+        }
+      ],
+      "hub": [
+        {
+          "id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+          "display_name": "lab-69",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 9,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 0,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14778,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:04:30Z",
+            "rssi_dbm": -55,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:04:30Z",
+            "sampled_uptime_seconds": 52,
+            "source": "steady",
+            "source_flags": 86,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6
+              ],
+              "raw": 86
+            },
+            "source_kind": "real",
+            "v_v": 118.77
+          }
+        },
+        {
+          "id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+          "display_name": "Rebooter - renamed test",
+          "local_ip": "192.168.1.48",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14804,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:04:39Z",
+            "rssi_dbm": -55,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:04:39Z",
+            "sampled_uptime_seconds": 13964,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KR9VZKGW72DS7DAQEFAV3T58",
+          "display_name": "Erica's R.L. Speaker",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "offline",
+          "latest_power_sample": null
+        },
+        {
+          "id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+          "display_name": "Erica's F.L Speaker",
+          "local_ip": "192.168.1.67",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 20,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14796,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:04:38Z",
+            "rssi_dbm": -35,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:04:38Z",
+            "sampled_uptime_seconds": 39,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.53
+          }
+        },
+        {
+          "id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+          "display_name": "Erica's Subwoofer",
+          "local_ip": "192.168.1.30",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 68,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14786,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 5.0,
+            "pf": 0.0,
+            "received_at": "2026-05-16T03:04:38Z",
+            "rssi_dbm": -33,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:04:38Z",
+            "sampled_uptime_seconds": 61,
+            "source": "steady",
+            "source_flags": 214,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6,
+                7
+              ],
+              "raw": 214
+            },
+            "source_kind": "real",
+            "v_v": 119.65
+          }
+        },
+        {
+          "id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+          "display_name": "Erica's F.R Speaker",
+          "local_ip": "192.168.1.225",
+          "heartbeat_state": "offline",
+          "latest_power_sample": {
+            "age_seconds": 14538,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 3,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 3766,
+            "is_stale": true,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-15T23:02:21Z",
+            "rssi_dbm": -38,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-15T23:02:21Z",
+            "sampled_uptime_seconds": 15,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.02
+          }
+        }
+      ]
+    },
+    {
+      "t_plus_seconds": 180,
+      "device_states": [
+        {
+          "ip": "192.168.1.67",
+          "device_name": "Erica's F.L Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 112,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.30",
+          "device_name": "Rebooter",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 4.933976,
+          "uptime_seconds": 138,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.69",
+          "device_name": "Erica's R.L. Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 134,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.225",
+          "device_name": "Rebooter",
+          "recovery_mode": true,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "recovery_mode",
+          "power_analytics_enabled": true,
+          "power_source": "none",
+          "power_power_w": null,
+          "uptime_seconds": 166,
+          "reset_reason": "Software/System restart"
+        }
+      ],
+      "hub": [
+        {
+          "id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+          "display_name": "lab-69",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 4,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14976,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:05:38Z",
+            "rssi_dbm": -54,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:05:38Z",
+            "sampled_uptime_seconds": 122,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+          "display_name": "Rebooter - renamed test",
+          "local_ip": "192.168.1.48",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14985,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:05:41Z",
+            "rssi_dbm": -53,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:05:41Z",
+            "sampled_uptime_seconds": 14025,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KR9VZKGW72DS7DAQEFAV3T58",
+          "display_name": "Erica's R.L. Speaker",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "offline",
+          "latest_power_sample": null
+        },
+        {
+          "id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+          "display_name": "Erica's F.L Speaker",
+          "local_ip": "192.168.1.67",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 6,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 56,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14969,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:05:35Z",
+            "rssi_dbm": -35,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:05:35Z",
+            "sampled_uptime_seconds": 96,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.37
+          }
+        },
+        {
+          "id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+          "display_name": "Erica's Subwoofer",
+          "local_ip": "192.168.1.30",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 154,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 14992,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 4.93,
+            "pf": 0.0,
+            "received_at": "2026-05-16T03:05:41Z",
+            "rssi_dbm": -27,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:05:41Z",
+            "sampled_uptime_seconds": 124,
+            "source": "steady",
+            "source_flags": 214,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6,
+                7
+              ],
+              "raw": 214
+            },
+            "source_kind": "real",
+            "v_v": 119.81
+          }
+        },
+        {
+          "id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+          "display_name": "Erica's F.R Speaker",
+          "local_ip": "192.168.1.225",
+          "heartbeat_state": "offline",
+          "latest_power_sample": {
+            "age_seconds": 14600,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 3,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 3766,
+            "is_stale": true,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-15T23:02:21Z",
+            "rssi_dbm": -38,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-15T23:02:21Z",
+            "sampled_uptime_seconds": 15,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.02
+          }
+        }
+      ]
+    },
+    {
+      "t_plus_seconds": 240,
+      "device_states": [
+        {
+          "ip": "192.168.1.67",
+          "device_name": "Erica's F.L Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 172,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.30",
+          "device_name": "Rebooter",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 4.94875,
+          "uptime_seconds": 197,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.69",
+          "device_name": "Erica's R.L. Speaker",
+          "recovery_mode": false,
+          "health_state": "healthy",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "idle",
+          "power_analytics_enabled": true,
+          "power_source": "steady",
+          "power_power_w": 0,
+          "uptime_seconds": 194,
+          "reset_reason": "Software/System restart"
+        },
+        {
+          "ip": "192.168.1.225",
+          "device_name": "Rebooter",
+          "recovery_mode": true,
+          "health_state": "unknown",
+          "central_enabled": true,
+          "central_registered": true,
+          "central_state": "recovery_mode",
+          "power_analytics_enabled": true,
+          "power_source": "none",
+          "power_power_w": null,
+          "uptime_seconds": 226,
+          "reset_reason": "Software/System restart"
+        }
+      ],
+      "hub": [
+        {
+          "id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+          "display_name": "lab-69",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 0,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 15174,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:06:41Z",
+            "rssi_dbm": -57,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:06:41Z",
+            "sampled_uptime_seconds": 182,
+            "source": "steady",
+            "source_flags": 86,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6
+              ],
+              "raw": 86
+            },
+            "source_kind": "real",
+            "v_v": 119.23
+          }
+        },
+        {
+          "id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+          "display_name": "Rebooter - renamed test",
+          "local_ip": "192.168.1.48",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 9,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": null,
+            "hz": null,
+            "i_ma": null,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 15158,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": null,
+            "pf": null,
+            "received_at": "2026-05-16T03:06:32Z",
+            "rssi_dbm": -54,
+            "s_va": null,
+            "sampled_at": "2026-05-16T03:06:32Z",
+            "sampled_uptime_seconds": 14077,
+            "source": "synthetic",
+            "source_flags": 1,
+            "source_flags_decoded": {
+              "bits_set": [
+                0
+              ],
+              "raw": 1
+            },
+            "source_kind": "synthetic",
+            "v_v": null
+          }
+        },
+        {
+          "id": "dev_01KR9VZKGW72DS7DAQEFAV3T58",
+          "display_name": "Erica's R.L. Speaker",
+          "local_ip": "192.168.1.69",
+          "heartbeat_state": "offline",
+          "latest_power_sample": null
+        },
+        {
+          "id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+          "display_name": "Erica's F.L Speaker",
+          "local_ip": "192.168.1.67",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 1,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 96,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 15167,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-16T03:06:40Z",
+            "rssi_dbm": -35,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:06:40Z",
+            "sampled_uptime_seconds": 161,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.61
+          }
+        },
+        {
+          "id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+          "display_name": "Erica's Subwoofer",
+          "local_ip": "192.168.1.30",
+          "heartbeat_state": "online",
+          "latest_power_sample": {
+            "age_seconds": 10,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 227,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 15149,
+            "is_stale": false,
+            "modality": "power",
+            "p_w": 4.94,
+            "pf": 0.0,
+            "received_at": "2026-05-16T03:06:32Z",
+            "rssi_dbm": -28,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-16T03:06:32Z",
+            "sampled_uptime_seconds": 177,
+            "source": "steady",
+            "source_flags": 214,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                4,
+                6,
+                7
+              ],
+              "raw": 214
+            },
+            "source_kind": "real",
+            "v_v": 119.81
+          }
+        },
+        {
+          "id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+          "display_name": "Erica's F.R Speaker",
+          "local_ip": "192.168.1.225",
+          "heartbeat_state": "offline",
+          "latest_power_sample": {
+            "age_seconds": 14660,
+            "channel_id": 0,
+            "chip_type": "CSE7766",
+            "energy_wh": 3,
+            "hz": null,
+            "i_ma": 0,
+            "i_ma_estimate": null,
+            "i_ma_estimated": null,
+            "id": 3766,
+            "is_stale": true,
+            "modality": "power",
+            "p_w": 0.0,
+            "pf": 1.0,
+            "received_at": "2026-05-15T23:02:21Z",
+            "rssi_dbm": -38,
+            "s_va": 0.0,
+            "sampled_at": "2026-05-15T23:02:21Z",
+            "sampled_uptime_seconds": 15,
+            "source": "steady",
+            "source_flags": 70,
+            "source_flags_decoded": {
+              "bits_set": [
+                1,
+                2,
+                6
+              ],
+              "raw": 70
+            },
+            "source_kind": "real",
+            "v_v": 119.02
+          }
+        }
+      ]
+    }
+  ]
+}

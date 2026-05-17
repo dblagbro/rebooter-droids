@@ -1,0 +1,2020 @@
+{
+  "started_at": "2026-05-15T23:10:19",
+  "login": {
+    "status": 200
+  },
+  "version": {
+    "status": 200,
+    "body": {
+      "data": {
+        "server_time": "2026-05-16T03:10:20Z",
+        "service": "rebooter-droids",
+        "version": "0.5.68"
+      },
+      "ok": true
+    }
+  },
+  "pages": {
+    "/app/": {
+      "status": 200,
+      "contains": {
+        "devices": true,
+        "pending_adoption": false,
+        "power": true
+      }
+    },
+    "/app/devices": {
+      "status": 200,
+      "contains": {
+        "devices": true,
+        "pending_adoption": false,
+        "power": true
+      }
+    },
+    "/app/pending-adoption": {
+      "status": 200,
+      "contains": {
+        "devices": true,
+        "pending_adoption": true,
+        "power": true
+      }
+    },
+    "/app/power": {
+      "status": 500,
+      "contains": {
+        "devices": false,
+        "pending_adoption": false,
+        "power": false
+      }
+    }
+  },
+  "fleet_snapshot": [
+    {
+      "capabilities": {
+        "can_power_cycle": true,
+        "can_switch_load": true,
+        "channels": 1,
+        "chip_type": "CSE7766",
+        "device_watchdog": true,
+        "has_frequency": true,
+        "has_relay": true,
+        "integration_path": "rebooter_native",
+        "internet_watchdog": true,
+        "is_observe_only": false,
+        "local_ota": true,
+        "local_web_ui": true,
+        "power_analytics": false,
+        "power_analytics_configurable": true,
+        "power_analytics_transport_ready": true,
+        "relay_control": true,
+        "supports_runtime_settings": true
+      },
+      "central_management_enabled": true,
+      "central_status": "attention",
+      "central_status_class": "red",
+      "central_status_label": "attention",
+      "central_status_reason": "Latest heartbeat reported health_state=unknown.",
+      "created_at": "2026-05-16T03:02:39Z",
+      "desired_config_drift_summary": null,
+      "desired_config_set": false,
+      "device_secret_status": "issued",
+      "display_name": "lab-69",
+      "firmware_version": "0.1.29-dev-central-safe",
+      "hardware_model": "sonoff_s31",
+      "hardware_revision": "v1.0",
+      "heartbeat_state": "online",
+      "id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+      "is_held_off": false,
+      "is_protected": false,
+      "is_qa_fixture": false,
+      "last_heartbeat_at": "2026-05-16T03:09:37Z",
+      "latest_mode": "smart_plug",
+      "latest_power_sample": {
+        "age_seconds": 5,
+        "channel_id": 0,
+        "chip_type": "CSE7766",
+        "energy_wh": 0,
+        "hz": null,
+        "i_ma": 0,
+        "i_ma_estimate": null,
+        "i_ma_estimated": null,
+        "id": 15855,
+        "is_stale": false,
+        "modality": "power",
+        "p_w": 0.0,
+        "pf": 1.0,
+        "received_at": "2026-05-16T03:10:18Z",
+        "rssi_dbm": -55,
+        "s_va": 0.0,
+        "sampled_at": "2026-05-16T03:10:18Z",
+        "sampled_uptime_seconds": 39,
+        "source": "steady",
+        "source_flags": 86,
+        "source_flags_decoded": {
+          "bits_set": [
+            1,
+            2,
+            4,
+            6
+          ],
+          "raw": 86
+        },
+        "source_kind": "real",
+        "v_v": 119.15
+      },
+      "latest_relay_on": false,
+      "local_ip": "192.168.1.69",
+      "mac_address": "C4:D8:D5:0D:01:A3",
+      "notes": null,
+      "online": true,
+      "registration_state": "active",
+      "reported_auto_recovery_triggered": false,
+      "reported_central_enabled": true,
+      "reported_central_registered": true,
+      "reported_central_state": "heartbeat",
+      "reported_consecutive_unhealthy_boots": 0,
+      "reported_in_captive_portal": false,
+      "reported_last_known_good_restored": false,
+      "reported_recovery_mode": false,
+      "serial_number": null,
+      "site_id": "site_01KRP3K7CKFVPJ6X9AA61SEZN2",
+      "updated_at": "2026-05-16T03:02:39Z"
+    },
+    {
+      "capabilities": {
+        "can_power_cycle": true,
+        "can_switch_load": true,
+        "channels": 1,
+        "chip_type": "CSE7766",
+        "device_watchdog": true,
+        "has_frequency": true,
+        "has_relay": true,
+        "integration_path": "rebooter_native",
+        "internet_watchdog": true,
+        "is_observe_only": false,
+        "local_ota": true,
+        "local_web_ui": true,
+        "power_analytics": false,
+        "power_analytics_configurable": true,
+        "power_analytics_transport_ready": true,
+        "relay_control": true,
+        "supports_runtime_settings": true
+      },
+      "central_management_enabled": true,
+      "central_status": "central_ok",
+      "central_status_class": "green",
+      "central_status_label": "central",
+      "central_status_reason": "Central management is enabled and the device is reporting normally.",
+      "created_at": "2026-05-13T23:25:08Z",
+      "desired_config_drift_summary": null,
+      "desired_config_set": false,
+      "device_secret_status": "issued",
+      "display_name": "Rebooter - renamed test",
+      "firmware_version": "0.1.29-dev-central-safe",
+      "hardware_model": "sonoff_s31",
+      "hardware_revision": "v1.0",
+      "heartbeat_state": "online",
+      "id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+      "is_held_off": false,
+      "is_protected": false,
+      "is_qa_fixture": false,
+      "last_heartbeat_at": "2026-05-16T03:10:13Z",
+      "latest_mode": "smart_plug",
+      "latest_power_sample": {
+        "age_seconds": 6,
+        "channel_id": 0,
+        "chip_type": "CSE7766",
+        "energy_wh": null,
+        "hz": null,
+        "i_ma": null,
+        "i_ma_estimate": null,
+        "i_ma_estimated": null,
+        "id": 15841,
+        "is_stale": false,
+        "modality": "power",
+        "p_w": null,
+        "pf": null,
+        "received_at": "2026-05-16T03:10:17Z",
+        "rssi_dbm": -53,
+        "s_va": null,
+        "sampled_at": "2026-05-16T03:10:17Z",
+        "sampled_uptime_seconds": 14302,
+        "source": "synthetic",
+        "source_flags": 1,
+        "source_flags_decoded": {
+          "bits_set": [
+            0
+          ],
+          "raw": 1
+        },
+        "source_kind": "synthetic",
+        "v_v": null
+      },
+      "latest_relay_on": true,
+      "local_ip": "192.168.1.48",
+      "mac_address": "C4:D8:D5:0D:02:46",
+      "notes": null,
+      "online": true,
+      "registration_state": "active",
+      "reported_auto_recovery_triggered": false,
+      "reported_central_enabled": true,
+      "reported_central_registered": true,
+      "reported_central_state": "heartbeat",
+      "reported_consecutive_unhealthy_boots": 0,
+      "reported_in_captive_portal": false,
+      "reported_last_known_good_restored": false,
+      "reported_recovery_mode": false,
+      "serial_number": null,
+      "site_id": "site_01KRP3K7CKFVPJ6X9AA61SEZN2",
+      "updated_at": "2026-05-15T17:14:16Z"
+    },
+    {
+      "capabilities": {
+        "device_watchdog": true,
+        "internet_watchdog": true,
+        "local_ota": true,
+        "local_web_ui": true,
+        "relay_control": true
+      },
+      "central_management_enabled": true,
+      "central_status": "central_stale",
+      "central_status_class": "red",
+      "central_status_label": "stale",
+      "central_status_reason": "Central has not heard from this device within the heartbeat window.",
+      "created_at": "2026-05-10T21:16:37Z",
+      "desired_config_drift_summary": null,
+      "desired_config_set": false,
+      "device_secret_status": "issued",
+      "display_name": "Erica's R.L. Speaker",
+      "firmware_version": "0.1.17-dev-central",
+      "hardware_model": "sonoff_s31",
+      "hardware_revision": "v1.0",
+      "heartbeat_state": "offline",
+      "id": "dev_01KR9VZKGW72DS7DAQEFAV3T58",
+      "is_held_off": false,
+      "is_protected": false,
+      "is_qa_fixture": false,
+      "last_heartbeat_at": "2026-05-13T22:06:13Z",
+      "latest_mode": "smart_plug",
+      "latest_power_sample": null,
+      "latest_relay_on": true,
+      "local_ip": "192.168.1.69",
+      "mac_address": "C4:D8:D5:0D:01:A3",
+      "notes": null,
+      "online": false,
+      "registration_state": "active",
+      "reported_auto_recovery_triggered": null,
+      "reported_central_enabled": null,
+      "reported_central_registered": null,
+      "reported_central_state": null,
+      "reported_consecutive_unhealthy_boots": null,
+      "reported_in_captive_portal": null,
+      "reported_last_known_good_restored": null,
+      "reported_recovery_mode": null,
+      "serial_number": null,
+      "site_id": "site_01KRP3K7CKFVPJ6X9AA61SEZN2",
+      "updated_at": "2026-05-13T22:05:11Z"
+    },
+    {
+      "capabilities": {
+        "device_watchdog": true,
+        "internet_watchdog": true,
+        "local_ota": true,
+        "local_web_ui": true,
+        "relay_control": true
+      },
+      "central_management_enabled": true,
+      "central_status": "central_ok",
+      "central_status_class": "green",
+      "central_status_label": "central",
+      "central_status_reason": "Central management is enabled and the device is reporting normally.",
+      "created_at": "2026-05-10T04:33:36Z",
+      "desired_config_drift_summary": null,
+      "desired_config_set": false,
+      "device_secret_status": "issued",
+      "display_name": "Erica's F.L Speaker",
+      "firmware_version": "0.1.29-dev-central-safe",
+      "hardware_model": "sonoff_s31",
+      "hardware_revision": "v1.0",
+      "heartbeat_state": "online",
+      "id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+      "is_held_off": false,
+      "is_protected": false,
+      "is_qa_fixture": false,
+      "last_heartbeat_at": "2026-05-16T03:10:00Z",
+      "latest_mode": "smart_plug",
+      "latest_power_sample": {
+        "age_seconds": 6,
+        "channel_id": 0,
+        "chip_type": "CSE7766",
+        "energy_wh": 236,
+        "hz": null,
+        "i_ma": 0,
+        "i_ma_estimate": null,
+        "i_ma_estimated": null,
+        "id": 15848,
+        "is_stale": false,
+        "modality": "power",
+        "p_w": 0.0,
+        "pf": 1.0,
+        "received_at": "2026-05-16T03:10:17Z",
+        "rssi_dbm": -34,
+        "s_va": 0.0,
+        "sampled_at": "2026-05-16T03:10:17Z",
+        "sampled_uptime_seconds": 378,
+        "source": "steady",
+        "source_flags": 70,
+        "source_flags_decoded": {
+          "bits_set": [
+            1,
+            2,
+            6
+          ],
+          "raw": 70
+        },
+        "source_kind": "real",
+        "v_v": 119.61
+      },
+      "latest_relay_on": true,
+      "local_ip": "192.168.1.67",
+      "mac_address": "C4:D8:D5:0C:F7:CA",
+      "notes": null,
+      "online": true,
+      "registration_state": "active",
+      "reported_auto_recovery_triggered": false,
+      "reported_central_enabled": true,
+      "reported_central_registered": true,
+      "reported_central_state": "heartbeat",
+      "reported_consecutive_unhealthy_boots": 0,
+      "reported_in_captive_portal": false,
+      "reported_last_known_good_restored": false,
+      "reported_recovery_mode": false,
+      "serial_number": null,
+      "site_id": "site_01KRP3K7CKFVPJ6X9AA61SEZN2",
+      "updated_at": "2026-05-13T21:43:02Z"
+    },
+    {
+      "capabilities": {
+        "device_watchdog": true,
+        "internet_watchdog": true,
+        "local_ota": true,
+        "local_web_ui": true,
+        "relay_control": true
+      },
+      "central_management_enabled": true,
+      "central_status": "central_ok",
+      "central_status_class": "green",
+      "central_status_label": "central",
+      "central_status_reason": "Central management is enabled and the device is reporting normally.",
+      "created_at": "2026-05-10T04:06:58Z",
+      "desired_config_drift_summary": null,
+      "desired_config_set": false,
+      "device_secret_status": "issued",
+      "display_name": "Erica's Subwoofer",
+      "firmware_version": "0.1.29-dev-central-safe",
+      "hardware_model": "sonoff_s31",
+      "hardware_revision": "v1.0",
+      "heartbeat_state": "online",
+      "id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+      "is_held_off": false,
+      "is_protected": false,
+      "is_qa_fixture": false,
+      "last_heartbeat_at": "2026-05-16T03:09:46Z",
+      "latest_mode": "smart_plug",
+      "latest_power_sample": {
+        "age_seconds": 1,
+        "channel_id": 0,
+        "chip_type": "CSE7766",
+        "energy_wh": 545,
+        "hz": null,
+        "i_ma": 0,
+        "i_ma_estimate": null,
+        "i_ma_estimated": null,
+        "id": 15863,
+        "is_stale": false,
+        "modality": "power",
+        "p_w": 4.92,
+        "pf": 0.0,
+        "received_at": "2026-05-16T03:10:22Z",
+        "rssi_dbm": -27,
+        "s_va": 0.0,
+        "sampled_at": "2026-05-16T03:10:22Z",
+        "sampled_uptime_seconds": 407,
+        "source": "steady",
+        "source_flags": 214,
+        "source_flags_decoded": {
+          "bits_set": [
+            1,
+            2,
+            4,
+            6,
+            7
+          ],
+          "raw": 214
+        },
+        "source_kind": "real",
+        "v_v": 119.81
+      },
+      "latest_relay_on": true,
+      "local_ip": "192.168.1.30",
+      "mac_address": "C4:D8:D5:0C:F7:A5",
+      "notes": null,
+      "online": true,
+      "registration_state": "active",
+      "reported_auto_recovery_triggered": false,
+      "reported_central_enabled": true,
+      "reported_central_registered": true,
+      "reported_central_state": "heartbeat",
+      "reported_consecutive_unhealthy_boots": 0,
+      "reported_in_captive_portal": false,
+      "reported_last_known_good_restored": false,
+      "reported_recovery_mode": false,
+      "serial_number": null,
+      "site_id": "site_01KRP3K7CKFVPJ6X9AA61SEZN2",
+      "updated_at": "2026-05-13T19:23:10Z"
+    },
+    {
+      "capabilities": {
+        "device_watchdog": true,
+        "internet_watchdog": true,
+        "local_ota": true,
+        "local_web_ui": true,
+        "relay_control": true
+      },
+      "central_management_enabled": true,
+      "central_status": "central_stale",
+      "central_status_class": "red",
+      "central_status_label": "stale",
+      "central_status_reason": "Central has not heard from this device within the heartbeat window.",
+      "created_at": "2026-05-10T04:06:56Z",
+      "desired_config_drift_summary": null,
+      "desired_config_set": false,
+      "device_secret_status": "issued",
+      "display_name": "Erica's F.R Speaker",
+      "firmware_version": "0.1.29-dev-central-safe",
+      "hardware_model": "sonoff_s31",
+      "hardware_revision": "v1.0",
+      "heartbeat_state": "offline",
+      "id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+      "is_held_off": false,
+      "is_protected": false,
+      "is_qa_fixture": false,
+      "last_heartbeat_at": "2026-05-16T02:33:55Z",
+      "latest_mode": "smart_plug",
+      "latest_power_sample": {
+        "age_seconds": 14882,
+        "channel_id": 0,
+        "chip_type": "CSE7766",
+        "energy_wh": 3,
+        "hz": null,
+        "i_ma": 0,
+        "i_ma_estimate": null,
+        "i_ma_estimated": null,
+        "id": 3766,
+        "is_stale": true,
+        "modality": "power",
+        "p_w": 0.0,
+        "pf": 1.0,
+        "received_at": "2026-05-15T23:02:21Z",
+        "rssi_dbm": -38,
+        "s_va": 0.0,
+        "sampled_at": "2026-05-15T23:02:21Z",
+        "sampled_uptime_seconds": 15,
+        "source": "steady",
+        "source_flags": 70,
+        "source_flags_decoded": {
+          "bits_set": [
+            1,
+            2,
+            6
+          ],
+          "raw": 70
+        },
+        "source_kind": "real",
+        "v_v": 119.02
+      },
+      "latest_relay_on": true,
+      "local_ip": "192.168.1.225",
+      "mac_address": "C4:D8:D5:0C:F6:B3",
+      "notes": null,
+      "online": false,
+      "registration_state": "active",
+      "reported_auto_recovery_triggered": false,
+      "reported_central_enabled": true,
+      "reported_central_registered": true,
+      "reported_central_state": "heartbeat",
+      "reported_consecutive_unhealthy_boots": 1,
+      "reported_in_captive_portal": false,
+      "reported_last_known_good_restored": false,
+      "reported_recovery_mode": false,
+      "serial_number": null,
+      "site_id": "site_01KRP3K7CKFVPJ6X9AA61SEZN2",
+      "updated_at": "2026-05-13T20:08:14Z"
+    }
+  ],
+  "power_summary": {
+    "currency": "USD",
+    "device_count": 5,
+    "fleet_avg_w": 5.936599243620221,
+    "fleet_cost": null,
+    "fleet_kwh": 0.1424783818468853,
+    "fleet_peak_w": 5.23,
+    "modality": "power",
+    "now": "2026-05-16T03:10:24Z",
+    "per_device": [
+      {
+        "avg_w": 4.8165568544102015,
+        "cost_window": null,
+        "device_id": "dev_01KR8127W5XMP6MDF34J0TXQP9",
+        "display_name": "Erica's Subwoofer",
+        "first_sample_at": "2026-05-15T19:35:52Z",
+        "kwh_window": 0.11559736450584483,
+        "last_sample_at": "2026-05-16T03:10:22Z",
+        "latest_sample": {
+          "age_seconds": 2,
+          "channel_id": 0,
+          "chip_type": "CSE7766",
+          "energy_wh": 545,
+          "hz": null,
+          "i_ma": 0,
+          "i_ma_estimate": null,
+          "i_ma_estimated": null,
+          "id": 15863,
+          "is_stale": false,
+          "modality": "power",
+          "p_w": 4.92,
+          "pf": 0.0,
+          "received_at": "2026-05-16T03:10:22Z",
+          "rssi_dbm": -27,
+          "s_va": 0.0,
+          "sampled_at": "2026-05-16T03:10:22Z",
+          "sampled_uptime_seconds": 407,
+          "source": "steady",
+          "source_flags": 214,
+          "source_flags_decoded": {
+            "bits_set": [
+              1,
+              2,
+              4,
+              6,
+              7
+            ],
+            "raw": 214
+          },
+          "source_kind": "real",
+          "v_v": 119.81
+        },
+        "max_w": 5.23,
+        "min_w": 0.0,
+        "sample_count": 978
+      },
+      {
+        "avg_w": 0.578709055876686,
+        "cost_window": null,
+        "device_id": "dev_01KR812687CEGS7CHXJQ7QAW4H",
+        "display_name": "Erica's F.R Speaker",
+        "first_sample_at": "2026-05-15T19:44:48Z",
+        "kwh_window": 0.013889017341040463,
+        "last_sample_at": "2026-05-15T23:02:21Z",
+        "latest_sample": {
+          "age_seconds": 14882,
+          "channel_id": 0,
+          "chip_type": "CSE7766",
+          "energy_wh": 3,
+          "hz": null,
+          "i_ma": 0,
+          "i_ma_estimate": null,
+          "i_ma_estimated": null,
+          "id": 3766,
+          "is_stale": true,
+          "modality": "power",
+          "p_w": 0.0,
+          "pf": 1.0,
+          "received_at": "2026-05-15T23:02:21Z",
+          "rssi_dbm": -38,
+          "s_va": 0.0,
+          "sampled_at": "2026-05-15T23:02:21Z",
+          "sampled_uptime_seconds": 15,
+          "source": "steady",
+          "source_flags": 70,
+          "source_flags_decoded": {
+            "bits_set": [
+              1,
+              2,
+              6
+            ],
+            "raw": 70
+          },
+          "source_kind": "real",
+          "v_v": 119.02
+        },
+        "max_w": 3.69,
+        "min_w": 0.0,
+        "sample_count": 1102
+      },
+      {
+        "avg_w": 0.5413333333333333,
+        "cost_window": null,
+        "device_id": "dev_01KR82K0W2WTA2968QEDG0Y42K",
+        "display_name": "Erica's F.L Speaker",
+        "first_sample_at": "2026-05-16T03:02:50Z",
+        "kwh_window": 0.012991999999999998,
+        "last_sample_at": "2026-05-16T03:10:17Z",
+        "latest_sample": {
+          "age_seconds": 6,
+          "channel_id": 0,
+          "chip_type": "CSE7766",
+          "energy_wh": 236,
+          "hz": null,
+          "i_ma": 0,
+          "i_ma_estimate": null,
+          "i_ma_estimated": null,
+          "id": 15848,
+          "is_stale": false,
+          "modality": "power",
+          "p_w": 0.0,
+          "pf": 1.0,
+          "received_at": "2026-05-16T03:10:17Z",
+          "rssi_dbm": -34,
+          "s_va": 0.0,
+          "sampled_at": "2026-05-16T03:10:17Z",
+          "sampled_uptime_seconds": 378,
+          "source": "steady",
+          "source_flags": 70,
+          "source_flags_decoded": {
+            "bits_set": [
+              1,
+              2,
+              6
+            ],
+            "raw": 70
+          },
+          "source_kind": "real",
+          "v_v": 119.61
+        },
+        "max_w": 2.35,
+        "min_w": 0.0,
+        "sample_count": 351
+      },
+      {
+        "avg_w": 0.0,
+        "cost_window": null,
+        "device_id": "dev_01KRQBRSG1BZ5SR87QQ2KSSVFT",
+        "display_name": "lab-69",
+        "first_sample_at": "2026-05-16T03:02:52Z",
+        "kwh_window": 0.0,
+        "last_sample_at": "2026-05-16T03:10:18Z",
+        "latest_sample": {
+          "age_seconds": 6,
+          "channel_id": 0,
+          "chip_type": "CSE7766",
+          "energy_wh": 0,
+          "hz": null,
+          "i_ma": 0,
+          "i_ma_estimate": null,
+          "i_ma_estimated": null,
+          "id": 15855,
+          "is_stale": false,
+          "modality": "power",
+          "p_w": 0.0,
+          "pf": 1.0,
+          "received_at": "2026-05-16T03:10:18Z",
+          "rssi_dbm": -55,
+          "s_va": 0.0,
+          "sampled_at": "2026-05-16T03:10:18Z",
+          "sampled_uptime_seconds": 39,
+          "source": "steady",
+          "source_flags": 86,
+          "source_flags_decoded": {
+            "bits_set": [
+              1,
+              2,
+              4,
+              6
+            ],
+            "raw": 86
+          },
+          "source_kind": "real",
+          "v_v": 119.15
+        },
+        "max_w": 0.0,
+        "min_w": 0.0,
+        "sample_count": 338
+      },
+      {
+        "avg_w": 0.0,
+        "cost_window": null,
+        "device_id": "dev_01KRHTH2DQSTH1PAXBJD9P2XFY",
+        "display_name": "Rebooter - renamed test",
+        "first_sample_at": "2026-05-15T16:52:39Z",
+        "kwh_window": 0.0,
+        "last_sample_at": "2026-05-16T03:10:17Z",
+        "latest_sample": {
+          "age_seconds": 6,
+          "channel_id": 0,
+          "chip_type": "CSE7766",
+          "energy_wh": null,
+          "hz": null,
+          "i_ma": null,
+          "i_ma_estimate": null,
+          "i_ma_estimated": null,
+          "id": 15841,
+          "is_stale": false,
+          "modality": "power",
+          "p_w": null,
+          "pf": null,
+          "received_at": "2026-05-16T03:10:17Z",
+          "rssi_dbm": -53,
+          "s_va": null,
+          "sampled_at": "2026-05-16T03:10:17Z",
+          "sampled_uptime_seconds": 14302,
+          "source": "synthetic",
+          "source_flags": 1,
+          "source_flags_decoded": {
+            "bits_set": [
+              0
+            ],
+            "raw": 1
+          },
+          "source_kind": "synthetic",
+          "v_v": null
+        },
+        "max_w": 0.0,
+        "min_w": 0.0,
+        "sample_count": 13089
+      }
+    ],
+    "rate_per_kwh": null,
+    "window_seconds": 86400,
+    "window_started_at": "2026-05-15T03:10:24Z"
+  },
+  "roundtrip": {
+    "register": {
+      "device_id": "dev_01KRQC710NTMT9XWSM95TQ52H6",
+      "device_token": "dt_WkOXB9WtQqAhT1nVnHtsK31p530YmAvIs0LTPgwA6PA",
+      "heartbeat_interval_seconds": 60,
+      "poll_interval_seconds": 30,
+      "server_time": "2026-05-16T03:10:25Z"
+    },
+    "heartbeat": {
+      "next_heartbeat_after_seconds": 60,
+      "next_poll_after_seconds": 30
+    },
+    "command_issued": {
+      "command_id": "cmd_01KRQC71R9PBRSF8F22V67TK71",
+      "expires_at": "2026-05-16T03:20:26Z",
+      "status": "pending",
+      "type": "relay_on"
+    },
+    "commands_polled": {
+      "commands": [
+        {
+          "command_id": "cmd_01KRQC71R9PBRSF8F22V67TK71",
+          "created_at": "2026-05-16T03:10:26Z",
+          "expires_at": "2026-05-16T03:20:26Z",
+          "payload": {},
+          "type": "relay_on"
+        }
+      ]
+    },
+    "command_completed": {
+      "command_id": "cmd_01KRQC71R9PBRSF8F22V67TK71",
+      "received_at": "2026-05-16T03:10:27Z",
+      "status": "completed"
+    },
+    "power_upload": {
+      "ingested": 1
+    },
+    "detail_after_ingest": {
+      "audit_history": [
+        {
+          "action": "device.command_issued",
+          "actor_email_snapshot": "dblagbro@gmail.com",
+          "actor_user_id": "usr_01KR58229HA77YMHZ0S6BZHJ0P",
+          "at": "2026-05-16T03:10:26Z",
+          "details": {
+            "command_id": "cmd_01KRQC71R9PBRSF8F22V67TK71",
+            "override_lockout": false,
+            "reason": "operator",
+            "scope_claim": {
+              "scope_id": "dev_01KRQC710NTMT9XWSM95TQ52H6",
+              "scope_type": "device"
+            },
+            "set_hold_off": false,
+            "type": "relay_on"
+          },
+          "id": 3996,
+          "ip": "47.230.251.21",
+          "target_id": "dev_01KRQC710NTMT9XWSM95TQ52H6",
+          "target_type": "device"
+        }
+      ],
+      "capabilities": {},
+      "central_management_enabled": true,
+      "central_status": "central_ok",
+      "central_status_class": "green",
+      "central_status_label": "central",
+      "central_status_reason": "Central management is enabled and the device is reporting normally.",
+      "created_at": "2026-05-16T03:10:25Z",
+      "desired_config": {},
+      "desired_config_drift": {
+        "extra": [],
+        "in_sync": true,
+        "mismatch": [],
+        "missing": [],
+        "reason": "no desired_config set"
+      },
+      "desired_config_feature_enabled": false,
+      "desired_config_updated_at": null,
+      "desired_mode": null,
+      "device_secret_status": "issued",
+      "display_name": "QA roundtrip 901025",
+      "failsafe_events": [],
+      "firmware_version": "0.1.29-dev-central-safe",
+      "groups": [],
+      "hardware_model": "sonoff_s31",
+      "hardware_revision": null,
+      "heartbeat_state": "online",
+      "id": "dev_01KRQC710NTMT9XWSM95TQ52H6",
+      "is_held_off": false,
+      "is_protected": false,
+      "is_qa_fixture": true,
+      "last_config_pushed_at": null,
+      "last_heartbeat_at": "2026-05-16T03:10:26Z",
+      "last_reported_config": {},
+      "latest_heartbeat": {
+        "health_state": "healthy",
+        "hour_cycles": null,
+        "incident_cycles": null,
+        "last_event_at": null,
+        "last_event_type": null,
+        "mode": "smart_plug",
+        "received_at": "2026-05-16T03:10:26Z",
+        "relay_on": true,
+        "uptime_seconds": 60,
+        "wifi_connected": true
+      },
+      "latest_power_sample": {
+        "age_seconds": 28,
+        "channel_id": 0,
+        "chip_type": "CSE7766",
+        "energy_wh": null,
+        "hz": null,
+        "i_ma": 42,
+        "i_ma_estimate": null,
+        "i_ma_estimated": null,
+        "id": 15870,
+        "is_stale": false,
+        "modality": "power",
+        "p_w": 4.98,
+        "pf": null,
+        "received_at": "2026-05-16T03:10:27Z",
+        "rssi_dbm": -42,
+        "s_va": null,
+        "sampled_at": "2026-05-16T03:10:00Z",
+        "sampled_uptime_seconds": null,
+        "source": "steady",
+        "source_flags": 0,
+        "source_flags_decoded": {
+          "bits_set": [],
+          "raw": 0
+        },
+        "source_kind": "real",
+        "v_v": 119.7
+      },
+      "local_ip": "192.168.1.250",
+      "mac_address": null,
+      "notes": null,
+      "online": true,
+      "pending_commands": [],
+      "power_intraday_series": {
+        "bucket_seconds": 600,
+        "buckets": [
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T03:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T03:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T03:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T03:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T03:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T04:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T04:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T04:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T04:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T04:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T04:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T05:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T05:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T05:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T05:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T05:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T05:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T06:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T06:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T06:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T06:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T06:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T06:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T07:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T07:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T07:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T07:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T07:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T07:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T08:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T08:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T08:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T08:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T08:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T08:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T09:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T09:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T09:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T09:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T09:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T09:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T10:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T10:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T10:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T10:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T10:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T10:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T11:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T11:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T11:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T11:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T11:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T11:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T12:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T12:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T12:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T12:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T12:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T12:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T13:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T13:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T13:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T13:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T13:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T13:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T14:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T14:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T14:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T14:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T14:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T14:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T15:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T15:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T15:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T15:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T15:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T15:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T16:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T16:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T16:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T16:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T16:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T16:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T17:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T17:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T17:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T17:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T17:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T17:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T18:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T18:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T18:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T18:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T18:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T18:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T19:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T19:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T19:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T19:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T19:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T19:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T20:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T20:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T20:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T20:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T20:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T20:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T21:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T21:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T21:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T21:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T21:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T21:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T22:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T22:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T22:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T22:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T22:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T22:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T23:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T23:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T23:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T23:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T23:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-15T23:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T00:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T00:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T00:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T00:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T00:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T00:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T01:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T01:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T01:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T01:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T01:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T01:50:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T02:00:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T02:10:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T02:20:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T02:30:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T02:40:28Z"
+          },
+          {
+            "avg_w": null,
+            "real": 0,
+            "sample_count": 0,
+            "synthetic": 0,
+            "t": "2026-05-16T02:50:28Z"
+          },
+          {
+            "avg_w": 4.98,
+            "real": 1,
+            "sample_count": 1,
+            "synthetic": 0,
+            "t": "2026-05-16T03:00:28Z"
+          }
+        ],
+        "max_w": 4.98,
+        "point_count": 1,
+        "window_seconds": 86400
+      },
+      "power_rollups_daily": [],
+      "power_source_breakdown": {
+        "by_source": {
+          "steady": 1
+        },
+        "real": 1,
+        "synthetic": 0,
+        "total": 1,
+        "window_seconds": 86400
+      },
+      "recent_events": [],
+      "registration_state": "active",
+      "reported_auto_recovery_triggered": null,
+      "reported_central_enabled": true,
+      "reported_central_registered": true,
+      "reported_central_state": "idle",
+      "reported_consecutive_unhealthy_boots": null,
+      "reported_in_captive_portal": null,
+      "reported_last_known_good_restored": null,
+      "reported_recovery_mode": false,
+      "serial_number": null,
+      "site_id": "site_01KRP3K7CKFVPJ6X9AA61SEZN2",
+      "updated_at": "2026-05-16T03:10:25Z"
+    }
+  },
+  "announce_adopt": {
+    "first_announce": {
+      "message": "Awaiting operator adoption. Visit /app/pending-adoption.",
+      "retry_after_seconds": 5,
+      "status": "pending"
+    },
+    "pending_row": {
+      "adopted_at": null,
+      "announce_count": 1,
+      "claimed_display_name_hint": "qa-redelivery",
+      "claimed_firmware_version": "0.1.29-dev-central-safe",
+      "claimed_hardware_model": "S31",
+      "claimed_hardware_revision": null,
+      "claimed_local_ip": "192.168.1.251",
+      "claimed_serial_number": null,
+      "consumed_at": null,
+      "delivered_at": null,
+      "enrollment_token_id": null,
+      "first_seen_at": "2026-05-16T03:10:28Z",
+      "id": "ann_01KRQC73H3FX4K5SKQB7X326NB",
+      "last_seen_at": "2026-05-16T03:10:28Z",
+      "mac_address": "AA:BB:CC:E3:22:4B",
+      "rejected_at": null,
+      "source_ip": "47.230.251.21",
+      "state": "pending",
+      "user_agent": "python-requests/2.33.1"
+    },
+    "adopt": {
+      "adopted_at": "2026-05-16T03:10:29Z",
+      "announce_count": 1,
+      "claimed_display_name_hint": "qa-redelivery",
+      "claimed_firmware_version": "0.1.29-dev-central-safe",
+      "claimed_hardware_model": "S31",
+      "claimed_hardware_revision": null,
+      "claimed_local_ip": "192.168.1.251",
+      "claimed_serial_number": null,
+      "consumed_at": null,
+      "delivered_at": null,
+      "enrollment_token_id": "et_01KRQC748DXR1DW0SS6YBQK2AX",
+      "first_seen_at": "2026-05-16T03:10:28Z",
+      "id": "ann_01KRQC73H3FX4K5SKQB7X326NB",
+      "last_seen_at": "2026-05-16T03:10:28Z",
+      "mac_address": "AA:BB:CC:E3:22:4B",
+      "rejected_at": null,
+      "source_ip": "47.230.251.21",
+      "state": "awaiting_pickup",
+      "user_agent": "python-requests/2.33.1"
+    },
+    "delivered": {
+      "central_register_url": "https://www.voipguru.org/rebooter/api/v1/device/register",
+      "enrollment_token": "et_iiXNT6vIi0pFhfblYTV_dsKYHoGnP05V",
+      "message": "Adopted. Use this token to register.",
+      "retry_after_seconds": 0,
+      "status": "adopted"
+    },
+    "redelivered": {
+      "central_register_url": "https://www.voipguru.org/rebooter/api/v1/device/register",
+      "enrollment_token": "et_iiXNT6vIi0pFhfblYTV_dsKYHoGnP05V",
+      "message": "Adopted. Use this token to register.",
+      "retry_after_seconds": 0,
+      "status": "adopted"
+    },
+    "register": {
+      "device_id": "dev_01KRQC75APFZYE44WHNGX9RYNA",
+      "device_token": "dt_A9m5YGVDM78ZgH_CDZHfv3hcjPoMrOOHwYo13Yh3nhw",
+      "heartbeat_interval_seconds": 60,
+      "poll_interval_seconds": 30,
+      "server_time": "2026-05-16T03:10:30Z"
+    },
+    "post_register_announce": {
+      "message": "Device already registered. Use device_token, not enrollment_token.",
+      "retry_after_seconds": 0,
+      "status": "registered"
+    }
+  },
+  "cleanup": {
+    "dev_01KRQC710NTMT9XWSM95TQ52H6": {
+      "status": 200,
+      "body": "{\"data\":{\"deleted\":true},\"ok\":true}\n"
+    },
+    "dev_01KRQC75APFZYE44WHNGX9RYNA": {
+      "status": 200,
+      "body": "{\"data\":{\"deleted\":true},\"ok\":true}\n"
+    },
+    "pending_announcement": {
+      "status": 200,
+      "body": "<!doctype html>\n\n<html lang=\"en\" data-theme=\"system\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\n  <meta name=\"color-sch"
+    }
+  }
+}
