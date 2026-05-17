@@ -61,11 +61,30 @@ DEFAULT_INTERNET_TARGETS: tuple[dict, ...] = (
 )
 MAX_INTERNET_TARGETS = 8
 
+# v0.5.89 (BUG-058): every probe kind `run_probe` dispatches. This set
+# MUST list exactly one entry per branch below — it is the runtime side
+# of the canonical probe-kind registry. `tests/unit/test_probe_kind_registry.py`
+# pins it equal to `app.models.watchdog.KNOWN_PROBE_KINDS` (the
+# create-rule validation gate), so the two can no longer drift: a kind
+# the runtime handles but validation rejects (or vice versa) fails CI.
+DISPATCHED_PROBE_KINDS: frozenset[str] = frozenset({
+    "internet", "ping", "tcp", "host_awake", "http", "dns", "gateway",
+    "roku_app_active", "ha_state_is", "ha_numeric_above", "ha_numeric_below",
+    "weather_alert_active", "ical_event_active",
+    "power_above", "power_below", "power_zero_while_on",
+    "solar_production_above", "solar_production_below",
+    "snmp_interface_down", "snmp_throughput_above", "snmp_throughput_below",
+    "snmp_error_rate_above", "media_session_active", "webhook_field_equals",
+    "mqtt_topic_equals", "epg_show_airing",
+})
+
 
 def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
     """Returns (outcome, details). outcome ∈ {'success', 'failure'}."""
     probe = rule.probe or {}
     kind = probe.get("kind")
+    if kind not in DISPATCHED_PROBE_KINDS:
+        return "failure", {"reason": f"unknown probe kind: {kind}"}
     try:
         if kind == "internet":
             return _probe_internet(probe)
