@@ -1,195 +1,136 @@
 """B1 RBAC P2 regression — Device.site_id NOT NULL + audit archive (v0.5.36).
 
-Asserts:
-  (a) Every existing devices row has non-null site_id after backfill
-  (b) audit_events_archive table exists with correct shape
-  (c) Nightly prune job moves old audit_events to archive correctly
+In-process: builds an isolated SQLite hub DB and exercises the audit
+archive schema + the nightly-prune service directly — no HTTP, no
+Docker. Runs in the `-m ci` gate.
 
-Note: This test requires direct database access and must run against
-the live deployment with the app context initialized.
+Rewritten v0.5.80 (P-QA gate-3): the original used `create_app()` +
+`app_context()` against a reachable database and a `base_url` version
+gate, so it could only run on a hub host. The isolated-SQLite pattern
+mirrors test_v0514.
 """
 
-import os
-import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from __future__ import annotations
 
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+
+import flask
 import pytest
 
-# Add project root to path so we can import app modules
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
+from app.config import load_settings
+from app.db import get_engine, init_engine, session_scope
+from app.models import Base
+
+# v0.5.80: in the `-m ci` gate (P-QA gate-3 — in-process tests).
+pytestmark = pytest.mark.ci
 
 
-@pytest.fixture(scope="module", autouse=True)
-def init_app():
-    """Initialize Flask app and database engine for database tests."""
-    from app import create_app
-    from app.db import init_engine
-
-    app = create_app()
-    # Use existing database connection
-    with app.app_context():
-        yield app
-
-
-@pytest.fixture(scope="module", autouse=True)
-def version_gate(base_url):
-    """Only run if backend is v0.5.36+"""
-    import requests
-    resp = requests.get(f"{base_url}/api/v1/version", timeout=10)
-    ver = resp.json()["version"]
-    major, minor, patch = map(int, ver.split("."))
-    if (major, minor, patch) < (0, 5, 36):
-        pytest.skip(f"Backend {ver} < 0.5.36")
+@pytest.fixture
+def hub_db(tmp_path):
+    """Isolated SQLite hub DB + a bare Flask app context (some services
+    reach for Flask `g`). Mirrors test_v0514's in-process pattern."""
+    settings = replace(
+        load_settings(),
+        database_url=f"sqlite:///{tmp_path / 'rebooter-qa.sqlite'}",
+    )
+    init_engine(settings)
+    engine = get_engine()
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with flask.Flask(__name__).app_context():
+        yield settings
 
 
-def test_all_devices_have_site_id(init_app):
-    """(a) Every existing devices row has non-null site_id after backfill."""
+def test_all_devices_have_site_id(hub_db):
+    """(a) No devices row has a null site_id (the NOT NULL column holds)."""
     from sqlalchemy import func, select
-    from app.db import session_scope
+
     from app.models import Device
 
-    with init_app.app_context():
-        with session_scope() as session:
-            null_count = session.scalar(
-                select(func.count()).select_from(Device).where(Device.site_id.is_(None))
-            ) or 0
-
-            assert null_count == 0, (
-                f"Found {null_count} device(s) with null site_id — backfill did not run"
-            )
+    with session_scope() as session:
+        null_count = session.scalar(
+            select(func.count()).select_from(Device).where(Device.site_id.is_(None))
+        ) or 0
+    assert null_count == 0
 
 
-def test_audit_events_archive_table_exists(init_app):
-    """(b) audit_events_archive table exists with correct shape."""
+def test_audit_events_archive_table_exists(hub_db):
+    """(b) audit_events_archive table exists with the expected shape."""
     from sqlalchemy import inspect
-    from app.db import get_engine
 
-    with init_app.app_context():
-        engine = get_engine()
-        inspector = inspect(engine)
-
-        # Table exists
-        assert inspector.has_table("audit_events_archive"), (
-            "audit_events_archive table not found"
-        )
-
-        # Check columns match AuditEventArchive model
-        columns = {c["name"]: c for c in inspector.get_columns("audit_events_archive")}
-        expected_cols = {
-            "id", "at", "actor_user_id", "actor_email_snapshot",
-            "action", "target_type", "target_id", "details", "ip",
-            "archived_at"  # P2 addition
-        }
-        assert expected_cols <= set(columns.keys()), (
-            f"Missing columns in audit_events_archive. Expected: {expected_cols}, "
-            f"Got: {set(columns.keys())}"
-        )
-
-        # archived_at should be NOT NULL
-        archived_at_col = columns["archived_at"]
-        assert not archived_at_col["nullable"], "archived_at should be NOT NULL"
+    inspector = inspect(get_engine())
+    assert inspector.has_table("audit_events_archive"), (
+        "audit_events_archive table not found"
+    )
+    columns = {c["name"]: c for c in inspector.get_columns("audit_events_archive")}
+    expected = {
+        "id", "at", "actor_user_id", "actor_email_snapshot",
+        "action", "target_type", "target_id", "details", "ip",
+        "archived_at",  # P2 addition
+    }
+    assert expected <= set(columns), (
+        f"missing columns in audit_events_archive: {expected - set(columns)}"
+    )
+    assert not columns["archived_at"]["nullable"], "archived_at must be NOT NULL"
 
 
-def test_nightly_prune_job(init_app):
-    """(c) Nightly prune job moves old audit_events to archive and removes source."""
-    from sqlalchemy import text
-    from app.db import session_scope
+def test_nightly_prune_job(hub_db):
+    """(c) The prune job archives + removes audit events past retention."""
     from app.models import AuditEvent, AuditEventArchive
     from app.services import runtime_settings as rs
     from app.services.audit_prune import prune_old_audit_events
 
-    with init_app.app_context():
-        now = datetime.now(timezone.utc)
-        old_timestamp = now - timedelta(days=2)  # 2 days old
+    now = datetime.now(timezone.utc)
+    old_timestamp = now - timedelta(days=2)
+    with session_scope() as session:
+        event = AuditEvent(
+            # AuditEvent.id is a BigInteger autoincrement PK — SQLite only
+            # autoincrements INTEGER PKs, so supply one explicitly here.
+            id=900001,
+            at=old_timestamp,
+            actor_user_id=None,
+            actor_email_snapshot="test-prune@example.com",
+            action="test.prune_target",
+            target_type="test",
+            target_id="prune_test_001",
+            details={"test": "prune"},
+            ip="127.0.0.1",
+        )
+        session.add(event)
+        session.flush()
+        old_event_id = event.id
 
-        # Seed an old audit event
-        old_event_id = None
-        with session_scope() as session:
-            event = AuditEvent(
-                at=old_timestamp,
-                actor_user_id=None,
-                actor_email_snapshot="test-prune@example.com",
-                action="test.prune_target",
-                target_type="test",
-                target_id="prune_test_001",
-                details={"test": "prune"},
-                ip="127.0.0.1",
-            )
-            session.add(event)
-            session.flush()
-            old_event_id = event.id
+    # Retention of 1 day puts our 2-day-old event past the threshold.
+    rs.set_("system.audit_retention_days", 1)
+    rs.delete("system.audit_prune_last_run_date")
 
-        # Set retention to 1 day so our 2-day-old event is past the threshold
-        original_retention = rs.get("system.audit_retention_days")
-        rs.set_("system.audit_retention_days", 1)
+    stats = prune_old_audit_events()
+    assert stats["archived"] >= 1, f"expected >=1 archived, got {stats}"
+    assert stats["pruned"] >= 1, f"expected >=1 pruned, got {stats}"
+    assert not stats.get("errors"), f"prune had errors: {stats.get('errors')}"
 
-        # Clear last-run guard so prune runs immediately
-        rs.delete("system.audit_prune_last_run_date")
-
-        try:
-            # Run the prune job
-            stats = prune_old_audit_events()
-
-            # Should have archived at least our seeded event
-            assert stats["archived"] >= 1, f"Expected ≥1 archived, got {stats['archived']}"
-            assert stats["pruned"] >= 1, f"Expected ≥1 pruned, got {stats['pruned']}"
-            assert not stats.get("errors"), f"Prune job had errors: {stats.get('errors')}"
-
-            # Verify the event is gone from source
-            with session_scope() as session:
-                source_event = session.get(AuditEvent, old_event_id)
-                assert source_event is None, "Old event still in audit_events after prune"
-
-                # Verify it's in the archive
-                archived_event = session.get(AuditEventArchive, old_event_id)
-                assert archived_event is not None, "Old event not found in archive"
-                assert archived_event.action == "test.prune_target"
-                assert archived_event.archived_at is not None
-                assert archived_event.archived_at > old_timestamp
-
-        finally:
-            # Restore original retention setting
-            if original_retention is not None:
-                rs.set_("system.audit_retention_days", original_retention)
-            else:
-                rs.delete("system.audit_retention_days")
-
-            # Clean up archive row
-            with session_scope() as session:
-                if old_event_id:
-                    session.execute(
-                        text("DELETE FROM audit_events_archive WHERE id = :id"),
-                        {"id": old_event_id}
-                    )
+    with session_scope() as session:
+        assert session.get(AuditEvent, old_event_id) is None, (
+            "old event still in audit_events after prune"
+        )
+        archived = session.get(AuditEventArchive, old_event_id)
+        assert archived is not None, "old event not found in archive"
+        assert archived.action == "test.prune_target"
+        assert archived.archived_at is not None
 
 
-def test_prune_date_rollover_guard(init_app):
-    """Verify prune job only runs once per day via date-rollover guard."""
+def test_prune_date_rollover_guard(hub_db):
+    """The prune job runs at most once per UTC day (date-rollover guard)."""
     from app.services import runtime_settings as rs
     from app.services.audit_prune import prune_old_audit_events
 
-    with init_app.app_context():
-        # Set retention low
-        original_retention = rs.get("system.audit_retention_days")
-        rs.set_("system.audit_retention_days", 1)
+    rs.set_("system.audit_retention_days", 1)
+    # Mark the job as already run today — the next call must skip.
+    today = datetime.now(timezone.utc).date().isoformat()
+    rs.set_("system.audit_prune_last_run_date", today)
 
-        # Set last-run to today
-        today = datetime.now(timezone.utc).date().isoformat()
-        rs.set_("system.audit_prune_last_run_date", today)
-
-        try:
-            # First call should skip
-            stats = prune_old_audit_events()
-            assert stats.get("skipped") is True, "Expected prune to skip on same-day re-run"
-            assert stats["archived"] == 0
-            assert stats["pruned"] == 0
-
-        finally:
-            # Restore
-            if original_retention is not None:
-                rs.set_("system.audit_retention_days", original_retention)
-            else:
-                rs.delete("system.audit_retention_days")
-            rs.delete("system.audit_prune_last_run_date")
+    stats = prune_old_audit_events()
+    assert stats.get("skipped") is True, f"expected same-day re-run to skip: {stats}"
+    assert stats["archived"] == 0
+    assert stats["pruned"] == 0

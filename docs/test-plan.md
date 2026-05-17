@@ -1,7 +1,7 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~370 tests / 52 files (P-QA gate-2
-widening + gate-3 0P-bucket & partial-fail fixes; charter
+Status: **2026-05-17** — CI gate at ~378 tests / 54 files (P-QA gate-2
+widening + gate-3 0P-bucket, partial-fail & in-process fixes; charter
 `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
 
 This document is the canonical description of how rebooter-droids is
@@ -51,9 +51,9 @@ On every push to `main` and every pull request, CI:
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
 instance**. As of the gate-2 widening (v0.5.79) plus the gate-3
-0P-bucket and partial-fail fixes, that is **~370 tests across 52
-files** — every test file confirmed to pass `pytest -m ci` twice
-against a from-scratch instance (fresh Postgres + populated DB):
+0P-bucket, partial-fail and in-process fixes, that is **~378 tests
+across 54 files** — every test file confirmed to pass `pytest -m ci`
+twice against a from-scratch instance (fresh Postgres + populated DB):
 
 - **Registration / device surface** — `test_device_api.py`,
   `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
@@ -121,17 +121,19 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
 
 ## Known coverage gaps (the honest list)
 
-1. **~11 of the ~64 test files are still not in the CI gate** (gate-3
-   backlog). The whole `0P`-all-fail bucket and the partial-fail bucket
-   are now fixed and gated; what's left needs more than an assertion
-   tweak. The fix checklist that cleared the gated files: (a) the
-   per-file `_login()` must honour `REBOOTER_QA_EMAIL/PASS`, not
-   hardcoded creds; (b) seed any data the test assumes with a
-   module-scoped autouse fixture (a fresh instance has none); (c) widen
-   HTML regexes — the responsive reflow added `data-label` attributes,
-   so `<td><code>` must become `<td[^>]*><code>`; (d) `pytest.skip`
-   genuinely nginx-layer tests when the base URL is not the
-   `/rebooter`-prefixed deployment. The remainder:
+1. **~9 of the ~64 test files are still not in the CI gate** (gate-3
+   backlog). The `0P`-all-fail, partial-fail and in-process buckets are
+   now fixed and gated; what's left needs more than an assertion tweak.
+   The fix checklist that cleared the gated files: (a) the per-file
+   `_login()` must honour `REBOOTER_QA_EMAIL/PASS`, not hardcoded creds;
+   (b) seed any data the test assumes with a module-scoped autouse
+   fixture (a fresh instance has none); (c) widen HTML regexes — the
+   responsive reflow added `data-label` attributes, so `<td><code>`
+   must become `<td[^>]*><code>`; (d) `pytest.skip` genuinely
+   nginx-layer tests when the base URL is not the `/rebooter`-prefixed
+   deployment; (e) in-process tests use an isolated SQLite DB +
+   `init_engine` + a bare Flask app context (see `test_v0514` /
+   `test_v0536`). The remainder:
    - *CI-environment-incompatible* — `test_hardening_probes` has a
      rate-limit test (the gate sets `RATE_LIMIT_EXEMPT_IPS=*`) and a
      cookie-`Secure` test (the gate sets `SESSION_COOKIE_SECURE=0`);
@@ -142,9 +144,6 @@ docker rm -f rd-ci-app rd-ci-pg && docker network rm rd-ci
      to return `awaiting_register`; a fresh instance returns `adopted`
      both times. Needs the announce-lifecycle owner to confirm intended
      behaviour before the assertion (or the code) is corrected.
-   - *In-process collection errors* — `test_v0514_deployment_…` and
-     `test_v0536_site_not_null_…` import `app.*` and need a DB engine
-     fixture; they error at collection on a bare runner.
    - *Timing / wall-clock e2e* — `test_v0417_schedule_runtime_e2e`,
      `test_v0414_watchdog_runtime_e2e`, `test_v042_watchdog_runtime`:
      race the 30 s APScheduler tick, so they flake. They do not belong

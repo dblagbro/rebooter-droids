@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.80] - 2026-05-17
+## [0.5.81] - 2026-05-17
+
+### Changed — P-QA gate-3: in-process collection-error files into the CI gate
+
+The two in-process test files that errored at collection on a bare runner are now gated — `test_v0514_deployment_completion_and_status_truth` and `test_v0536_site_not_null_and_archive` (+7 tests; gate ~378 / 54 files).
+
+- **`test_v0514`** errored because its hand-built `Settings(...)` was missing the `session_cookie_secure` field added in v0.5.79 — a gated test would have caught that at the time. Field added. It then needed a bare Flask app context: the device-list RBAC filter reads Flask `g` for the current user, which exists under HTTP requests and APScheduler jobs but not in an in-process test; the fixture now pushes one (so `g.get("current_user")` resolves to `None` → unfiltered, the correct system-context behaviour).
+- **`test_v0536`** was rewritten from `create_app()` + a `base_url` version gate (which needed a reachable database and HTTP server, so it only ran on a hub host) to the isolated-SQLite in-process pattern that `test_v0514` and the B11 sync tests use.
+
+### Fixed
+
+- **`_heartbeat_state_for()` crashed on a naive `last_heartbeat_at`.** Postgres returns the `TIMESTAMPTZ` column tz-aware; SQLite (the in-process test backend) returns it naive, and `now - last_heartbeat_at` then raised `TypeError: can't subtract offset-naive and offset-aware datetimes`. Now coerces a naive value to UTC — a no-op against a real (Postgres) deployment.
+- **`audit_prune.py` used Postgres-only `id = ANY(:ids)`.** The nightly prune's source-delete was raw SQL that no other dialect accepts, blocking in-process testing of the prune service. Replaced with the dialect-portable ORM `delete(AuditEvent).where(AuditEvent.id.in_(ids))` — identical result on Postgres.
+
+
 
 ### Fixed — bootstrap admin had role="admin" despite is_super_admin
 
