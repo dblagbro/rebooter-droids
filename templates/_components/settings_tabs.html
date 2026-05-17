@@ -1,6 +1,11 @@
 {# Settings tab strip — used on every /app/settings/* page.
  # Caller sets `settings_tab` to one of:
- #   overview / system / network / auth / users / firmware / theme
+ #   overview / system / network / auth / sync / notifications /
+ #   integrations / users / invitations / firmware / theme / profile
+ #
+ # Desktop: a horizontal tab strip. Phone (≤640px): a <select>
+ # jump-menu — 12 tabs are unusable scrolled at 375px (P-UI Tier B #6).
+ # The two are CSS-swapped at the breakpoint.
  #}
 <nav class="v3-tabs" aria-label="Settings sections">
   <a href="{{ url_for('admin_ui.settings_page') }}"
@@ -30,3 +35,32 @@
   <a href="{{ url_for('admin_ui.me_page') }}"
      {% if settings_tab == 'profile' %}aria-current="page"{% endif %}>Profile</a>
 </nav>
+<select class="v3-tabs-select" aria-label="Settings section">
+  <option value="{{ url_for('admin_ui.settings_page') }}"
+          {% if settings_tab == 'overview' %}selected{% endif %}>Overview</option>
+  <option value="{{ url_for('admin_ui.settings_system_page') }}"
+          {% if settings_tab == 'system' %}selected{% endif %}>System</option>
+  <option value="{{ url_for('admin_ui.settings_network_page') }}"
+          {% if settings_tab == 'network' %}selected{% endif %}>Network</option>
+  <option value="{{ url_for('admin_ui.settings_auth_page') }}"
+          {% if settings_tab == 'auth' %}selected{% endif %}>Authentication</option>
+  <option value="{{ url_for('admin_ui.settings_sync_page') }}"
+          {% if settings_tab == 'sync' %}selected{% endif %}>Sync</option>
+  <option value="{{ url_for('admin_ui.settings_notifications_page') }}"
+          {% if settings_tab == 'notifications' %}selected{% endif %}>Notifications</option>
+  <option value="{{ url_for('admin_ui.settings_integrations_page') }}"
+          {% if settings_tab == 'integrations' %}selected{% endif %}>Integrations</option>
+  {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+  <option value="{{ url_for('admin_ui.users_page') }}"
+          {% if settings_tab == 'users' %}selected{% endif %}>Users</option>
+  <option value="{{ url_for('admin_ui.invitations_page') }}"
+          {% if settings_tab == 'invitations' %}selected{% endif %}>Invitations</option>
+  {% endif %}
+  <option value="{{ url_for('admin_ui.list_firmware_page') }}"
+          {% if settings_tab == 'firmware' %}selected{% endif %}>Firmware</option>
+  <option value="{{ url_for('admin_ui.settings_theme_page') }}"
+          {% if settings_tab == 'theme' %}selected{% endif %}>Theme</option>
+  <option value="{{ url_for('admin_ui.me_page') }}"
+          {% if settings_tab == 'profile' %}selected{% endif %}>Profile</option>
+</select>
+<script src="{{ url_for('static', filename='js/settings_tab_select.js') }}" defer></script>

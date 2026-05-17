@@ -844,3 +844,80 @@ tr:hover td { background: var(--bg-elev-2); }
   border-bottom-color: var(--link);
 }
 .v3-tabbar a:hover { text-decoration: none; color: var(--link); }
+
+
+/* ═══════════════ P-UI Tier B — mobile (v0.5.74) ═══════════════════════
+ * Completes RFC-003 §11.3 / requirement C4 ("usable at 375px"):
+ * row-per-card tables, a non-overflowing header, a settings jump-menu.
+ */
+
+/* ── #4 — responsive tables: row-per-card on phones ───────────────────
+ * Every `.table-wrap` data table collapses to a stack of cards at
+ * ≤640px. Each <td> carries a `data-label` (the column name); the
+ * label renders as a ::before so the cell is readable without its
+ * header row. Cells with no data-label (checkbox / action cells) span
+ * the row left-aligned. */
+@media (max-width: 640px) {
+  .table-wrap { overflow-x: visible; }
+  .table-wrap > table { min-width: 0; }
+  .table-wrap table thead { display: none; }
+  .table-wrap table,
+  .table-wrap table tbody,
+  .table-wrap table tr,
+  .table-wrap table td { display: block; width: 100%; }
+  .table-wrap table tr {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+  }
+  .table-wrap table tr:hover td { background: transparent; }
+  .table-wrap table td {
+    border-bottom: 1px solid var(--border-soft);
+    padding: var(--space-2) 0;
+    text-align: left;
+  }
+  .table-wrap table td:last-child { border-bottom: 0; }
+  /* the column name renders as a small label above the cell value, so
+     each cell is readable without its (hidden) header row. Cells with
+     no data-label — checkbox / action cells — just render their
+     content with no label. */
+  .table-wrap table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-weight: 600;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+}
+
+/* ── #3 — mobile header: keep every item, stop mid-word wrapping ───────
+ * Below the tablet breakpoint the topbar wraps whole items to a tidy
+ * second row (brand on row 1, actions on row 2) instead of breaking
+ * "Sign out" across lines. Gaps + the version/badge shrink to fit. */
+@media (max-width: 767px) {
+  .topbar { flex-wrap: wrap; row-gap: var(--space-1); gap: var(--space-2); }
+  .topbar-actions { gap: var(--space-2); flex-wrap: nowrap; }
+  .topbar-actions a,
+  .topbar .version,
+  .topbar .badge { white-space: nowrap; }
+  .topbar .version { font-size: 0.72rem; }
+  .topbar .badge { font-size: 0.68rem; padding: 0.1rem 0.4rem; }
+}
+
+/* ── #6 — settings sections: tab strip on desktop, jump-menu on phone ──
+ * The 12-section tab strip is unusable scrolled at 375px. The
+ * settings_tabs component renders both a <nav class="v3-tabs"> and a
+ * <select class="v3-tabs-select">; this swaps them at the phone
+ * breakpoint. */
+.v3-tabs-select {
+  display: none;
+  width: 100%;
+  margin: var(--space-3) 0 var(--space-5);
+}
+@media (max-width: 640px) {
+  .v3-tabs { display: none; }
+  .v3-tabs-select { display: block; }
+}

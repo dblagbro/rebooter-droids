@@ -328,7 +328,7 @@
   <tbody>
   {% for r in rules %}
     <tr>
-      <td>
+      <td data-label="Rule">
         <strong>{{ r.name }}</strong><br>
         <span class="muted" style="font-size:.85rem">{{ r.sentence }}</span>
         {# v0.5.19 (Rules UX): structured chips for at-a-glance summary. #}
@@ -391,11 +391,11 @@
           {% endif %}
         </div>
       </td>
-      <td>
+      <td data-label="Status">
         {% if r.enabled %}<span class="badge green">{{ r.status }}</span>
         {% else %}<span class="badge">disabled</span>{% endif %}
       </td>
-      <td class="muted" style="font-size:.85rem">{{ r.created_at }}</td>
+      <td class="muted" style="font-size:.85rem" data-label="Created">{{ r.created_at }}</td>
       {% if can_edit %}
       <td style="white-space:nowrap">
         <a class="btn-secondary" style="font-size:.8rem" href="{{ url_for('admin_ui.rules_edit_page', rule_id=r.id) }}" title="Edit rule shape">Edit</a>
