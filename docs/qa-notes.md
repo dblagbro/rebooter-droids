@@ -4491,3 +4491,83 @@ Working tree at sweep end has (not mine to commit):
 
 Same merge posture as v0.5.24: wait for parallel session to pause
 cleanly, then merge as a versioned ship.
+
+---
+
+# 2026-05-17 — Post-refactor regression validation sweep (v0.5.86)
+
+Deep regression / release-hardening pass. Scope: validate the
+v0.5.67–v0.5.86 refactor + QA arc did not regress the product;
+hunt latent defects; strengthen test coverage and docs.
+
+## What was executed
+
+- **Full `tests/` suite** (598 collected) against a fresh
+  nginx-fronted Postgres replica (image `dblagbro/rebooter-droids
+  :0.5.86`, the `ci/nginx.conf` front, throwaway Postgres) —
+  **593 passed, 5 failed, 5 skipped, 2 deselected**. All 5 failures
+  classified as test-quality/environmental, not product
+  regressions — see test-plan.md "Known non-gated test failures".
+- **Live API negative testing** against the replica: malformed
+  JSON, missing fields, no-auth, bad bearer, wrong HTTP method,
+  unknown route, unknown resource, device-API no-token, firmware
+  bad-channel, firmware path-traversal. All returned the correct
+  4xx with the standard `{ok:false,error:{code,message}}` envelope;
+  **zero 500s** on any negative path. Path-traversal on the
+  firmware channel segment → 404 (safe).
+- **Static bug-class audit** across `app/` for the codebase's
+  documented recurring defect classes (naive/aware datetime,
+  SQLite-incompatible PKs, Postgres-only SQL, URL-prefix-blindness,
+  swallowed exceptions).
+- **Doc cross-check** — bug-log, architecture, refactor-log,
+  test-plan, route inventory.
+
+## Findings → BUG-056 … BUG-061 (see bug-log.md)
+
+Six issues; **none a release blocker**. Headline: the refactors
+held — no product regression. New bugs are a swallowed scheduler
+exception (BUG-056), error-page links that escape the `/rebooter`
+prefix (BUG-057), a probe-kind validation/dispatch divergence
+(BUG-058), a cluster of SQLite-test-blocking landmines (BUG-059),
+swallowed logout-revocation failures (BUG-060), and bug-log drift
+(BUG-061, fixed this sweep).
+
+## Environment quirks / assumptions (carry forward)
+
+- **The app cannot boot on SQLite — by design.**
+  `services/bootstrap.py` uses `pg_advisory_lock`, `ADD COLUMN IF
+  NOT EXISTS`, `information_schema` and `DELETE … USING` — all
+  Postgres-only — with no dialect guard. This is intentional:
+  Postgres is the only supported runtime backend. The `tests/unit/`
+  `hub_db` fixture deliberately bypasses bootstrap (`init_engine` +
+  `Base.metadata.create_all`), so the *ORM models* layer is
+  SQLite-compatible but the *app runtime* is not. Do not "fix"
+  bootstrap for SQLite.
+- **QA tests that assume a port-less base URL.** A `host:port`
+  base URL (any local replica) breaks `test_v033`'s cookie-domain
+  derivation. Run cookie-domain-sensitive tests against a real
+  hostname, or fix the test to strip the port.
+- **`test_hardening_probes` hardcodes prod credentials** — it only
+  passes against `www.voipguru.org` logged in as the real admin.
+  It cannot run on the CI replica at all.
+- **`test_v042::test_probe_now_http_success`** needs a probe
+  target reachable *from inside* the app container; a host-mapped
+  port is not. Known, documented.
+- Replica recipe: see test-plan.md "Running it locally". Always
+  boot nginx *after* the app (its upstream name resolves at boot).
+  Tear down only the `rd-ci-*` containers + the `rd-ci-firmware`
+  volume — never the wider Docker stack.
+
+## Suggested retest scope after remediation
+
+- BUG-056/060 (swallowed exceptions): add a `log.exception` and a
+  failure counter; unit-test the failure path with a monkeypatched
+  raising `enqueue_for_device` / `revoke_*`.
+- BUG-057 (error.html): curl a 404 under the `/rebooter` prefix,
+  assert the links resolve to `/rebooter/app/...`.
+- BUG-058 (probe kinds): once the canonical registry lands, assert
+  `KNOWN_PROBE_KINDS` == the set `run_probe` dispatches.
+- BUG-059: after the `as_aware`/`with_variant`/dialect-branch
+  fixes, add `tests/unit/` files for invitations, password-resets,
+  inbox, external-sensors, events, unregistered — and re-run the
+  full `-m ci` gate twice on a fresh replica.

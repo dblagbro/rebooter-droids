@@ -9,13 +9,13 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/">Rebooter-Droids</a>
+    <a class="brand" href="{{ url_for('admin_ui.index') }}">Rebooter-Droids</a>
   </header>
   <main>
     <section class="placeholder">
       <h1>{{ code }} — {{ message }}</h1>
       <p class="muted">If you got here from a link in the app, it may have been removed or renamed.</p>
-      <p><a href="/">Back to dashboard</a></p>
+      <p><a href="{{ url_for('admin_ui.index') }}">Back to dashboard</a></p>
     </section>
   </main>
 </body>

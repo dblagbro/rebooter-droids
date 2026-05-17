@@ -84,22 +84,24 @@ def test_mobile_stat_grid_collapses_to_one_column(mobile_logged_in_page):
 
 
 def test_mobile_topbar_nav_links_reachable(mobile_logged_in_page):
-    """v0.3.0 P1: the redesigned nav is a 5-item set
-    (Status / Devices / Rules / History / Settings) split across a
-    desktop top-nav (`.topnav`, hidden on mobile via CSS) and a
-    mobile bottom-tab bar (`.bottomnav`, visible at ≤640px). Both
-    are present in the DOM at every breakpoint so we assert that
-    each renders all 5 destinations."""
+    """The redesigned nav is a 6-item set (Status / Devices / Rules /
+    History / Power / Settings) split across a desktop top-nav
+    (`.topnav`, hidden on mobile via CSS) and a mobile bottom-tab bar
+    (`.bottomnav`, visible at ≤640px). Both are present in the DOM at
+    every breakpoint so we assert that each renders all 6 destinations.
+
+    Was 5 through the v0.3.0 redesign; the `Power` link (`/app/power`,
+    B16 fleet power) made it 6 — see `templates/layout.html`."""
     p = mobile_logged_in_page
     top_nav_count = p.locator(".topnav a").count()
     bottom_nav_count = p.locator(".bottomnav a").count()
-    assert top_nav_count == 5, (
-        f"expected 5 desktop top-nav links, got {top_nav_count} — "
-        f"the v0.3.0 redesign has Status/Devices/Rules/History/Settings"
+    assert top_nav_count == 6, (
+        f"expected 6 desktop top-nav links, got {top_nav_count} — "
+        f"the nav is Status/Devices/Rules/History/Power/Settings"
     )
-    assert bottom_nav_count == 5, (
-        f"expected 5 mobile bottom-nav links, got {bottom_nav_count} — "
-        f"the v0.3.0 redesign has Status/Devices/Rules/History/Settings"
+    assert bottom_nav_count == 6, (
+        f"expected 6 mobile bottom-nav links, got {bottom_nav_count} — "
+        f"the nav is Status/Devices/Rules/History/Power/Settings"
     )
 
 

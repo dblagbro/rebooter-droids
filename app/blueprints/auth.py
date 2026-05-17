@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from flask import Blueprint, current_app, g, request, session
 
 from app.middleware.admin_auth import admin_required_api
@@ -14,6 +16,8 @@ from app.services.auth import (
 )
 
 bp = Blueprint("auth", __name__)
+
+log = logging.getLogger(__name__)
 
 
 @bp.post("/login")
@@ -77,14 +81,20 @@ def logout():
 
             revoke_all_tokens(user_id)
         except Exception:
-            pass
+            # BUG-060: a failed token revocation must not be silent —
+            # the user is told they are logged out while their JWTs
+            # stay valid. Logout still succeeds; the failure is logged.
+            log.exception(
+                "logout: revoke_all_tokens failed for user %s", user_id
+            )
     if sid:
         try:
             from app.services import sessions as sessions_service
 
             sessions_service.revoke_one(sid)
         except Exception:
-            pass
+            # BUG-060: see above — a failed session revoke is logged.
+            log.exception("logout: session revoke failed for sid %s", sid)
     return ok({"logged_out": True})
 
 
