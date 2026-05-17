@@ -10,13 +10,16 @@ The contract:
                "retry_after_seconds":0,
                "central_register_url":"…/api/v1/device/register"}
     rejected → {"status":"rejected","retry_after_seconds":3600}
-- After delivery the `adoption_token_secret` is cleared from the
-  row so the plaintext doesn't sit around. Subsequent polls before
-  the device successfully registers return
-  `{"status":"awaiting_register"}` (token's already been handed out).
+- v0.5.68 (P-REG fix): the `adoption_token_secret` STAYS on the row
+  after delivery and is re-delivered as `{"status":"adopted"}` on
+  every poll until the device registers — a device that loses one
+  announce response self-heals on its next poll instead of stranding
+  forever. (Pre-v0.5.68 the secret was cleared on first delivery and
+  later polls got `{"status":"awaiting_register"}`; that branch is now
+  reached only by the stranded-pickup recovery path.)
 - Once the device registers, the announcement row's `consumed_at`
-  is stamped (cross-linked from the `consume_enrollment_token`
-  service path).
+  is stamped (cross-linked from `consume_enrollment_token`) — and that
+  is the only place `adoption_token_secret` is cleared.
 """
 
 from __future__ import annotations

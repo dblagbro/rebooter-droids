@@ -7,12 +7,13 @@ import requests
 
 from .conftest import unique_suffix
 
-# NB: not in the `-m ci` gate yet. Two tests assert the announce
-# lifecycle returns status='awaiting_register' on a repeat /announce of
-# an adopted-not-yet-registered device, but a from-scratch instance
-# returns 'adopted' both times. That adopted->awaiting_register
-# transition needs confirming with the announce-lifecycle owner before
-# this file can gate — tracked in docs/test-plan.md gate-3.
+# v0.5.83: in the `-m ci` gate (P-QA gate-3). The earlier "two tests
+# expect awaiting_register" concern is resolved — that was stale
+# pre-v0.5.68 behaviour. The P-REG fix keeps the adoption token
+# re-deliverable until the device registers, so a repeat /announce is
+# `adopted` again. The state machine is now pinned directly by
+# tests/unit/test_announce_state_machine.py.
+pytestmark = pytest.mark.ci
 
 
 def _mac() -> str:
@@ -87,15 +88,18 @@ def test_announce_creates_pending_then_adopts(base_url, admin_headers):
         assert "central_register_url" in body
         token = body["enrollment_token"]
 
-        # 5. Subsequent poll WITHOUT consuming → awaiting_register
+        # 5. Subsequent poll WITHOUT registering → still `adopted`, the
+        # same token re-delivered. v0.5.68 (P-REG fix) keeps the token
+        # on the row until the device registers, so a device that loses
+        # one announce response self-heals instead of being stranded.
         r = requests.post(
             f"{base_url}/api/v1/device/announce",
             json={"mac_address": mac, "hardware_model": "sonoff_s31"},
             timeout=10,
         )
         body = r.json()["data"]
-        assert body["status"] == "awaiting_register"
-        assert "enrollment_token" not in body  # secret was cleared after delivery
+        assert body["status"] == "adopted"
+        assert body["enrollment_token"] == token  # same token re-delivered
 
         # 6. Use the token to register — should succeed and stamp consumed_at
         reg = requests.post(
@@ -306,7 +310,7 @@ def test_known_device_missing_token_auto_rebinds(base_url, admin_headers):
         assert auto_body["enrollment_token"].startswith("et_")
         replacement_token = auto_body["enrollment_token"]
 
-        awaiting = requests.post(
+        repoll = requests.post(
             f"{base_url}/api/v1/device/announce",
             json={
                 "mac_address": mac,
@@ -316,8 +320,11 @@ def test_known_device_missing_token_auto_rebinds(base_url, admin_headers):
             },
             timeout=10,
         )
-        assert awaiting.status_code == 200, awaiting.text
-        assert awaiting.json()["data"]["status"] == "awaiting_register"
+        assert repoll.status_code == 200, repoll.text
+        # v0.5.68: the re-minted token stays re-deliverable until the
+        # device registers — a repeat announce is `adopted`, not
+        # `awaiting_register`.
+        assert repoll.json()["data"]["status"] == "adopted"
 
         rebind = requests.post(
             f"{base_url}/api/v1/device/register",
