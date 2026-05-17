@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.85] - 2026-05-17
+
+### Added — P-QA: in-process unit tests for the enrollment service
+
+`tests/unit/test_enrollment_service.py` (17 tests) covers
+`app/services/enrollment.py` — the registration core — in-process
+against the `hub_db` isolated-SQLite fixture, auto-`ci`-gated by the
+`tests/unit/` conftest. Coverage: `mint_enrollment_token` (`et_`
+secret prefix, hash-only persistence, default and 30-day-capped TTL,
+issuer/hint recording); `consume_enrollment_token` (Device +
+`dt_` bearer credential creation, token stamped consumed, display-name
+hint fallback, QA-fixture flagging, and the `enrollment_invalid` /
+`enrollment_consumed` / `enrollment_expired` / `validation_failed`
+rejections); `revoke_enrollment_token` /
+`revoke_enrollment_tokens_bulk` (pending delete, consumed-token no-op,
+unknown-id `False`, bulk revoked/skipped partitioning). Gate is now
+~450 tests / 63 files.
+
+### Fixed — `consume_enrollment_token` naive/aware datetime crash on SQLite
+
+The token-expiry check compared `EnrollmentToken.expires_at` against a
+tz-aware `now`. Postgres `TIMESTAMPTZ` returns an aware datetime, but
+SQLite returns a naive one — so the comparison raised `TypeError`
+under in-process tests (and would on any SQLite-backed run). Coerced
+the stored value with `app.models._helpers.as_aware` before the
+comparison — a no-op on a Postgres deployment.
+
 ## [0.5.84] - 2026-05-17
 
 ### Changed — P-QA: the CI gate now runs behind nginx
