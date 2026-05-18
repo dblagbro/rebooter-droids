@@ -36,6 +36,7 @@ from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services import audit as audit_service
 from app.services.devices import list_devices as svc_list_devices
 from app.services.groups import list_groups as svc_list_groups
+from app.services.scenes import list_scenes as svc_list_scenes
 from app.services.watchdog import (
     WatchdogValidationError,
     create_rule as svc_create_rule,
@@ -133,6 +134,7 @@ def rules_page():
             "devices": devices,
             "groups": groups,
             "sources_by_kind": _sources_by_kind(),
+            "scenes": svc_list_scenes(),
         }),
     )
 
@@ -215,6 +217,7 @@ def rules_create_json_submit():
                 # omitting it 500s the page under StrictUndefined when a
                 # bad-JSON submit re-renders here (latent since v0.5.28).
                 "sources_by_kind": _sources_by_kind(),
+                "scenes": svc_list_scenes(),
                 "json_editor_value": raw,
                 "json_editor_error": msg,
             }),

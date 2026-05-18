@@ -17,6 +17,8 @@
     'ha_state_is': document.getElementById('probe_ha_state_is_block'),
     'weather_alert_active': document.getElementById('probe_weather_alert_active_block'),
     'ical_event_active': document.getElementById('probe_ical_event_active_block'),
+    // v0.5.92 (Stage C): EPG "show airing now" probe.
+    'epg_show_airing': document.getElementById('probe_epg_show_airing_block'),
   };
   // v0.5.32: power probes share one block; the threshold-vs-near-zero
   // label swaps based on kind.

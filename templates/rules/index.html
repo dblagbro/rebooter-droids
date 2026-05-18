@@ -28,6 +28,7 @@
           <option value="ha_state_is">home assistant — entity state matches</option>
           <option value="weather_alert_active">weather — active NWS alert</option>
           <option value="ical_event_active">calendar — iCal event currently airing</option>
+          <option value="epg_show_airing">tv guide — show currently airing (EPG)</option>
           <option value="power_above">power — avg watts above threshold</option>
           <option value="power_below">power — avg watts below threshold</option>
           <option value="power_zero_while_on">power — near-zero draw while relay on (phantom failure)</option>
@@ -195,20 +196,85 @@
           </p>
         {% endif %}
       </div>
+
+      {# v0.5.92 (Stage C form-builder): EPG "show airing now" probe.
+         No source picker — EPG reads the shared TVMaze cache. #}
+      <div id="probe_epg_show_airing_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        <label>Show title (case-insensitive substring match)
+          <input type="text" name="epg_show" placeholder="e.g. Jeopardy">
+        </label>
+        <label>Network (optional)
+          <input type="text" name="epg_network" placeholder="e.g. ABC — leave blank for any network">
+        </label>
+      </div>
     </fieldset>
     <script src="{{ url_for('static', filename='js/rules_create_probe.js') }}" defer></script>
 
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
-      <legend>What to do when it fails</legend>
+      <legend>What to do</legend>
       <label>Action
-        <select name="action_kind">
+        <select name="action_kind" id="action_kind">
           <option value="cycle">cycle — power-cycle the target</option>
           <option value="hold_off">hold_off — power off until manually restored</option>
+          <option value="relay_off">relay_off — turn the target off</option>
+          <option value="relay_on">relay_on — turn the target on</option>
+          <option value="apply_scene">apply_scene — apply a saved scene</option>
+          <option value="binding">binding — scene follows the probe (level-triggered)</option>
           <option value="notify_only">notify_only — no power action</option>
         </select>
       </label>
-      <label>power_off_seconds (cycle) <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
-      <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
+      {# v0.5.92 (Stage C form-builder): per-action-kind blocks, toggled
+         by rules_create_action.js. cycle keeps its two fields; the
+         scene + binding blocks pick from saved scenes. #}
+      <div id="action_cycle_block">
+        <label>power_off_seconds (cycle) <input type="number" name="power_off_seconds" value="5" min="1" max="60"></label>
+        <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="180" min="0" max="3600"></label>
+      </div>
+      <div id="action_apply_scene_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        {% if scenes %}
+          <label>Scene to apply
+            <select name="scene_id">
+              {% for s in scenes %}
+                <option value="{{ s.id }}">{{ s.name }} ({{ s.device_count }} device{{ '' if s.device_count == 1 else 's' }})</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No scenes yet — create one under
+            <a href="{{ url_for('admin_ui.list_scenes_page') }}">Scenes →</a> first.
+          </p>
+        {% endif %}
+      </div>
+      <div id="action_binding_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        <p class="muted" style="font-size:.85rem; margin:.2rem 0">
+          A binding is level-triggered — the target follows the probe.
+          Pick the scene to apply while the probe succeeds, and the one
+          to restore when it stops.
+        </p>
+        {% if scenes %}
+          <label>Scene while the condition holds
+            <select name="binding_active_scene_id">
+              {% for s in scenes %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Scene when it clears
+            <select name="binding_clear_scene_id">
+              {% for s in scenes %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No scenes yet — create them under
+            <a href="{{ url_for('admin_ui.list_scenes_page') }}">Scenes →</a> first.
+          </p>
+        {% endif %}
+      </div>
+      <script src="{{ url_for('static', filename='js/rules_create_action.js') }}" defer></script>
     </fieldset>
 
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
