@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.92] - 2026-05-18
+
+### Added — the named scene library (Stage C)
+
+Stage B's `apply_scene` carried its device list inline in the rule's
+`action` JSON. Stage C makes scenes **named, reusable, first-class**:
+author "Erica's TV audio" once, reference it from any rule.
+
+- New `scenes` table + `Scene` model (`id`, unique `name`,
+  `description`, `items`). A brand-new table — `create_all()` at
+  startup adds it on every deployment; no `_PENDING_COLUMNS` ALTER.
+- New `app/services/scenes.py` — `create` / `list` / `get` / `update`
+  / `delete` + `validate_scene_items` (the canonical item-shape
+  check) + `scene_items` (the runtime resolver).
+- New admin surface (`app/blueprints/admin/scenes.py`): the
+  `/api/v1/admin/scenes` JSON API (GET/POST/GET-one/PATCH/DELETE) and
+  an `/app/scenes` management page — list, create (name + JSON
+  items), delete; each scene shows its `scn_…` id to copy into a
+  rule. Linked from the Rules page.
+- `apply_scene` actions now take **either** `scene_id` (reference a
+  saved scene) **or** inline `items`. `_validate_leaf` accepts both;
+  `_fire_scene` resolves `scene_id` through `scenes.scene_items` and
+  reports a missing scene as an action error rather than raising.
+
+So the Erica/Jeopardy rule is now: create the "Erica TV audio" scene
+once on `/app/scenes`, then a binding rule whose `on_active` /
+`on_clear` are `apply_scene(scene_id=…)`. Verified live — scene
+created via the API, a binding referencing it created (201), the
+`/app/scenes` page renders. 18 new unit tests
+(`tests/unit/test_scenes_service.py`); gate ~694 tests.
+
+The remaining Stage-C polish — a rules **form-builder** that exposes
+binding / `apply_scene` / EPG kinds (today they are JSON-editor /
+API-authored) and an EPG show↔network mapping helper — is the next
+follow-up.
+
 ## [0.5.91] - 2026-05-18
 
 ### Added — scenes: one action, several devices, different states (Stage B)

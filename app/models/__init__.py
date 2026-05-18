@@ -50,3 +50,4 @@ from app.models.sync import (  # noqa: E402,F401
     Tombstone,
 )
 from app.models.external_epg import ExternalEpgCache  # noqa: E402,F401
+from app.models.scenes import Scene  # noqa: E402,F401
