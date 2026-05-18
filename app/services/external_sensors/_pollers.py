@@ -153,7 +153,110 @@ def _poll_kind(src: ExternalSensorSource) -> dict:
         return _poll_enphase_envoy(src.host, src.port, src.config or {})
     if src.kind == "snmp":
         return _poll_snmp(src.host, src.port, src.config or {})
+    if src.kind == "google_calendar":
+        return _poll_google_calendar(src)
     raise ValueError(f"unsupported source kind: {src.kind}")
+
+
+def _normalise_gcal_events(items: list) -> list[dict]:
+    """Google Calendar API events → the same `{summary, start, end}`
+    shape `_poll_ical` produces, so the `ical_event_active` probe is
+    calendar-back-end-agnostic (B17 design §3.3)."""
+    out: list[dict] = []
+    for ev in items or []:
+        if not isinstance(ev, dict):
+            continue
+        start = ev.get("start") or {}
+        end = ev.get("end") or {}
+        # timed events carry `dateTime`; all-day events carry `date`.
+        start_v = start.get("dateTime") or start.get("date")
+        if not start_v:
+            continue
+        out.append({
+            "summary": str(ev.get("summary") or "")[:300],
+            "start": start_v,
+            "end": end.get("dateTime") or end.get("date"),
+        })
+    out.sort(key=lambda e: e["start"])
+    return out
+
+
+def _poll_google_calendar(src) -> dict:
+    """v0.5.94 (B17): poll a Google Calendar over the Calendar API.
+
+    Refreshes the OAuth access token when the cached one is missing or
+    within 60 s of expiry — mutating `src.config` so the new token is
+    persisted by the caller's commit — then fetches the next 24 h of
+    events and normalises them to the iCal payload shape.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.google_oauth import (
+        GoogleOAuthError,
+        fetch_json,
+        refresh_access_token,
+    )
+
+    config = dict(src.config or {})
+    refresh_token = str(config.get("refresh_token") or "").strip()
+    if not refresh_token:
+        raise RuntimeError("google_calendar source has no refresh_token")
+    calendar_id = str(config.get("calendar_id") or "primary").strip() or "primary"
+
+    now = datetime.now(timezone.utc)
+    access_token = config.get("access_token")
+    expires_at = config.get("access_token_expires_at")
+    fresh = False
+    if access_token and expires_at:
+        try:
+            exp = datetime.fromisoformat(str(expires_at))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            fresh = exp > now + timedelta(seconds=60)
+        except ValueError:
+            fresh = False
+    if not fresh:
+        try:
+            tok = refresh_access_token(refresh_token)
+        except GoogleOAuthError as e:
+            raise RuntimeError(
+                f"google_calendar token refresh failed: {e.message}"
+            ) from None
+        access_token = tok.get("access_token")
+        if not access_token:
+            raise RuntimeError(
+                "google_calendar token refresh returned no access_token"
+            )
+        ttl = 3600
+        try:
+            ttl = int(tok.get("expires_in") or 3600)
+        except (TypeError, ValueError):
+            pass
+        config["access_token"] = access_token
+        config["access_token_expires_at"] = (
+            now + timedelta(seconds=ttl)
+        ).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        # Reassign so SQLAlchemy detects the JSON column change.
+        src.config = config
+
+    url = (
+        "https://www.googleapis.com/calendar/v3/calendars/"
+        + urllib.parse.quote(calendar_id, safe="")
+        + "/events?"
+        + urllib.parse.urlencode({
+            "timeMin": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timeMax": (now + timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": 50,
+        })
+    )
+    try:
+        data = fetch_json(url, headers={"Authorization": f"Bearer {access_token}"})
+    except GoogleOAuthError as e:
+        raise RuntimeError(f"google_calendar API error: {e.message}") from None
+    events = _normalise_gcal_events(data.get("items") or [])
+    return {"event_count": len(events), "events": events[:50]}
 
 
 def _insecure_ssl_context():

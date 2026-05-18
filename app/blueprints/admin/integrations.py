@@ -11,7 +11,16 @@ refactors so templates that use `url_for(...)` survive.
 
 from __future__ import annotations
 
-from flask import abort, flash, g, redirect, render_template, request, url_for
+from flask import (
+    abort,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
 from app.blueprints.admin import admin_ui_bp
 from app.blueprints.admin._common import _ctx
@@ -29,6 +38,11 @@ def settings_integrations_page():
     from app.services import epg as epg_svc
 
     epg_status = epg_svc.epg_status()
+    # v0.5.94 (B17): Google Calendar OAuth — surface whether the
+    # operator has set the Google Cloud OAuth client credentials, so
+    # the template shows "Connect" vs a setup hint.
+    from app.services import google_oauth
+
     return render_template(
         "settings/integrations.html",
         **_ctx({
@@ -36,8 +50,98 @@ def settings_integrations_page():
             "settings_tab": "integrations",
             "sources": sources,
             "epg_status": epg_status,
+            "google_oauth_configured": google_oauth.is_configured(),
         }),
     )
+
+
+# ── Google Calendar OAuth (v0.5.94 / B17) ──────────────────────────────
+
+@admin_ui_bp.get("/settings/integrations/google/connect")
+@admin_required_ui
+def google_calendar_connect():
+    """Kick off the Google Calendar OAuth consent flow. Stores a CSRF
+    `state` (and the operator-chosen source name) in the session, then
+    redirects to Google's consent screen."""
+    import secrets
+
+    from app.services import google_oauth
+
+    if not google_oauth.is_configured():
+        flash(
+            "Set the Google OAuth client credentials first "
+            "(REBOOTER_GOOGLE_OAUTH_CLIENT_ID / _SECRET).",
+            "error",
+        )
+        return redirect(url_for("admin_ui.settings_integrations_page"))
+
+    state = secrets.token_urlsafe(24)
+    session["google_oauth_state"] = state
+    session["google_oauth_name"] = (
+        (request.args.get("name") or "Google Calendar").strip()[:120]
+        or "Google Calendar"
+    )
+    redirect_uri = url_for("admin_ui.google_calendar_callback", _external=True)
+    try:
+        consent_url = google_oauth.build_consent_url(redirect_uri, state)
+    except google_oauth.GoogleOAuthError as e:
+        flash(f"Could not start Google sign-in: {e.message}", "error")
+        return redirect(url_for("admin_ui.settings_integrations_page"))
+    return redirect(consent_url)
+
+
+@admin_ui_bp.get("/settings/integrations/google/callback")
+@admin_required_ui
+def google_calendar_callback():
+    """Google redirects here after consent. Verifies the CSRF `state`,
+    exchanges the code for tokens, and creates the `google_calendar`
+    external-sensor source."""
+    from app.services import google_oauth
+
+    page = url_for("admin_ui.settings_integrations_page")
+    expected_state = session.pop("google_oauth_state", None)
+    source_name = session.pop("google_oauth_name", None) or "Google Calendar"
+
+    error = request.args.get("error")
+    if error:
+        flash(f"Google sign-in was cancelled or failed: {error}", "error")
+        return redirect(page)
+    code = request.args.get("code")
+    state = request.args.get("state")
+    if not code or not state or state != expected_state:
+        flash("Google sign-in could not be verified — please retry.", "error")
+        return redirect(page)
+
+    redirect_uri = url_for("admin_ui.google_calendar_callback", _external=True)
+    try:
+        tok = google_oauth.exchange_code(code, redirect_uri)
+    except google_oauth.GoogleOAuthError as e:
+        flash(f"Google sign-in failed: {e.message}", "error")
+        return redirect(page)
+
+    try:
+        source = ext_svc.create_source(
+            kind="google_calendar",
+            display_name=source_name,
+            config={
+                "refresh_token": tok["refresh_token"],
+                "calendar_id": "primary",
+                "access_token": tok.get("access_token") or "",
+            },
+        )
+    except ValueError as e:
+        flash(f"Could not save the calendar source: {e}", "error")
+        return redirect(page)
+    audit_service.record(
+        "external_sensor.created",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="external_sensor_source",
+        target_id=source["id"],
+        details={"kind": "google_calendar", "via": "oauth"},
+    )
+    flash(f"Connected Google Calendar: {source_name}.", "info")
+    return redirect(page)
 
 
 @admin_ui_bp.post("/settings/integrations/add")
