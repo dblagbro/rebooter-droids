@@ -442,10 +442,20 @@ def _validate_leaf(action: dict, *, field: str) -> None:
         )
     if kind != ACTION_KIND_SCENE:
         return
+    # v0.5.92 (Stage C): an apply_scene action either references a
+    # saved Scene by `scene_id`, or carries its device `items` inline.
+    scene_id = action.get("scene_id")
+    if scene_id is not None:
+        if not isinstance(scene_id, str) or not scene_id.strip():
+            raise WatchdogValidationError(
+                f"{field}.scene_id must be a non-empty string"
+            )
+        return
     items = action.get("items")
     if not isinstance(items, list) or not items:
         raise WatchdogValidationError(
-            f"{field}.items must be a non-empty list for an apply_scene action"
+            f"{field}.items (or {field}.scene_id) is required for an "
+            f"apply_scene action"
         )
     if len(items) > 50:
         raise WatchdogValidationError(
@@ -888,6 +898,8 @@ def _action_to_phrase(a: dict) -> str:
     if k == "relay_off":
         return "turn power off"
     if k == "apply_scene":
+        if a.get("scene_id"):
+            return "apply a saved scene"
         n = len(a.get("items") or [])
         return f"apply a {n}-device scene"
     if k == "binding":

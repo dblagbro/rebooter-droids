@@ -3,7 +3,7 @@
 {% block content %}
 <div class="v3-page-header">
   <h1>Rules</h1>
-  <p class="v3-page-sub">Watchdog rules — fire on probe failure. For time-driven actions (cycle X every Saturday at 3am, etc.) see <a href="{{ url_for('admin_ui.schedules_page') }}">Schedules →</a>.</p>
+  <p class="v3-page-sub">Watchdog rules — fire on probe failure. For time-driven actions (cycle X every Saturday at 3am, etc.) see <a href="{{ url_for('admin_ui.schedules_page') }}">Schedules →</a>. Reusable multi-device scenes for <code>apply_scene</code> actions: <a href="{{ url_for('admin_ui.list_scenes_page') }}">Scenes →</a>.</p>
 </div>
 
 {% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}

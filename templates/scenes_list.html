@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+{% block title %}Scenes - Rebooter-Droids{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_ui.index') }}">← Dashboard</a></p>
+<h1>Device scenes</h1>
+<p class="muted">
+  A scene is a named set of per-device target states. A watchdog
+  <code>apply_scene</code> action — or a binding rule's edge — applies
+  one, so "Erica's TV audio" can be authored once and reused. Reference
+  a scene from a rule with <code>{"kind": "apply_scene", "scene_id":
+  "&lt;id below&gt;"}</code>.
+</p>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<section class="placeholder">
+  <h2>Create a scene</h2>
+  <form method="post" action="{{ url_for('admin_ui.create_scene_submit') }}">
+    <label>Name
+      <input type="text" name="name" required value="{{ form_name }}">
+    </label>
+    <label>Description
+      <input type="text" name="description" value="{{ form_description }}">
+    </label>
+    <label>Items (JSON)
+      <textarea name="items" rows="8" required
+        placeholder='[{"device_id": "dev_…", "relay": "off"}, {"device_id": "dev_…", "relay": "off"}]'>{{ form_items }}</textarea>
+    </label>
+    <p class="muted">
+      A JSON array, one object per device. Each entry needs a
+      <code>device_id</code> plus a <code>relay</code> state
+      (<code>on</code> / <code>off</code> / <code>cycle</code>) and/or a
+      <code>config</code> object (an <code>apply_config</code> payload).
+    </p>
+    <button type="submit">Create scene</button>
+  </form>
+</section>
+
+{% if scenes %}
+<div class="table-wrap"><table>
+  <thead><tr>
+    <th>Name</th><th>Description</th><th>Devices</th><th>Updated</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for s in scenes %}
+    <tr>
+      <td data-label="Name">
+        {{ s.name }}<br><small class="muted"><code>{{ s.id }}</code></small>
+      </td>
+      <td data-label="Description">{{ s.description or '—' }}</td>
+      <td data-label="Devices">{{ s.device_count }}</td>
+      <td data-label="Updated">{{ s.updated_at }}</td>
+      <td>
+        <form method="post"
+              action="{{ url_for('admin_ui.delete_scene_submit', scene_id=s.id) }}">
+          <button type="submit" class="btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p class="muted">No scenes yet.</p>
+{% endif %}
+{% endblock %}

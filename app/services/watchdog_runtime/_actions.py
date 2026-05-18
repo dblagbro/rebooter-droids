@@ -110,7 +110,23 @@ def _fire_scene(rule: WatchdogRule, action: dict) -> dict:
     and uses each item's own `device_id`."""
     from app.services.commands import enqueue_for_device
 
-    items = (action or {}).get("items") or []
+    action = action or {}
+    # v0.5.92 (Stage C): resolve a saved scene by id, else inline items.
+    scene_id = action.get("scene_id")
+    if scene_id:
+        from app.services.scenes import scene_items as _scene_items
+
+        items = _scene_items(scene_id)
+        if items is None:
+            return {
+                "action": "apply_scene",
+                "rule_id": rule.id,
+                "error": f"scene {scene_id} not found",
+                "applied": [],
+                "skipped": [],
+            }
+    else:
+        items = action.get("items") or []
     applied: list[dict] = []
     skipped: list[dict] = []
     for item in items:
