@@ -126,6 +126,17 @@ def build_probe_from_form(form) -> dict:
         except ValueError:
             pass
         return probe
+    # v0.5.92 (Stage C form-builder): EPG "show airing now" probe.
+    # EPG reads the shared TVMaze cache — no per-source picker.
+    if probe_kind == "epg_show_airing":
+        probe = {
+            "kind": "epg_show_airing",
+            "show": (form.get("epg_show") or "").strip(),
+        }
+        network = (form.get("epg_network") or "").strip()
+        if network:
+            probe["network"] = network
+        return probe
     # v0.5.32 (B16 Phase 1D): power-targeted probes.
     if probe_kind in ("power_above", "power_below"):
         probe = {
@@ -200,6 +211,32 @@ def build_action_from_form(form) -> dict:
         return {"kind": "hold_off"}
     if action_kind == "notify_only":
         return {"kind": "notify_only"}
+    # v0.5.92 (Stage C form-builder): set-state + scene + binding actions.
+    if action_kind == "relay_on":
+        return {"kind": "relay_on"}
+    if action_kind == "relay_off":
+        return {"kind": "relay_off"}
+    if action_kind == "apply_scene":
+        scene_id = (form.get("scene_id") or "").strip()
+        if not scene_id:
+            raise RuleFormError("Pick a scene for the apply_scene action.")
+        return {"kind": "apply_scene", "scene_id": scene_id}
+    if action_kind == "binding":
+        # The form expresses a binding as two saved scenes — the one to
+        # apply while the probe holds, and the one to restore when it
+        # clears. (Non-scene bindings stay on the JSON editor.)
+        active = (form.get("binding_active_scene_id") or "").strip()
+        clear = (form.get("binding_clear_scene_id") or "").strip()
+        if not active or not clear:
+            raise RuleFormError(
+                "A binding needs a scene for both the active and "
+                "cleared states. Create scenes under Scenes first."
+            )
+        return {
+            "kind": "binding",
+            "on_active": {"kind": "apply_scene", "scene_id": active},
+            "on_clear": {"kind": "apply_scene", "scene_id": clear},
+        }
     raise RuleFormError("Unsupported action.")
 
 
