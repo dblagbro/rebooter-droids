@@ -60,7 +60,7 @@ The v0.5.61 → v0.5.93 arc shipped:
 | Item | Size | Status |
 |---|---|---|
 | **B11 — flip `sync.enabled` on** | — | Applier/emission/bootstrap all shipped (v0.5.70–.72); converges end-to-end, default-off. **Operator's call** to re-enable. |
-| **B17 remaining integrations** — MQTT pub/sub, Plex/Jellyfin webhooks, Google Calendar OAuth, iOS Shortcuts | ~4–6 h each | The watchdog probe *runtime* for these kinds exists; the source-side ingestion plumbing remains. Design: `docs/notes/2026-05-15-b17-remaining-integrations-design.md`. |
+| **B17 — Google Calendar OAuth** | ~4–6 h | The other "remaining" B17 integrations are in fact **shipped**: Plex / Jellyfin / iOS-Shortcut webhooks (v0.5.61) and MQTT (v0.5.63) — source kinds, `_inbound` writers, `mqtt_subscriber`, the `/api/v1/integrations/webhook/<id>` endpoint, *and* the Settings → Integrations UI all exist. Only the Google Calendar **OAuth** consent flow is unbuilt — and a Google Calendar already works today as an `ical` source via its private `.ics` URL (the integrations form prompts for exactly that), so OAuth is a convenience layer, not new capability. Needs an operator-registered Google Cloud OAuth app. **Operator's call whether it's worth a ship.** |
 | **Phase 2B** — structured form on `rules/edit.html` | small-med | The rule **create** form is done (v0.5.93 — incl. EPG / binding / scene). Editing an advanced rule is still JSON-editor only. |
 | **CI gate-3 tail** — ~4 test files still ungated | small | `test_hardening_probes` (hardcoded prod creds), `test_v042` (in-container probe reachability), playwright files. See `docs/test-plan.md`. |
 | **`tests/unit/` coverage gaps** — watchdog tick/state loop, `deployments` | small-med | HTTP-covered only; worth in-process coverage. |
@@ -125,7 +125,10 @@ The v0.5.61 → v0.5.93 arc shipped:
 ### Mid-cycle B15-B24 (filed + closed 2026-05-09 → 2026-05-14)
 - ✅ **B15** Settings → Sync tab content — v0.5.16
 - ✅ **B16** Power-usage monitoring full track — see B16 detail below
-- ✅ **B17 Layer 1 — Roku ECP** — v0.5.17; adjacent (HA + Weather + iCal) v0.5.23
+- ✅ **B17 Layer 1 — Roku ECP** — v0.5.17; adjacent (HA + Weather + iCal) v0.5.23;
+  Solar (SolarEdge + Enphase) + SNMP v0.5.56–.58; **Plex / Jellyfin / iOS-Shortcut
+  webhooks v0.5.61 (Ship 2); MQTT subscriber v0.5.63 (Ship 3)**; Layer 2 EPG +
+  the binding/scene rule shapes v0.5.89–.93. Only Google Calendar OAuth unbuilt.
 - ✅ **B18** Inline on/off toggle on devices list — v0.5.14
 - ✅ **B19** Firmware-scan content-change detection — v0.5.13
 - ✅ **B20** MAC-dupe restore-vs-fresh adoption — v0.5.7 (schema/UI) + 2026-05-14 (live cleanup confirmed)
