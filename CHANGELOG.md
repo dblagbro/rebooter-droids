@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.91] - 2026-05-18
+
+### Added — scenes: one action, several devices, different states (Stage B)
+
+Stage A bindings make a rule level-triggered, but each leaf action
+(`relay_on` / `relay_off` / …) targets one device-set with one state.
+The TV-scheduling use case needs more — "turn the surround **and** the
+subwoofer off, **and** push Erica's audio config" — several devices,
+*different* states, in one edge.
+
+Stage B adds the `apply_scene` action: `{kind:'apply_scene', items:
+[…]}`, one `items` entry per device, each carrying a `relay` state
+(`on` / `off` / `cycle`) and/or an `apply_config` payload. It is a
+leaf action — usable as a plain rule action and, crucially, as a
+binding's `on_active` / `on_clear` edge. So the full Erica/Jeopardy
+rule is now expressible end-to-end:
+
+```
+probe  = epg_show_airing(Jeopardy)
+action = binding(
+  on_active = apply_scene([surround:off, subwoofer:off]),
+  on_clear  = apply_scene([surround:on,  subwoofer:on]))
+```
+
+- `apply_scene` lives inside the `action` JSON — no schema change.
+- `_validate_action` split into `_validate_action` + `_validate_leaf`
+  so a binding's sub-actions are now *fully* validated (a malformed
+  `apply_scene` inside a binding edge is rejected, not just its kind).
+- `_fire_scene` enqueues per-device `relay_on` / `relay_off` /
+  `relay_cycle` / `apply_config` commands; a protected device is
+  skipped (its protection wins), the rest of the scene still applies.
+- `apply_scene` ignores the rule's `target` — each item self-targets.
+
+Verified live: the Jeopardy binding with `apply_scene` edges creates
+and renders ("…apply a 2-device scene…"); a malformed scene is
+rejected (400). 15 new unit tests (`tests/unit/test_watchdog_scene.py`),
+incl. the full binding+scene drive of the audio group. Gate ~675
+tests. Named/reusable scene *library* + the scene-editor UI are the
+Stage C follow-up — today scenes are authored in the JSON editor.
+
 ## [0.5.90] - 2026-05-18
 
 ### Added — condition bindings: the rules engine becomes level-triggered (Stage A)

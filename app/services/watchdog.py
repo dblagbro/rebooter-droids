@@ -24,6 +24,7 @@ from app.db import session_scope
 from app.models import Device, Group, Site, WatchdogRule
 from app.models.watchdog import (
     ACTION_KIND_BINDING,
+    ACTION_KIND_SCENE,
     KNOWN_ACTION_KINDS,
     KNOWN_PROBE_KINDS,
     LEAF_ACTION_KINDS,
@@ -403,18 +404,16 @@ def _validate_probe(probe: dict) -> None:
 
 
 def _validate_action(action: dict, *, field: str = "action") -> None:
-    """v0.5.90 (Stage A): validate a rule action.
+    """v0.5.90 (Stage A) / v0.5.91 (Stage B): validate a rule action.
 
     A *leaf* action is one of `LEAF_ACTION_KINDS`. A `binding` action
     is level-triggered — it carries `on_active` + `on_clear`, each
-    itself a leaf action; the runtime applies them as the probe state
-    flips (see `watchdog_runtime/_state.py::_binding_tick`). Binding
-    actions never nest.
+    itself a fully-validated leaf (see
+    `watchdog_runtime/_state.py::_binding_tick`). Bindings never nest.
     """
     if not isinstance(action, dict):
         raise WatchdogValidationError(f"{field} must be a JSON object")
-    kind = action.get("kind")
-    if kind == ACTION_KIND_BINDING:
+    if action.get("kind") == ACTION_KIND_BINDING:
         for sub in ("on_active", "on_clear"):
             sub_action = action.get(sub)
             if not isinstance(sub_action, dict):
@@ -422,15 +421,59 @@ def _validate_action(action: dict, *, field: str = "action") -> None:
                     f"{field}.{sub} is required for a binding action and "
                     f"must be a JSON object"
                 )
-            if sub_action.get("kind") not in LEAF_ACTION_KINDS:
+            if sub_action.get("kind") == ACTION_KIND_BINDING:
                 raise WatchdogValidationError(
-                    f"{field}.{sub}.kind must be one of {LEAF_ACTION_KINDS}"
+                    f"{field}.{sub} cannot itself be a binding"
                 )
+            _validate_leaf(sub_action, field=f"{field}.{sub}")
         return
+    _validate_leaf(action, field=field)
+
+
+def _validate_leaf(action: dict, *, field: str) -> None:
+    """Validate one leaf action — its kind, plus any per-kind required
+    fields. Only `apply_scene` (Stage B) carries extra structure: an
+    `items` list, one entry per device, each a relay state and/or an
+    `apply_config` payload."""
+    kind = action.get("kind")
     if kind not in LEAF_ACTION_KINDS:
         raise WatchdogValidationError(
             f"{field}.kind must be one of {KNOWN_ACTION_KINDS}"
         )
+    if kind != ACTION_KIND_SCENE:
+        return
+    items = action.get("items")
+    if not isinstance(items, list) or not items:
+        raise WatchdogValidationError(
+            f"{field}.items must be a non-empty list for an apply_scene action"
+        )
+    if len(items) > 50:
+        raise WatchdogValidationError(
+            f"{field}.items accepts at most 50 entries"
+        )
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise WatchdogValidationError(
+                f"{field}.items[{i}] must be a JSON object"
+            )
+        if not str(item.get("device_id") or "").strip():
+            raise WatchdogValidationError(
+                f"{field}.items[{i}].device_id is required"
+            )
+        relay = item.get("relay")
+        config = item.get("config")
+        if relay is not None and relay not in ("on", "off", "cycle"):
+            raise WatchdogValidationError(
+                f"{field}.items[{i}].relay must be 'on', 'off' or 'cycle'"
+            )
+        if config is not None and not isinstance(config, dict):
+            raise WatchdogValidationError(
+                f"{field}.items[{i}].config must be a JSON object"
+            )
+        if relay is None and not config:
+            raise WatchdogValidationError(
+                f"{field}.items[{i}] needs a 'relay' state or a 'config' payload"
+            )
 
 
 def create_rule(
@@ -844,6 +887,9 @@ def _action_to_phrase(a: dict) -> str:
         return "turn power on"
     if k == "relay_off":
         return "turn power off"
+    if k == "apply_scene":
+        n = len(a.get("items") or [])
+        return f"apply a {n}-device scene"
     if k == "binding":
         on = _action_to_phrase(a.get("on_active") or {})
         off = _action_to_phrase(a.get("on_clear") or {})
