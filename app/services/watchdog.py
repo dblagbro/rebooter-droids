@@ -23,7 +23,10 @@ from sqlalchemy import select
 from app.db import session_scope
 from app.models import Device, Group, Site, WatchdogRule
 from app.models.watchdog import (
+    ACTION_KIND_BINDING,
+    KNOWN_ACTION_KINDS,
     KNOWN_PROBE_KINDS,
+    LEAF_ACTION_KINDS,
     PROBE_KIND_PING,
     RULE_STATUS_ARMED,
     RULE_STATUS_DISABLED,
@@ -399,6 +402,37 @@ def _validate_probe(probe: dict) -> None:
     )
 
 
+def _validate_action(action: dict, *, field: str = "action") -> None:
+    """v0.5.90 (Stage A): validate a rule action.
+
+    A *leaf* action is one of `LEAF_ACTION_KINDS`. A `binding` action
+    is level-triggered — it carries `on_active` + `on_clear`, each
+    itself a leaf action; the runtime applies them as the probe state
+    flips (see `watchdog_runtime/_state.py::_binding_tick`). Binding
+    actions never nest.
+    """
+    if not isinstance(action, dict):
+        raise WatchdogValidationError(f"{field} must be a JSON object")
+    kind = action.get("kind")
+    if kind == ACTION_KIND_BINDING:
+        for sub in ("on_active", "on_clear"):
+            sub_action = action.get(sub)
+            if not isinstance(sub_action, dict):
+                raise WatchdogValidationError(
+                    f"{field}.{sub} is required for a binding action and "
+                    f"must be a JSON object"
+                )
+            if sub_action.get("kind") not in LEAF_ACTION_KINDS:
+                raise WatchdogValidationError(
+                    f"{field}.{sub}.kind must be one of {LEAF_ACTION_KINDS}"
+                )
+        return
+    if kind not in LEAF_ACTION_KINDS:
+        raise WatchdogValidationError(
+            f"{field}.kind must be one of {KNOWN_ACTION_KINDS}"
+        )
+
+
 def create_rule(
     *,
     name: str,
@@ -447,12 +481,7 @@ def create_rule(
         )
     if target["kind"] == "tag" and not (target.get("tag") or "").strip():
         raise WatchdogValidationError("target.tag is required when target.kind='tag'")
-    if not isinstance(action, dict) or action.get("kind") not in (
-        "cycle", "hold_off", "notify_only"
-    ):
-        raise WatchdogValidationError(
-            "action.kind must be 'cycle' | 'hold_off' | 'notify_only'"
-        )
+    _validate_action(action)
 
     # v0.4.11 (BUG-035): bound the numeric thresholds so the runtime
     # state machine has well-defined behavior. Without this:
@@ -548,12 +577,7 @@ def update_rule(
         )
     if target["kind"] == "tag" and not (target.get("tag") or "").strip():
         raise WatchdogValidationError("target.tag is required when target.kind='tag'")
-    if not isinstance(action, dict) or action.get("kind") not in (
-        "cycle", "hold_off", "notify_only"
-    ):
-        raise WatchdogValidationError(
-            "action.kind must be 'cycle' | 'hold_off' | 'notify_only'"
-        )
+    _validate_action(action)
     if int(failure_threshold) < 1 or int(failure_threshold) > 100:
         raise WatchdogValidationError("failure_threshold must be between 1 and 100")
     if int(recovery_threshold) < 1 or int(recovery_threshold) > 100:
@@ -641,6 +665,18 @@ def render_rule_sentence(
     )
 
     action = rule.action or {}
+
+    # v0.5.90 (Stage A): a binding rule reads as a level-triggered
+    # "state follows the condition" sentence, not the failure-streak
+    # remediation shape.
+    if action.get("kind") == ACTION_KIND_BINDING:
+        on = _action_to_phrase(action.get("on_active") or {})
+        off = _action_to_phrase(action.get("on_clear") or {})
+        return (
+            f"While {probe_str}, {on} on {target_str}; "
+            f"when it clears, {off}."
+        )
+
     action_str = _action_to_phrase(action)
 
     win_str = _seconds_to_phrase(rule.window_seconds)
@@ -804,6 +840,14 @@ def _action_to_phrase(a: dict) -> str:
         return "hold off (power off until manually restored)"
     if k == "notify_only":
         return "notify (no power action)"
+    if k == "relay_on":
+        return "turn power on"
+    if k == "relay_off":
+        return "turn power off"
+    if k == "binding":
+        on = _action_to_phrase(a.get("on_active") or {})
+        off = _action_to_phrase(a.get("on_clear") or {})
+        return f"{on} while the condition holds, {off} when it clears"
     return "no action"
 
 

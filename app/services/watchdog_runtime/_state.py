@@ -70,6 +70,12 @@ def _update_state_and_maybe_fire(
 
     Returns True if the rule's action fired this tick.
     """
+    # v0.5.90 (Stage A): a binding rule is level-triggered — its target
+    # device-state follows the probe both ways. Wholly separate state
+    # machine; the failure-streak / cooldown logic below does not apply.
+    if (rule.action or {}).get("kind") == "binding":
+        return _binding_tick(session, rule, outcome, details, now)
+
     rule.last_probed_at = now
     rule.last_outcome = outcome
 
@@ -118,4 +124,69 @@ def _update_state_and_maybe_fire(
     rule.status = RULE_STATUS_FIRING
     rule.last_action_at = now
     record_event(session, rule, "action_fired", fired_details, now)
+    return True
+
+
+def _binding_tick(
+    session, rule: WatchdogRule, outcome: str, details: dict, now: datetime
+) -> bool:
+    """v0.5.90 (Stage A): level-triggered binding runtime.
+
+    A binding rule's `action` is `{kind:'binding', on_active, on_clear}`.
+    The target device-state follows the probe: `on_active` is applied
+    once the probe has reported `success` for `recovery_threshold`
+    consecutive evaluations, `on_clear` once it has reported `failure`
+    for `failure_threshold`. Fires only on a genuine edge — across the
+    steady state every tick is an idempotent no-op. A transient
+    `probe_error` holds the current edge rather than flipping it.
+
+    `last_outcome` doubles as the binding's applied-state marker:
+    `binding:active` / `binding:cleared` once an edge has applied,
+    `binding_settling:<outcome>` while the probe is not yet stable.
+
+    Returns True if a binding edge applied this tick.
+    """
+    rule.last_probed_at = now
+
+    if outcome == "success":
+        rule.recovery_streak += 1
+        rule.failure_streak = 0
+    elif outcome == "failure":
+        rule.failure_streak += 1
+        rule.recovery_streak = 0
+    else:
+        # probe_error / probe_exception — never flip on a transient
+        # error; keep whatever edge is currently applied.
+        rule.last_outcome = outcome
+        return False
+
+    if rule.recovery_streak >= max(1, rule.recovery_threshold):
+        edge = "active"
+    elif rule.failure_streak >= max(1, rule.failure_threshold):
+        edge = "cleared"
+    else:
+        # Probe state not yet stable enough to assert an edge.
+        rule.last_outcome = f"binding_settling:{outcome}"
+        return False
+
+    marker = f"binding:{edge}"
+    if rule.last_outcome == marker:
+        # Already in the desired state — idempotent no-op.
+        return False
+
+    binding = rule.action or {}
+    leaf = binding.get("on_active" if edge == "active" else "on_clear") or {}
+    # Deferred import — `_actions` imports back from `_state`.
+    from app.services.watchdog_runtime._actions import apply_binding_action
+
+    result = apply_binding_action(rule, leaf)
+    rule.last_outcome = marker
+    rule.last_action_at = now
+    rule.status = RULE_STATUS_FIRING if edge == "active" else RULE_STATUS_ARMED
+    record_event(
+        session, rule, "binding_applied",
+        {"edge": edge, "outcome": outcome,
+         "leaf_action": leaf.get("kind"), "result": result},
+        now,
+    )
     return True
