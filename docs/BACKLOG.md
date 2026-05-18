@@ -1,14 +1,14 @@
 # Backlog
 
-> ⚠️ **PRIORITY OVERRIDE — read first.** As of 2026-05-15 the active
-> charter is `docs/notes/2026-05-15-pause-state-and-resume-charter.md`,
-> which supersedes the priority view in this file. Three operator-named
-> product problems — **failing registrations, terrible UI, poor QA** —
-> outrank every `Bxx` item and every refactor target below. Do not
-> resume from this file's "Truly open" table until P-REG / P-QA / P-UI
-> in the charter are addressed.
+> **Status — 2026-05-18 (v0.5.93).** The 2026-05-15 charter
+> (`docs/notes/2026-05-15-pause-state-and-resume-charter.md`) — the
+> three operator-named problems **failing registrations, terrible UI,
+> poor QA** — is **fully closed**, along with the BUG-056–061
+> post-refactor regression sweep and the TV-scheduling feature
+> (Stages A–C). The active forward-work view is the **"Open"** table
+> under "Current state" below.
 
-Last updated: **2026-05-15 PM** (post v0.5.60).
+Last updated: **2026-05-18** (post v0.5.93).
 
 The canonical "what's still owed" list. Historical B1–B24 entries +
 the firmware-team alignment-plan phases (1A-1D, 2A-2C, 3, 4A-4C, 5,
@@ -18,53 +18,57 @@ captures recent ship history; this doc captures forward intent.
 
 ---
 
-## Current state (2026-05-15 PM)
+## Current state (2026-05-18)
 
-**Live**: `0.5.60` on both hubs (www + www2). The 2026-05-15 arc
-shipped v0.5.34 → v0.5.60 — full **B1 RBAC** rollout (P1–P5), **B11**
-multi-hub sync scaffold (phases 1–7), and the entire **hub-team plan
-P0–P3a track**:
+**Live**: `0.5.93` on both hubs (www + www2). CI green; the `-m ci`
+gate is ~701 tests run behind nginx.
 
-- **P0** (v0.5.51–.53) — absorbed the firmware status/recovery/central
-  heartbeat contract: 24 persisted heartbeat fields, distinct device
-  states in the UI, recovery-aware config push, `apply_config` schema
-  reconciliation. (= old Phase 3 + Phase 4B + Phase 4C — all done.)
-- **P1** (v0.5.54–.59) — power data-path: JSON power query API,
-  data-quality surfacing, interactive 24h chart. Loaded-power
-  *validation* still pending a firmware loaded-power capture.
-- **P2** (v0.5.56–.58) — zero-hardware-cost integrations: Solar
-  (SolarEdge + Enphase Envoy), Home Assistant bridge deepening,
-  router/managed-switch SNMP telemetry.
-- **P3a** (v0.5.60) — RFC-006 multimodal-ingest decisions locked;
-  consistent `modality` tagging shipped.
+The v0.5.61 → v0.5.93 arc shipped:
 
-### Charter work — PRIORITY (operator-named problems)
+- **Charter work fully closed** — P-REG (v0.5.68), the CI gate (P-QA
+  gate 1) *and* its widening: the gate grew 21 → ~701 tests, runs
+  behind nginx, and has an in-process `tests/unit/` tree (~280 tests).
+  P-UI closed via the 23-defect walkthrough (Tiers A–E, v0.5.7x).
+- **Post-refactor regression sweep** (v0.5.86–.89) — a deep validation
+  pass filed BUG-056…061; all six fixed. BUG-052/054/055 stale
+  statuses corrected. An end-to-end adoption regression test now gates.
+- **Canonical probe-kind registry** (v0.5.89) — `KNOWN_PROBE_KINDS`
+  now matches the `run_probe` dispatch (26 kinds), pinned by a
+  contract test, so the validation gate and runtime cannot drift.
+- **TV-scheduling feature, Stages A–C** (v0.5.90–.93) — the rules
+  engine became level-triggered: `binding` rules (state follows the
+  probe both ways), the `apply_scene` multi-device action, a named
+  scene library (`scenes` table + service + `/api/v1/admin/scenes` +
+  `/app/scenes`), and the `/app/rules` form-builder exposing the EPG /
+  binding / scene shapes. The Erica/Jeopardy use case ("surround off
+  while her show airs") is operable point-and-click.
+- **B11 multi-hub sync** — applier + emission + bootstrap-seam all
+  shipped (v0.5.70–.72); sync converges end-to-end. `sync.enabled`
+  stays default-off pending the operator's go-ahead.
 
-Per `docs/notes/2026-05-15-pause-state-and-resume-charter.md`. These
-outrank every item in the "Truly open" table below.
+### Charter work — all closed
+
+| Item | Status |
+|---|---|
+| **P-REG** — failing registrations | ✅ DONE v0.5.68 — `site_id` NOT NULL 500 + lost-`/announce` strand fixed; an end-to-end adoption test now gates. |
+| **P-QA** — CI gate + widening | ✅ DONE — `.github/workflows/ci.yml`; gate ~701 tests behind nginx + a `tests/unit/` in-process tree. |
+| **P-UI** — the "terrible UI" problem | ✅ DONE — 23-defect heuristic walkthrough, Tiers A–E (v0.5.7x). |
+| **BUG-054 / BUG-055** | ✅ DONE — both verified fixed; plus BUG-056–061 from the regression sweep. |
+
+### Open
 
 | Item | Size | Status |
 |---|---|---|
-| **P-REG** — fix failing registrations | — | ✅ **DONE v0.5.68** — fixed the `site_id` NOT NULL 500 + the lost-`/announce` token strand. |
-| **P-QA gate 1** — GitHub Actions CI | — | ✅ **DONE** — `.github/workflows/ci.yml`; build + `-m ci` registration bucket, green. |
-| **P-QA gate widening** | medium | **open** — triage the ~56 non-CI test files, mark passing ones `ci`, add a `tests/unit/` in-process tree. See `docs/test-plan.md` §"How to widen the gate". |
-| **P-UI** — the "terrible UI" problem | large | **open / IN PROGRESS** — heuristic defect walkthrough of every page (desktop + mobile) → numbered defect list → fix top-down with operator. Do NOT write a 7th redesign plan. |
-| **BUG-055** — per-kind probe validation gap | small | **open** — `create_rule()`/`update_rule()` accept malformed probe configs (12/15 broken cases → 201). Safety bug: a typo'd `threshold_w` on a `cycle` rule can power-cycle a device. See `docs/bug-log.md`. |
-| **BUG-054** — `custom` probe kind has no runtime branch | small | **open** — canonical kind with no `_run_probe` handler; such rules silently fail every interval. See `docs/bug-log.md` (recommended fix: drop the dead kind). |
-
-### Truly open (below the charter work)
-
-| Item | Size | Blocker / status |
-|---|---|---|
-| **B11 applier** — `apply_outbox_event()` create/update upsert + LWW | — | ✅ **DONE v0.5.70** — generic upsert for device/site/group/user, last-writer-wins on `updated_at`, idempotent, tz-safe. 7-case unit test. |
-| **B11 emission coverage** — every syncable mutation emits an outbox event | — | ✅ **DONE v0.5.71** — ORM `after_insert/update/delete` hooks on the four synced models (`sync_emission.py`); replicator batch isolated so a poison event can't wedge sync. Verified by a two-instance bidirectional convergence test. **B11 now converges end-to-end; `sync.enabled` is ready to re-enable — operator's call.** |
-| **B11 bootstrap-seam** — independently-bootstrapped entities | — | ✅ **DONE v0.5.72** — applier reconciles a would-be-colliding create by unique natural key (`user.email`/`site.name`/`group.name`) into a converging update; device/group `site_id` pointing at a peer-only site is remapped to the local Default. `update_sync_cursor` clears `last_error` on a clean batch. Verified live — both cursors `last_error=NULL`. |
+| **B11 — flip `sync.enabled` on** | — | Applier/emission/bootstrap all shipped (v0.5.70–.72); converges end-to-end, default-off. **Operator's call** to re-enable. |
+| **B17 remaining integrations** — MQTT pub/sub, Plex/Jellyfin webhooks, Google Calendar OAuth, iOS Shortcuts | ~4–6 h each | The watchdog probe *runtime* for these kinds exists; the source-side ingestion plumbing remains. Design: `docs/notes/2026-05-15-b17-remaining-integrations-design.md`. |
+| **Phase 2B** — structured form on `rules/edit.html` | small-med | The rule **create** form is done (v0.5.93 — incl. EPG / binding / scene). Editing an advanced rule is still JSON-editor only. |
+| **CI gate-3 tail** — ~4 test files still ungated | small | `test_hardening_probes` (hardcoded prod creds), `test_v042` (in-container probe reachability), playwright files. See `docs/test-plan.md`. |
+| **`tests/unit/` coverage gaps** — watchdog tick/state loop, `deployments` | small-med | HTTP-covered only; worth in-process coverage. |
+| **EPG show↔network mapping helper** | small | A discovery aid for the `epg_show_airing` probe — optional polish on the TV feature. |
+| **Stale "0 active rules" status copy** | tiny | The Status-page totals row hardcodes a placeholder; needs a live rule count. |
 | **P1.3 loaded-power validation** | small | **Firmware-blocked** — every real CSE7766 sample is no-load (0 W); cost/kWh analytics can't be validated until firmware delivers a known-load capture. |
-| **P3b+** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
-| **B17 remaining integrations** — MQTT pub/sub, Plex/Jellyfin webhooks, Google Calendar OAuth, iOS Shortcuts | ~4–6 h each | none — Solar + HA-deepening done (P2.1/P2.4); these four remain, design in `docs/notes/2026-05-15-b17-remaining-integrations-design.md`. |
-| **B17 Layer 2 — EPG** (TVMaze free / Schedules Direct $25/yr) | ~8–12 h | none — design in `docs/notes/2026-05-15-b17-layer2-epg-design.md`. |
-| **Phase 6** — site/home profile + claim-assist groundwork | medium | explicit low-priority per alignment plan. |
-| **Phase 2B** full structured-form on `rules/edit.html` | small-medium | non-trivial Jinja extraction; current ship has a reference-card intermediate. |
+| **P3b** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
+| **Phase 6** — site/home profile + claim-assist groundwork | medium | Explicit low priority per the alignment plan. |
 
 ### Firmware-team asks (open)
 
@@ -712,9 +716,14 @@ Layer 1 shipped as v0.5.17:
    sample failure gate at default 120 s).
 3. ✅ Settings → Integrations tab + add/probe/toggle/delete UI.
 
-Remaining Layers 2-3 + adjacent integrations (Home Assistant, MQTT,
-Plex, weather, calendar) still open and will land as their own
-ships when prioritised.
+Update (2026-05-18): Layer 2 (EPG) shipped — the `epg_show_airing`
+probe, the binding/scene system, and the `/app/rules` form-builder
+(v0.5.89–.93) make the Jeopardy use case operable point-and-click.
+Home Assistant + weather + calendar + Solar adjacent integrations
+shipped (v0.5.23 / P2.1 / P2.4). Layer 3 (Spectrum-specific) is
+deliberately skipped. Still open: MQTT pub/sub, Plex/Jellyfin
+webhooks, Google Calendar OAuth, iOS Shortcuts — see the "Open"
+table at the top of this file.
 
 ### B19. Firmware scan misses content-changed binaries with same filename — **FIXED in v0.5.13** (filed 2026-05-11 PM)
 
