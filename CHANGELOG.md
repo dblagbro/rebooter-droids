@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.90] - 2026-05-18
+
+### Added — condition bindings: the rules engine becomes level-triggered (Stage A)
+
+The watchdog rules engine was edge-triggered only — "N consecutive
+failures → remediate once → cooldown". That cannot express "while a
+condition holds, keep a device in state X; when it clears, restore it"
+— the TV-scheduling use case ("while Jeopardy is airing, turn the
+surround off; when it ends, turn it back on").
+
+Stage A adds a **binding** rule: a level-triggered action whose target
+device-state follows the probe both ways.
+
+- New action kind `binding` — `{kind:'binding', on_active, on_clear}`,
+  where `on_active` / `on_clear` are leaf actions. It lives wholly
+  inside the existing `action` JSON column — **no schema migration**.
+- New leaf actions `relay_on` / `relay_off` — idempotent set-state
+  commands (unlike `hold_off`, they do not set the sticky
+  `is_held_off` flag, so a binding stays free to flip its target).
+- New binding runtime (`watchdog_runtime/_state.py::_binding_tick`):
+  applies `on_active` once the probe is stably `success` for
+  `recovery_threshold` evaluations, `on_clear` once stably `failure`
+  for `failure_threshold`. Fires only on a genuine edge — idempotent
+  across the steady state; a transient `probe_error` holds the
+  current edge rather than flipping it. Records a `binding_applied`
+  event per edge.
+- `_validate_action` validates the binding shape; `render_rule_sentence`
+  reads it as "While &lt;probe&gt;, &lt;on_active&gt; on &lt;target&gt;;
+  when it clears, &lt;on_clear&gt;."
+
+Verified live: the rule
+`probe=epg_show_airing(Jeopardy)` +
+`action=binding(relay_off / relay_on)` creates via the API and renders
+the correct sentence; a malformed binding is rejected (400). Binding
+rules are created via the JSON editor / API (the structured
+form-builder is a later UX task). 19 new unit tests
+(`tests/unit/test_watchdog_binding.py`); gate ~660 tests.
+
 ### Added — P-QA: in-process unit tests for inbox + external_sensors
 
 Two new `tests/unit/` files (23 tests) covering the last two services

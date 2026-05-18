@@ -49,6 +49,7 @@ from app.services.watchdog_runtime._actions import (
     _fire_action,
     _fire_cycle,
     _fire_hold_off,
+    apply_binding_action,
     resolve_target_devices,
 )
 from app.services.watchdog_runtime._probes import (
@@ -165,4 +166,5 @@ __all__ = [
     "_fire_action",
     "_fire_cycle",
     "_fire_hold_off",
+    "apply_binding_action",
 ]

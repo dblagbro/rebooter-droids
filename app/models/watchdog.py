@@ -137,6 +137,33 @@ KNOWN_RULE_STATUSES = (
     RULE_STATUS_DISABLED,
 )
 
+# v0.5.90 (Stage A — condition bindings): watchdog rule action kinds.
+# `cycle` / `hold_off` / `notify_only` are the original edge-triggered
+# remediation actions. `relay_on` / `relay_off` are idempotent
+# set-state actions. `binding` is a *level-triggered* meta-action — its
+# `on_active` / `on_clear` sub-actions (each a leaf kind) make the
+# rule's target track the probe state both ways (see
+# `services/watchdog.py::_validate_action` + the binding runtime in
+# `watchdog_runtime/_state.py::_binding_tick`). A binding lives wholly
+# inside the existing `action` JSON column — no schema change.
+ACTION_KIND_CYCLE = "cycle"
+ACTION_KIND_HOLD_OFF = "hold_off"
+ACTION_KIND_NOTIFY_ONLY = "notify_only"
+ACTION_KIND_RELAY_ON = "relay_on"
+ACTION_KIND_RELAY_OFF = "relay_off"
+ACTION_KIND_BINDING = "binding"
+
+# Leaf actions — valid as a plain rule action AND as the `on_active` /
+# `on_clear` sub-actions of a `binding` action.
+LEAF_ACTION_KINDS = (
+    ACTION_KIND_CYCLE,
+    ACTION_KIND_HOLD_OFF,
+    ACTION_KIND_NOTIFY_ONLY,
+    ACTION_KIND_RELAY_ON,
+    ACTION_KIND_RELAY_OFF,
+)
+KNOWN_ACTION_KINDS = LEAF_ACTION_KINDS + (ACTION_KIND_BINDING,)
+
 
 class WatchdogRule(Base):
     __tablename__ = "watchdog_rules"
