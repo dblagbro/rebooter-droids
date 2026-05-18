@@ -749,7 +749,9 @@ order found.
 
 - **Severity:** medium (operator diagnosis confusion)
 - **Area:** devices list / heartbeat-state presentation
-- **Status:** **open - observed live 2026-05-14**
+- **Status:** **fixed in v0.5.12 (B23)** — see the "BUG-052 — status
+  update (2026-05-15)" entry below. (Status line corrected 2026-05-17;
+  it had been left stale — the BUG-061 drift class.)
 - **Detail:** On the live hub snapshot taken about `2026-05-14T03:04Z`,
   device `192.168.1.225` (`Erica''s F.R Speaker`) was shown as
   **offline** in `/app/devices`, but its local API still returned
@@ -769,7 +771,9 @@ order found.
 
 - **Severity:** medium (source-of-truth drift)
 - **Area:** hub desired-config / rename propagation
-- **Status:** **open - observed live 2026-05-14**
+- **Status:** **fixed in v0.5.12 (B24)** — see the "2026-05-15 update
+  — fixed" note within this entry. (Status line corrected 2026-05-17;
+  it had been left stale — the BUG-061 drift class.)
 - **Detail:** Live comparison between `/api/v1/admin/devices` and
   local device APIs shows `.48` is correct after the manual
   `apply_config.device_name` push, but multiple other devices still
