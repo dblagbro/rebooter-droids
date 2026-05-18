@@ -36,6 +36,7 @@ EXTERNAL_SOURCE_KINDS = (
     "jellyfin",      # v0.5.61 (B17 Ship 2) — Jellyfin webhook
     "ios_shortcut",  # v0.5.61 (B17 Ship 2) — generic iOS Shortcuts webhook
     "mqtt",          # v0.5.63 (B17 Ship 3) — MQTT broker subscriber
+    "google_calendar",  # v0.5.94 — Google Calendar API (OAuth poll)
 )
 
 # v0.5.61 (B17 Ship 2): inbound-webhook kinds. These are NOT polled —
@@ -64,6 +65,7 @@ KIND_TO_MODALITY = {
     "jellyfin": "media",
     "ios_shortcut": "automation",
     "mqtt": "appliance_state",
+    "google_calendar": "calendar",
 }
 
 

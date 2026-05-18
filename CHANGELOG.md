@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.94] - 2026-05-18
+
+### Added — Google Calendar integration (OAuth) — B17
+
+The last unbuilt B17 integration. A new `google_calendar` external-
+sensor kind: the operator connects a calendar once through Google's
+OAuth consent screen, and the hub polls it for events — an
+`ical_event_active` watchdog probe then fires while a matching event
+is on (e.g. "force the TV off during the kids-bedtime calendar
+event"). The other "remaining" B17 integrations (MQTT, Plex /
+Jellyfin / iOS-Shortcut webhooks) were already shipped in v0.5.61/.63.
+
+- `app/services/google_oauth.py` — OAuth2 plumbing: consent-URL
+  builder, authorization-code exchange, refresh-token rotation.
+  Stdlib HTTP only (no `google-auth` dependency). Client credentials
+  come from `runtime_settings` with an env fallback
+  (`REBOOTER_GOOGLE_OAUTH_CLIENT_ID` / `_SECRET`).
+- Two routes on the integrations blueprint —
+  `/app/settings/integrations/google/connect` (CSRF `state`, redirect
+  to Google) and `…/google/callback` (state-verified code exchange →
+  creates the `google_calendar` source).
+- `_poll_google_calendar` — refreshes the access token when the
+  cached one is stale (persisted onto the source `config`), fetches
+  the next 24 h of events, and normalises them to the **same payload
+  shape `_poll_ical` produces** — so the existing `ical_event_active`
+  probe is calendar-back-end-agnostic.
+- Settings → Integrations gained a "Connect Google Calendar" card
+  (shown once the client credentials are configured).
+
+A Google Calendar also still works as an `ical` source via its
+private `.ics` URL — OAuth adds live responsiveness without the
+secret-URL share. Needs an operator-registered Google Cloud OAuth app
+(redirect URI = the hub's `…/google/callback`). The OAuth connect
+flow is verified live (302 → Google's consent screen with the right
+params); 11 new unit tests. Gate ~712 tests.
+
 ## [0.5.93] - 2026-05-18
 
 ### Added — rules form-builder: binding / scene / EPG without JSON (Stage C)

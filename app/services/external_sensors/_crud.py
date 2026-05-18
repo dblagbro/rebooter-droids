@@ -309,6 +309,29 @@ def _validate_kind_config(kind: str, config: dict) -> dict:
             if names:
                 out["interface_filter"] = names
         return out
+    if kind == "google_calendar":
+        # v0.5.94 (B17): the OAuth callback creates the source with the
+        # tokens it just obtained — `refresh_token` is the durable
+        # credential; the access token + expiry are a poller-managed
+        # cache. `calendar_id` defaults to the user's primary calendar.
+        refresh_token = str(config.get("refresh_token") or "").strip()
+        if not refresh_token:
+            raise ValueError(
+                "google_calendar config.refresh_token is required "
+                "(set by the OAuth connect flow)"
+            )
+        out: dict = {
+            "refresh_token": refresh_token,
+            "calendar_id": str(config.get("calendar_id") or "primary").strip()
+            or "primary",
+        }
+        access_token = str(config.get("access_token") or "").strip()
+        if access_token:
+            out["access_token"] = access_token
+        expires_at = str(config.get("access_token_expires_at") or "").strip()
+        if expires_at:
+            out["access_token_expires_at"] = expires_at
+        return out
     return {}
 
 

@@ -535,6 +535,37 @@
   </p>
 </details>
 
+{# ── Google Calendar (OAuth) — v0.5.94 ───────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h3>Google Calendar</h3>
+  <p class="muted" style="font-size:.85rem; margin-top:0">
+    Connect a Google Calendar over OAuth — the hub polls it and an
+    <code>ical_event_active</code> watchdog probe fires while a matching
+    event is on. (A calendar's private <code>.ics</code> URL also works
+    via the iCal feed above, without OAuth.)
+  </p>
+  {% if google_oauth_configured|default(false) %}
+  <form method="get" action="{{ url_for('admin_ui.google_calendar_connect') }}">
+    <label>Name
+      <input type="text" name="name" value="Google Calendar" maxlength="120">
+    </label>
+    <button type="submit">Connect Google Calendar →</button>
+  </form>
+  <p class="muted" style="font-size:.8rem">
+    You'll be sent to Google to grant read-only calendar access, then
+    returned here.
+  </p>
+  {% else %}
+  <p class="muted" style="font-size:.85rem">
+    Not configured. Set <code>REBOOTER_GOOGLE_OAUTH_CLIENT_ID</code> and
+    <code>REBOOTER_GOOGLE_OAUTH_CLIENT_SECRET</code> (from a Google Cloud
+    OAuth app whose authorized redirect URI is this hub's
+    <code>/app/settings/integrations/google/callback</code>), then
+    restart the container.
+  </p>
+  {% endif %}
+</div>
+
 {# ── TV Guide (EPG) ───────────────────────────────────────────────── #}
 <div class="v3-card" style="margin-top:1rem">
   <h3>TV Guide (EPG)</h3>
