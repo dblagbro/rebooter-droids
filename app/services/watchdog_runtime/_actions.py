@@ -48,6 +48,8 @@ def _dispatch_one(rule: WatchdogRule, action: dict, target: dict) -> dict:
         return _fire_relay_set(rule, target, "relay_on")
     if kind == "relay_off":
         return _fire_relay_set(rule, target, "relay_off")
+    if kind == "apply_scene":
+        return _fire_scene(rule, action)
     if kind == "notify_only":
         return {"action": "notify_only", "note": "no power action"}
     return {"action": kind, "error": f"unsupported action: {kind}"}
@@ -95,6 +97,61 @@ def _fire_relay_set(rule: WatchdogRule, target: dict, cmd_type: str) -> dict:
         "action": cmd_type,
         "rule_id": rule.id,
         "enqueued": enqueued,
+        "skipped": skipped,
+    }
+
+
+def _fire_scene(rule: WatchdogRule, action: dict) -> dict:
+    """v0.5.91 (Stage B): apply a multi-device scene. Each `items`
+    entry sets one named device to a relay state and/or pushes an
+    `apply_config` payload — so a single action can put the surround
+    AND subwoofer into the state Erica wants while Jeopardy is on.
+    Unlike the single-target actions this ignores the rule's `target`
+    and uses each item's own `device_id`."""
+    from app.services.commands import enqueue_for_device
+
+    items = (action or {}).get("items") or []
+    applied: list[dict] = []
+    skipped: list[dict] = []
+    for item in items:
+        did = str((item or {}).get("device_id") or "").strip()
+        if not did:
+            skipped.append({"item": item, "error": "missing device_id"})
+            continue
+        relay = (item or {}).get("relay")
+        config = (item or {}).get("config")
+        commands: list[str] = []
+        try:
+            if relay == "on":
+                enqueue_for_device(device_id=did, cmd_type="relay_on",
+                                   payload=None, issued_by_user_id=None,
+                                   override_lockout=False)
+                commands.append("relay_on")
+            elif relay == "off":
+                enqueue_for_device(device_id=did, cmd_type="relay_off",
+                                   payload=None, issued_by_user_id=None,
+                                   override_lockout=False)
+                commands.append("relay_off")
+            elif relay == "cycle":
+                enqueue_for_device(
+                    device_id=did, cmd_type="relay_cycle",
+                    payload={"power_off_seconds": 5,
+                             "post_reboot_holdoff_seconds": 180},
+                    issued_by_user_id=None, override_lockout=False,
+                )
+                commands.append("relay_cycle")
+            if isinstance(config, dict) and config:
+                enqueue_for_device(device_id=did, cmd_type="apply_config",
+                                   payload=config, issued_by_user_id=None,
+                                   override_lockout=False)
+                commands.append("apply_config")
+            applied.append({"device_id": did, "commands": commands})
+        except Exception as e:
+            skipped.append({"device_id": did, "error": str(e)})
+    return {
+        "action": "apply_scene",
+        "rule_id": rule.id,
+        "applied": applied,
         "skipped": skipped,
     }
 

@@ -151,6 +151,13 @@ ACTION_KIND_HOLD_OFF = "hold_off"
 ACTION_KIND_NOTIFY_ONLY = "notify_only"
 ACTION_KIND_RELAY_ON = "relay_on"
 ACTION_KIND_RELAY_OFF = "relay_off"
+# v0.5.91 (Stage B — scenes): a multi-device action. Its `items` list
+# sets each named device to a relay state and/or pushes an
+# `apply_config` payload — "turn the surround AND subwoofer off and
+# apply Erica's audio config". One `apply_scene` reaches several
+# devices with *different* states, unlike the single-target leaf
+# actions. Lives inside the `action` JSON — no schema change.
+ACTION_KIND_SCENE = "apply_scene"
 ACTION_KIND_BINDING = "binding"
 
 # Leaf actions — valid as a plain rule action AND as the `on_active` /
@@ -161,6 +168,7 @@ LEAF_ACTION_KINDS = (
     ACTION_KIND_NOTIFY_ONLY,
     ACTION_KIND_RELAY_ON,
     ACTION_KIND_RELAY_OFF,
+    ACTION_KIND_SCENE,
 )
 KNOWN_ACTION_KINDS = LEAF_ACTION_KINDS + (ACTION_KIND_BINDING,)
 
