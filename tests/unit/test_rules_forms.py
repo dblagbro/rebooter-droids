@@ -83,6 +83,25 @@ def test_probe_roku_carries_per_kind_fields():
     assert probe["max_sample_age_seconds"] == 90
 
 
+def test_probe_epg_show_airing():
+    probe = build_probe_from_form(MultiDict([
+        ("probe_kind", "epg_show_airing"),
+        ("epg_show", "Jeopardy"),
+        ("epg_network", "ABC"),
+    ]))
+    assert probe == {"kind": "epg_show_airing", "show": "Jeopardy",
+                     "network": "ABC"}
+
+
+def test_probe_epg_show_airing_drops_blank_network():
+    probe = build_probe_from_form(MultiDict([
+        ("probe_kind", "epg_show_airing"),
+        ("epg_show", "Jeopardy"),
+        ("epg_network", ""),
+    ]))
+    assert probe == {"kind": "epg_show_airing", "show": "Jeopardy"}
+
+
 def test_probe_unknown_kind_raises():
     with pytest.raises(RuleFormError):
         build_probe_from_form(MultiDict([("probe_kind", "bogus")]))
@@ -131,6 +150,46 @@ def test_action_hold_off():
     assert build_action_from_form(
         MultiDict([("action_kind", "hold_off")])
     ) == {"kind": "hold_off"}
+
+
+def test_action_relay_off_and_relay_on():
+    assert build_action_from_form(
+        MultiDict([("action_kind", "relay_off")])) == {"kind": "relay_off"}
+    assert build_action_from_form(
+        MultiDict([("action_kind", "relay_on")])) == {"kind": "relay_on"}
+
+
+def test_action_apply_scene():
+    assert build_action_from_form(MultiDict([
+        ("action_kind", "apply_scene"),
+        ("scene_id", "scn_abc"),
+    ])) == {"kind": "apply_scene", "scene_id": "scn_abc"}
+
+
+def test_action_apply_scene_requires_a_scene():
+    with pytest.raises(RuleFormError):
+        build_action_from_form(MultiDict([("action_kind", "apply_scene")]))
+
+
+def test_action_binding_pairs_two_scenes():
+    action = build_action_from_form(MultiDict([
+        ("action_kind", "binding"),
+        ("binding_active_scene_id", "scn_on"),
+        ("binding_clear_scene_id", "scn_off"),
+    ]))
+    assert action == {
+        "kind": "binding",
+        "on_active": {"kind": "apply_scene", "scene_id": "scn_on"},
+        "on_clear": {"kind": "apply_scene", "scene_id": "scn_off"},
+    }
+
+
+def test_action_binding_requires_both_scenes():
+    with pytest.raises(RuleFormError):
+        build_action_from_form(MultiDict([
+            ("action_kind", "binding"),
+            ("binding_active_scene_id", "scn_on"),
+        ]))
 
 
 def test_action_unknown_kind_raises():

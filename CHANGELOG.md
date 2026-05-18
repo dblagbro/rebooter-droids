@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.93] - 2026-05-18
+
+### Added — rules form-builder: binding / scene / EPG without JSON (Stage C)
+
+The TV-scheduling rule shapes (`epg_show_airing` probe, `binding`
+action, `apply_scene`) shipped in v0.5.89–.92 but could only be
+authored via the JSON editor / API. The structured rule-create form on
+`/app/rules` now exposes them:
+
+- **Probe** — `epg_show_airing` ("tv guide — show currently airing")
+  with `show` + optional `network` fields. Toggled by
+  `rules_create_probe.js` like the other integration probes.
+- **Action** — `relay_off` / `relay_on` (idempotent set-state),
+  `apply_scene` (a saved-scene picker), and `binding` (two saved-scene
+  pickers — the scene to hold while the probe succeeds, the scene to
+  restore when it clears). A new `rules_create_action.js` toggles the
+  per-action-kind field blocks (the first per-action JS the form has
+  had — `cycle` keeps its fields).
+- The form's binding is expressed as **two saved scenes** — the common
+  shape; non-scene bindings stay on the JSON editor. So the whole
+  Erica/Jeopardy rule is now point-and-click: pick the EPG probe, pick
+  `binding`, pick the active + cleared scenes from
+  `/app/scenes`-authored scenes.
+
+`_rules_forms.py` gained the `epg_show_airing` probe builder and the
+four action builders; `rules_page` + the JSON-editor re-render now pass
+`scenes` to the template. Verified live — the structured form POST
+creates a rule with `probe.kind=epg_show_airing` and
+`action.kind=binding` carrying `apply_scene` edges. 7 new builder unit
+tests; gate ~701 tests.
+
+This closes the TV-scheduling feature (Stages A–C) — the
+Erica/Jeopardy rule is fully operable from the UI: author scenes on
+`/app/scenes`, then the binding rule on `/app/rules`.
+
 ## [0.5.92] - 2026-05-18
 
 ### Added — the named scene library (Stage C)
