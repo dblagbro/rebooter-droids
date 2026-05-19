@@ -1,14 +1,18 @@
 # Backlog
 
-> **Status — 2026-05-18 (v0.5.93).** The 2026-05-15 charter
+> **Status — 2026-05-19 (v0.5.100).** The 2026-05-15 charter
 > (`docs/notes/2026-05-15-pause-state-and-resume-charter.md`) — the
 > three operator-named problems **failing registrations, terrible UI,
 > poor QA** — is **fully closed**, along with the BUG-056–061
-> post-refactor regression sweep and the TV-scheduling feature
-> (Stages A–C). The active forward-work view is the **"Open"** table
-> under "Current state" below.
+> post-refactor regression sweep, the TV-scheduling feature
+> (Stages A–C), and the v0.5.94–.100 forward-work arc that drained the
+> prior backlog (Google Calendar OAuth, rules edit-form parity,
+> status-page live rule count, device-detail Watchdog/Schedule wiring,
+> CI gate-3 cleared, watchdog + deployments `tests/unit/` slices).
+> The active forward-work view is the **"Open"** table under "Current
+> state" below.
 
-Last updated: **2026-05-18** (post v0.5.93).
+Last updated: **2026-05-19** (post v0.5.100).
 
 The canonical "what's still owed" list. Historical B1–B24 entries +
 the firmware-team alignment-plan phases (1A-1D, 2A-2C, 3, 4A-4C, 5,
@@ -18,16 +22,17 @@ captures recent ship history; this doc captures forward intent.
 
 ---
 
-## Current state (2026-05-18)
+## Current state (2026-05-19)
 
-**Live**: `0.5.93` on both hubs (www + www2). CI green; the `-m ci`
-gate is ~701 tests run behind nginx.
+**Live**: `0.5.100` on both hubs (www + www2). CI green; the `-m ci`
+gate is ~850 tests run behind nginx (~115 of those in the in-process
+`tests/unit/` tree after the v0.5.99/.100 service-layer slices).
 
-The v0.5.61 → v0.5.93 arc shipped:
+The v0.5.61 → v0.5.100 arc shipped:
 
 - **Charter work fully closed** — P-REG (v0.5.68), the CI gate (P-QA
-  gate 1) *and* its widening: the gate grew 21 → ~701 tests, runs
-  behind nginx, and has an in-process `tests/unit/` tree (~280 tests).
+  gate 1) *and* its widening: the gate grew 21 → ~850 tests, runs
+  behind nginx, and has an in-process `tests/unit/` tree.
   P-UI closed via the 23-defect walkthrough (Tiers A–E, v0.5.7x).
 - **Post-refactor regression sweep** (v0.5.86–.89) — a deep validation
   pass filed BUG-056…061; all six fixed. BUG-052/054/055 stale
@@ -42,6 +47,39 @@ The v0.5.61 → v0.5.93 arc shipped:
   `/app/scenes`), and the `/app/rules` form-builder exposing the EPG /
   binding / scene shapes. The Erica/Jeopardy use case ("surround off
   while her show airs") is operable point-and-click.
+- **B17 Google Calendar OAuth** (v0.5.94) — the last unbuilt B17
+  integration. `google_calendar` source kind + consent/exchange/
+  refresh flow + `_poll_google_calendar` normalised to the iCal
+  payload shape. Stdlib HTTP, no `google-auth` dependency. B17 is
+  fully complete.
+- **Rules edit-form parity** (v0.5.95) — Phase 2B; the rules-edit
+  page now mirrors the create form (EPG probe + relay/apply_scene/
+  binding actions). New `_action_form_supported` gate keeps
+  round-trippable rules on the structured form; inline-`items`
+  scenes / non-scene bindings still drop to the JSON editor instead
+  of being silently flattened.
+- **Status-page live rule count** (v0.5.96) — `dashboard.stats()` now
+  returns `rules_total` / `rules_active`; the "active rules" tile
+  shows the live count with an honest sub-label. Cleared the stale
+  "watchdogs ship in P4" placeholder.
+- **Device-detail Watchdog/Schedule sections wired** (v0.5.97) — were
+  unconditional empty-state stubs; now list the rules and schedules
+  whose target resolves to the device (direct + group membership).
+  `watchdog.list_rules_for_device()` + `schedules.list_for_device()`
+  reuse the runtime's `resolve_target_devices` for runtime-consistent
+  semantics.
+- **CI gate-3 cleared** (v0.5.98) — `test_hardening_probes`,
+  `test_v033_cookie_domain`, `test_v042_watchdog_runtime`,
+  `test_v034_bulk_actions`, `test_responsive`, `test_ui_flows` all
+  now gate. Only `test_v0520_long_poll_commands` stays out, by
+  design (4–6 s per-test holds).
+- **Watchdog + deployments `tests/unit/` slices** (v0.5.99 +
+  v0.5.100) — 50 new in-process tests: the non-binding state machine,
+  the tick orchestrator (`REBOOTER_WATCHDOG_DISABLED`, portal
+  maintenance, due-ness, rule maintenance window, probe-error
+  recovery, threshold-cross fire), and the firmware-deployment
+  service end-to-end (validation, fan-out, supersede invariant,
+  `reconcile_assignment_reported_version`, list/counts).
 - **B11 multi-hub sync** — applier + emission + bootstrap-seam all
   shipped (v0.5.70–.72); sync converges end-to-end. `sync.enabled`
   stays default-off pending the operator's go-ahead.
@@ -51,8 +89,8 @@ The v0.5.61 → v0.5.93 arc shipped:
 | Item | Status |
 |---|---|
 | **P-REG** — failing registrations | ✅ DONE v0.5.68 — `site_id` NOT NULL 500 + lost-`/announce` strand fixed; an end-to-end adoption test now gates. |
-| **P-QA** — CI gate + widening | ✅ DONE — `.github/workflows/ci.yml`; gate ~701 tests behind nginx + a `tests/unit/` in-process tree. |
-| **P-UI** — the "terrible UI" problem | ✅ DONE — 23-defect heuristic walkthrough, Tiers A–E (v0.5.7x). |
+| **P-QA** — CI gate + widening | ✅ DONE — `.github/workflows/ci.yml`; gate ~850 tests behind nginx + a `tests/unit/` in-process tree. gate-3 backlog cleared in v0.5.98. |
+| **P-UI** — the "terrible UI" problem | ✅ DONE — 23-defect heuristic walkthrough, Tiers A–E (v0.5.7x); device-detail Watchdog/Schedule wired v0.5.97. |
 | **BUG-054 / BUG-055** | ✅ DONE — both verified fixed; plus BUG-056–061 from the regression sweep. |
 
 ### Open
@@ -60,12 +98,7 @@ The v0.5.61 → v0.5.93 arc shipped:
 | Item | Size | Status |
 |---|---|---|
 | **B11 — flip `sync.enabled` on** | — | Applier/emission/bootstrap all shipped (v0.5.70–.72); converges end-to-end, default-off. **Operator's call** to re-enable. |
-| **B17 — Google Calendar OAuth** | ~4–6 h | The other "remaining" B17 integrations are in fact **shipped**: Plex / Jellyfin / iOS-Shortcut webhooks (v0.5.61) and MQTT (v0.5.63) — source kinds, `_inbound` writers, `mqtt_subscriber`, the `/api/v1/integrations/webhook/<id>` endpoint, *and* the Settings → Integrations UI all exist. Only the Google Calendar **OAuth** consent flow is unbuilt — and a Google Calendar already works today as an `ical` source via its private `.ics` URL (the integrations form prompts for exactly that), so OAuth is a convenience layer, not new capability. Needs an operator-registered Google Cloud OAuth app. **Operator's call whether it's worth a ship.** |
-| **Phase 2B** — structured form on `rules/edit.html` | small-med | The rule **create** form is done (v0.5.93 — incl. EPG / binding / scene). Editing an advanced rule is still JSON-editor only. |
-| **CI gate-3 tail** — ~4 test files still ungated | small | `test_hardening_probes` (hardcoded prod creds), `test_v042` (in-container probe reachability), playwright files. See `docs/test-plan.md`. |
-| **`tests/unit/` coverage gaps** — watchdog tick/state loop, `deployments` | small-med | HTTP-covered only; worth in-process coverage. |
-| **EPG show↔network mapping helper** | small | A discovery aid for the `epg_show_airing` probe — optional polish on the TV feature. |
-| **Stale "0 active rules" status copy** | tiny | The Status-page totals row hardcodes a placeholder; needs a live rule count. |
+| **EPG show↔network mapping helper** | small | A discovery aid for the `epg_show_airing` probe — optional polish on the TV feature. Not requested. |
 | **P1.3 loaded-power validation** | small | **Firmware-blocked** — every real CSE7766 sample is no-load (0 W); cost/kWh analytics can't be validated until firmware delivers a known-load capture. |
 | **P3b** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
 | **Phase 6** — site/home profile + claim-assist groundwork | medium | Explicit low priority per the alignment plan. |
@@ -128,7 +161,8 @@ The v0.5.61 → v0.5.93 arc shipped:
 - ✅ **B17 Layer 1 — Roku ECP** — v0.5.17; adjacent (HA + Weather + iCal) v0.5.23;
   Solar (SolarEdge + Enphase) + SNMP v0.5.56–.58; **Plex / Jellyfin / iOS-Shortcut
   webhooks v0.5.61 (Ship 2); MQTT subscriber v0.5.63 (Ship 3)**; Layer 2 EPG +
-  the binding/scene rule shapes v0.5.89–.93. Only Google Calendar OAuth unbuilt.
+  the binding/scene rule shapes v0.5.89–.93. **Google Calendar OAuth v0.5.94**
+  — B17 fully complete.
 - ✅ **B18** Inline on/off toggle on devices list — v0.5.14
 - ✅ **B19** Firmware-scan content-change detection — v0.5.13
 - ✅ **B20** MAC-dupe restore-vs-fresh adoption — v0.5.7 (schema/UI) + 2026-05-14 (live cleanup confirmed)
@@ -145,6 +179,21 @@ The v0.5.61 → v0.5.93 arc shipped:
 | 1C — daily rollups + sparkline + fleet timeseries | v0.5.29 |
 | 1C cost calc + CSV export | v0.5.30 |
 | 1D — power-targeted watchdog probe kinds | v0.5.32 |
+
+### Closeout arc — v0.5.94 → v0.5.100 (2026-05-18 → 2026-05-19)
+
+Drained the entire prior "Open" table — only the operator-gated,
+firmware-blocked, and explicitly-deferred items remain.
+
+| Ship | What landed |
+|---|---|
+| v0.5.94 | **B17 Google Calendar OAuth** — the last unbuilt B17 integration. `google_oauth.py` (consent/exchange/refresh, stdlib HTTP) + `_poll_google_calendar` normalised to the iCal payload shape so `ical_event_active` is back-end-agnostic + Settings → Integrations card. |
+| v0.5.95 | **Rules edit-form parity (Phase 2B)** — the `/app/rules/<id>/edit` structured form now matches the create form (EPG probe + relay/apply_scene/binding actions). New `_action_form_supported` gate prevents silent data loss on save when an action shape can't round-trip. |
+| v0.5.96 | **Status-page live rule count** — replaced the hardcoded "0 active rules / watchdogs ship in P4" placeholder with a live `dashboard.stats()` count + honest sub-label ("of N total · M disabled" / "all enabled" / "none yet — add one"). |
+| v0.5.97 | **Device-detail Watchdog / Schedule sections wired** — were unconditional empty-state stubs ("…ship in P4"); now list the rules and schedules whose target resolves to the device, via `watchdog.list_rules_for_device()` + `schedules.list_for_device()` reusing the runtime's `resolve_target_devices`. |
+| v0.5.98 | **P-QA gate-3 cleared** — six more test files now gate (`test_hardening_probes`, `test_v033_cookie_domain`, `test_v042_watchdog_runtime`, `test_v034_bulk_actions`, `test_responsive`, `test_ui_flows`). Only `test_v0520_long_poll_commands` stays out, by design. |
+| v0.5.99 | **`tests/unit/` for the watchdog tick + state machine** — 25 new in-process tests across `test_watchdog_state_transitions.py` (non-binding state machine end-to-end + `_rule_is_due` + `_in_maintenance_window`) and `test_watchdog_tick.py` (env-disabled, maintenance, due-ness, window, probe-error, success wiring, threshold-cross fire via the injectable `now`). |
+| v0.5.100 | **`tests/unit/` for the firmware-deployment service** — 25 new in-process tests for `app/services/deployments.py`: `create_deployment` (validation + fan-out across `device`/`group`/`site`/`all_devices` + supersede-prior-pending invariant), `assignment_for_device`, `mark_assignment_delivered`, `reconcile_assignment_reported_version` (the v0.5.14 pending→completed gap), `list_deployments` count breakdown + ordering. |
 
 ### Firmware-team alignment plan (post-v0.5.24-merge)
 | Phase | Ship | Notes |
