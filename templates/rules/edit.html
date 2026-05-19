@@ -432,10 +432,87 @@
   <h3 style="margin-top:0">Probe shape reference</h3>
   <p class="muted" style="font-size:.85rem">
     Copy-paste starting points for the <code>"probe"</code> block in the
-    JSON editor above — handy for the kinds the structured form doesn't
-    cover (<code>host_awake</code>, <code>mqtt_topic_equals</code>).
+    JSON editor above. The structured form covers the network probes +
+    Roku / HA-state / weather / iCal / EPG / power kinds — these cards
+    are mainly for the JSON-only kinds (<code>host_awake</code>,
+    <code>ha_numeric_*</code>, <code>solar_*</code>, <code>snmp_*</code>,
+    <code>media_session_active</code>, <code>webhook_field_equals</code>,
+    <code>mqtt_topic_equals</code>) plus a quick reference for everything
+    else. v0.5.101 backfilled the remaining ~16 kinds from
+    <code>KNOWN_PROBE_KINDS</code>.
   </p>
 
+  {# ── Network probes (no source_id — direct from this hub) ──────── #}
+  <details style="margin-top:.6rem">
+    <summary class="muted" style="cursor:pointer">internet</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "internet",
+  "targets": [
+    {"host": "1.1.1.1", "port": 53},
+    {"host": "8.8.8.8", "port": 53},
+    {"host": "4.2.2.2", "port": 53}
+  ]
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Outbound TCP-connect to each target; succeeds if <strong>any</strong>
+      succeeds, fails only when <strong>all</strong> fail. <code>targets</code>
+      defaults to the three public-DNS resolvers above if omitted.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">ping</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "ping",
+  "host": "192.168.1.1"
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Native ICMP ping (v0.5.13 — B6.1). Requires the container's
+      raw-socket capability; falls back to TCP-connect on hosts where
+      it can't open a raw socket.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">tcp</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "tcp",
+  "host": "10.0.0.1",
+  "port": 22
+}</pre>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">http</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "http",
+  "url": "https://example.com/healthz"
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Succeeds on a 2xx response within the probe timeout.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">dns</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "dns",
+  "hostname": "example.com"
+}</pre>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">gateway</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "gateway"
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Pings the device's LAN gateway (resolved from the device's most
+      recent heartbeat). No <code>host</code> needed.
+    </p>
+  </details>
+
+  {# ── Integration probes (source-id-backed) ──────────────────────── #}
   <details style="margin-top:.6rem">
     <summary class="muted" style="cursor:pointer">roku_app_active</summary>
 <pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
@@ -482,6 +559,153 @@
 }</pre>
     <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
       <code>summary_contains</code> is optional — empty matches any currently-airing event.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">ha_numeric_above</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "ha_numeric_above",
+  "source_id": "ext_…",
+  "entity_id": "sensor.attic_temperature_f",
+  "threshold": 95,
+  "max_sample_age_seconds": 300
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Succeeds when the HA entity's numeric state strictly exceeds
+      <code>threshold</code>. Use the matching <code>ha_numeric_below</code>
+      kind for the inverse.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">ha_numeric_below</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "ha_numeric_below",
+  "source_id": "ext_…",
+  "entity_id": "sensor.basement_humidity_pct",
+  "threshold": 30,
+  "max_sample_age_seconds": 300
+}</pre>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">solar_production_above</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "solar_production_above",
+  "source_id": "ext_…",
+  "threshold_w": 4000,
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Source must be a <code>solaredge</code> or <code>enphase</code>
+      integration (v0.5.56). Use to gate "run the pool pump while solar
+      output is high" style rules. Matching <code>solar_production_below</code>
+      exists for the inverse.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">solar_production_below</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "solar_production_below",
+  "source_id": "ext_…",
+  "threshold_w": 500,
+  "max_sample_age_seconds": 600
+}</pre>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">snmp_interface_down</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "snmp_interface_down",
+  "source_id": "ext_…",
+  "if_name": "eth1",
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Source must be an <code>snmp</code> integration (v0.5.58, P2.2/P2.3).
+      Succeeds when the named interface's <code>ifOperStatus</code> is
+      anything other than <em>up</em>. UniFi gear serves SNMP only once
+      the controller has SNMPv1/v2c enabled.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">snmp_throughput_above</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "snmp_throughput_above",
+  "source_id": "ext_…",
+  "if_name": "eth1",
+  "direction": "in",
+  "threshold_bps": 50000000,
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      <code>direction</code> is <code>"in"</code> or <code>"out"</code>;
+      <code>threshold_bps</code> is bits-per-second. Matching
+      <code>snmp_throughput_below</code> exists for the inverse.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">snmp_throughput_below</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "snmp_throughput_below",
+  "source_id": "ext_…",
+  "if_name": "eth1",
+  "direction": "in",
+  "threshold_bps": 100000,
+  "max_sample_age_seconds": 600
+}</pre>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">snmp_error_rate_above</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "snmp_error_rate_above",
+  "source_id": "ext_…",
+  "if_name": "eth1",
+  "threshold_errors_per_minute": 5,
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Succeeds when the named interface's combined in+out error counter
+      grows faster than <code>threshold_errors_per_minute</code> across
+      the two most-recent SNMP samples.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">media_session_active</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "media_session_active",
+  "source_id": "ext_…",
+  "max_sample_age_seconds": 600
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      Source must be a <code>plex</code> or <code>jellyfin</code> webhook
+      integration (v0.5.61). Succeeds while a play / resume webhook has
+      arrived within <code>max_sample_age_seconds</code> and no pause /
+      stop has superseded it. A reboot rule using this fires only while
+      nothing is playing.
+    </p>
+  </details>
+
+  <details style="margin-top:.4rem">
+    <summary class="muted" style="cursor:pointer">webhook_field_equals</summary>
+<pre style="background:rgba(0,0,0,0.05); padding:.5rem; border-radius:4px; font-size:.8rem; overflow:auto">"probe": {
+  "kind": "webhook_field_equals",
+  "source_id": "ext_…",
+  "field": "payload.state",
+  "expected_value": "armed",
+  "max_sample_age_seconds": 900
+}</pre>
+    <p class="muted" style="font-size:.75rem; margin:.3rem 0 0">
+      For custom webhook integrations (iOS Shortcut and any
+      operator-defined source kind). <code>field</code> is a dotted path
+      into the most-recent inbound JSON payload; equality is
+      case-insensitive.
     </p>
   </details>
 

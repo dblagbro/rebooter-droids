@@ -9,9 +9,10 @@ is fully closed.
 
 This document is the canonical description of how rebooter-droids is
 tested. It replaces the prior per-sweep verdict-logging version of this
-file, and supersedes `qa-notes.md` — which has grown to ~105 K tokens
-of accreted session notes and is no longer a usable plan (treat it as
-history only).
+file, and supersedes the historical `qa-notes.md` — which grew to
+~105 K tokens of accreted session notes and is now archived at
+`docs/sessions/qa-notes-archived-20260519.md` (history only — not a
+plan).
 
 ## How the suite is shaped today
 
@@ -253,9 +254,11 @@ gate (its long-poll holds tie up the runner 4–6 s per test by design).
    browser image skips them cleanly. The previously-stale
    `test_mobile_topbar_nav_links_reachable` (5-vs-6 nav links) was
    pre-cleared.
-5. **`qa-notes.md` is unmaintained** (~105 K tokens). Not deleted yet
-   (it has historical value) but it is not a plan. Candidate for
-   archival / deletion next sweep.
+5. **`qa-notes.md` archived in v0.5.101** to
+   `docs/sessions/qa-notes-archived-20260519.md`. ~105 K-token soak-
+   test diary; preserved for history (referenced from BUG entries,
+   the 2026-05-15 charter, and the firmware refactor log) but no
+   longer in the top-level docs/.
 6. **bug-log.md drifts** — was the BUG-061 finding; fixed in the same
    sweep. Stale-`open` tags should be flagged on every release-notes
    review.

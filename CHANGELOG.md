@@ -7,7 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.100] - 2026-05-19
+## [0.5.101] - 2026-05-19
+
+### Fixed — numeric form inputs can no longer 500 the page
+
+The remediation-plan Group A ship: closes the latent uncaught-`ValueError`
+bug carried since v0.5.67 (refactor-log entry "one pre-existing latent
+issue"), backfills the rules-edit probe-shape reference, and archives
+the stale qa-notes diary.
+
+- **`_int_field` + `FormValidationError` helper** in
+  `app/blueprints/admin/_common.py` — wraps the `int(form.get(name) or
+  default)` pattern. Empty/missing falls back to the caller's default
+  (matches prior behaviour). Non-integer raises a typed error with the
+  field name and the bad value; the calling handler turns it into a
+  flash + redirect (form routes) or a `validation_failed` envelope
+  (JSON API routes). Optional `lo` / `hi` bounds available but
+  deliberately not adopted at any site yet (drop-in, no behaviour
+  change).
+- **All seven 500-able sites wired through it**:
+  - `rules.py::rules_create_submit` (structured form),
+  - `rules.py::rules_create_json_submit` (JSON-editor),
+  - `rules.py::rules_edit_submit` (JSON-editor on the edit page),
+  - `rules.py::rules_edit_form_submit` (structured edit form),
+  - `schedules.py::schedules_create_submit` (form),
+  - `schedules.py::create_schedule_api` (JSON API).
+  The two adjacent sites (`groups.py::group_send_command_submit` and
+  `devices_ui.py::device_send_command`) already had defensive
+  `try/except ValueError → default` fallbacks and were left as-is.
+
+### Added — probe-shape reference backfill (rules edit page)
+
+The "Probe shape reference" card on `/app/rules/<id>/edit` documented
+~9 of the 26 probe kinds in `KNOWN_PROBE_KINDS`. Backfilled the
+missing 16 (6 network kinds — internet / ping / tcp / http / dns /
+gateway — and 10 integration kinds — `ha_numeric_above` / `_below`,
+`solar_production_above` / `_below`, `snmp_interface_down`,
+`snmp_throughput_above` / `_below`, `snmp_error_rate_above`,
+`media_session_active`, `webhook_field_equals`). Intro paragraph
+refreshed.
+
+### Changed — archived `docs/qa-notes.md`
+
+Moved to `docs/sessions/qa-notes-archived-20260519.md`. ~105 K-token
+soak-test diary; explicitly flagged as "history only" in
+`test-plan.md` for several sweeps. Preserved for cross-references
+(BUG-entries, the 2026-05-15 charter, the firmware refactor log)
+without polluting the top-level `docs/`.
+
+### Tests
+
+- `tests/qa/test_v05101_form_input_hardening.py` — pins the
+  redirect-not-500 behaviour at every fixed site (6 tests). Runs
+  in the `-m ci` gate.
+
+Gate widens 850 → 856.
 
 ### Added — `tests/unit/` coverage for the firmware-deployment service
 
