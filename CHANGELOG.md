@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.96] - 2026-05-19
+
+### Fixed — status page "active rules" tile shows a live count
+
+The status page (`/app/`) totals row hardcoded `0` active rules with a
+"watchdogs ship in P4" sub-label — stale since v0.3.1; the watchdog
+rules engine shipped long ago. The tile now reads live counts:
+
+- `dashboard.stats()` returns `rules_total` and `rules_active`
+  (`WatchdogRule` rows, and the `enabled` subset).
+- The tile shows the active count, and its sub-label reflects reality
+  — "of N total · M disabled", "all enabled", or "none yet — add one".
+
+2 new unit tests (`dashboard.stats()` rule counts) + 2 new live tests
+(no stale copy, count tracks a created rule).
+
+Known adjacent staleness, not fixed here: the device-detail page's
+Watchdog / Schedule sections are still unconditional empty-state stubs
+(they never query rules targeting the device) — wiring those is a
+separate item, tracked in the pause-state notes.
+
 ## [0.5.95] - 2026-05-19
 
 ### Added — rules form-builder: parity on the *edit* page (Phase 2B)

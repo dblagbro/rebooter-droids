@@ -15,6 +15,7 @@ from app.models import (
     FirmwareRelease,
     Group,
     Site,
+    WatchdogRule,
 )
 
 
@@ -82,6 +83,20 @@ def stats(online_threshold_seconds: int = 180) -> dict:
             )
             or 0
         )
+        # v0.5.96: live watchdog-rule counts — the status page's "active
+        # rules" tile hardcoded 0 with a stale "watchdogs ship in P4"
+        # sub-label since v0.3.1. Watchdogs shipped long ago.
+        rules_total = (
+            session.scalar(select(func.count()).select_from(WatchdogRule)) or 0
+        )
+        rules_active = (
+            session.scalar(
+                select(func.count()).select_from(WatchdogRule).where(
+                    WatchdogRule.enabled.is_(True)
+                )
+            )
+            or 0
+        )
 
         return {
             "devices_total": total,
@@ -100,6 +115,8 @@ def stats(online_threshold_seconds: int = 180) -> dict:
             "firmware_releases_total": firmware_count,
             "events_24h": events_24h,
             "commands_24h": cmds_24h,
+            "rules_total": rules_total,
+            "rules_active": rules_active,
             "online_threshold_seconds": online_threshold_seconds,
             "computed_at": _iso(now),
         }
