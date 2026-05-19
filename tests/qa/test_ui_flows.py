@@ -1,6 +1,14 @@
 """Browser-driven UI flow tests."""
 
+import pytest
+
 from .conftest import unique_suffix
+
+# v0.5.98 (P-QA gate-3): the `page` fixture is built on
+# `chromium_browser`, which skips cleanly when playwright / the
+# chromium binary isn't available — so the CI gate skips these
+# uniformly. Safe to mark.
+pytestmark = pytest.mark.ci
 
 
 def test_login_logout_round_trip(page, base_url, admin_creds):

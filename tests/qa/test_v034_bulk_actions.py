@@ -19,12 +19,13 @@ import requests
 
 from .conftest import unique_suffix
 
-# NB: not in the `-m ci` gate — test_list_page_renders_bulk_form_scaffolding
-# asserts `/app/groups` shows bulk-form scaffolding, which only renders
-# when a group already exists. It passes in a full suite run (an earlier
-# test leaves a group behind) but fails on a fresh instance. Gate it once
-# the test seeds its own group. (P-QA gate-3.)
-
+# v0.5.98 (P-QA gate-3): gated. test_list_page_renders_bulk_form_scaffolding
+# asserts `/app/groups` shows the bulk-form scaffolding, which only renders
+# when a row exists. On a fresh instance every list page is empty → the
+# in-test skip swallows everything. The autouse `_seed_bulk_rows` fixture
+# below seeds one row of each kind so every parametrize case exercises the
+# real path on a fresh CI replica.
+pytestmark = pytest.mark.ci
 
 
 @pytest.fixture(scope="module")
@@ -38,6 +39,60 @@ def shell_session(base_url, admin_creds):
     )
     assert r.status_code == 200, r.text
     return s
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _seed_bulk_rows(shell_session, base_url):
+    """Seed one of each entity so every bulk-form list page has a row
+    to render the scaffolding for — without this, on a fresh instance
+    every parametrize case skipped (empty state → no `data-bulk-form`)
+    and the test exercised nothing. Cleanup is best-effort."""
+    seeded = {}
+    try:
+        seeded["device_id"] = _enroll_device(
+            shell_session, base_url, f"qa034-seed-{unique_suffix()}"
+        )
+    except Exception:
+        pass
+    g = shell_session.post(
+        f"{base_url}/api/v1/admin/groups",
+        json={"name": f"qa034-seed-grp-{unique_suffix()}"},
+        timeout=10,
+    )
+    if g.status_code == 201:
+        seeded["group_id"] = g.json()["data"]["id"]
+    inv = shell_session.post(
+        f"{base_url}/api/v1/admin/invitations",
+        json={"email": f"qa034-seed-{unique_suffix()}@example.invalid",
+              "role": "admin"},
+        timeout=10,
+    )
+    if inv.status_code in (200, 201):
+        data = inv.json().get("data") or {}
+        seeded["invitation_id"] = data.get("id")
+    tok = shell_session.post(
+        f"{base_url}/api/v1/admin/enrollment-tokens",
+        json={"display_name_hint": f"qa034-seed-tok-{unique_suffix()}",
+              "note": "qa034-bulk-seed"},
+        timeout=10,
+    )
+    if tok.status_code in (200, 201):
+        data = tok.json().get("data") or {}
+        # the enrollment-tokens API returns the raw token + an id; either
+        # works for cleanup. Store whatever's there.
+        seeded["token_id"] = data.get("id") or data.get("token_id")
+    yield seeded
+    # best-effort cleanup — ephemeral CI DB doesn't strictly need it.
+    if seeded.get("device_id"):
+        shell_session.delete(
+            f"{base_url}/api/v1/admin/devices/{seeded['device_id']}",
+            timeout=10,
+        )
+    if seeded.get("group_id"):
+        shell_session.delete(
+            f"{base_url}/api/v1/admin/groups/{seeded['group_id']}",
+            timeout=10,
+        )
 
 
 def _enroll_device(shell_session, base_url, hint: str) -> str:
