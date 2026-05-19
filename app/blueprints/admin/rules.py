@@ -52,14 +52,38 @@ from app.services.watchdog import (
 
 # v0.5.77 (#15): probe kinds the structured rule form can round-trip.
 # A rule whose probe.kind is outside this set (host_awake,
-# mqtt_topic_equals, epg_show_airing, …) gets the JSON editor only — the
-# structured form has no field block for it and would silently rebuild
-# it as `internet` on save.
+# mqtt_topic_equals, …) gets the JSON editor only — the structured form
+# has no field block for it and would silently rebuild it as `internet`
+# on save. v0.5.95: epg_show_airing joined the set (edit-form parity).
 STRUCTURED_PROBE_KINDS = frozenset({
     "internet", "ping", "tcp", "http", "dns", "gateway",
     "roku_app_active", "ha_state_is", "weather_alert_active",
-    "ical_event_active", "power_above", "power_below", "power_zero_while_on",
+    "ical_event_active", "epg_show_airing",
+    "power_above", "power_below", "power_zero_while_on",
 })
+
+
+def _action_form_supported(action: dict) -> bool:
+    """True when the structured edit form can round-trip this action
+    without data loss — the action-side analogue of STRUCTURED_PROBE_KINDS.
+
+    `apply_scene` / `binding` are form-editable only when they reference
+    saved scenes by `scene_id`; an `apply_scene` carrying inline `items`
+    or a `binding` with non-scene edges has no field block and falls back
+    to the JSON editor rather than being silently flattened on save."""
+    a = action or {}
+    kind = a.get("kind")
+    if kind in ("cycle", "hold_off", "notify_only", "relay_on", "relay_off"):
+        return True
+    if kind == "apply_scene":
+        return bool(a.get("scene_id"))
+    if kind == "binding":
+        for edge in (a.get("on_active"), a.get("on_clear")):
+            e = edge or {}
+            if e.get("kind") != "apply_scene" or not e.get("scene_id"):
+                return False
+        return True
+    return False
 
 
 def _sources_by_kind() -> dict:
@@ -95,6 +119,8 @@ def _render_rule_edit(rule: dict, *, rule_json: str, json_editor_error: str | No
         probe_arg = p.get("hostname") or ""
     else:
         probe_arg = ""
+    probe_ok = pk in STRUCTURED_PROBE_KINDS
+    action_ok = _action_form_supported(rule.get("action") or {})
     return render_template(
         "rules/edit.html",
         **_ctx({
@@ -105,8 +131,13 @@ def _render_rule_edit(rule: dict, *, rule_json: str, json_editor_error: str | No
             "devices": svc_list_devices(include_qa_fixtures=False),
             "groups": svc_list_groups(),
             "sources_by_kind": _sources_by_kind(),
+            "scenes": svc_list_scenes(),
             "probe_arg": probe_arg,
-            "probe_form_supported": pk in STRUCTURED_PROBE_KINDS,
+            "probe_form_supported": probe_ok,
+            "action_form_supported": action_ok,
+            # The structured form is offered only when it can round-trip
+            # both the probe and the action without data loss.
+            "form_supported": probe_ok and action_ok,
         }),
     )
 

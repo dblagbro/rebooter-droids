@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.95] - 2026-05-19
+
+### Added — rules form-builder: parity on the *edit* page (Phase 2B)
+
+v0.5.93 brought the structured rule **create** form up to the
+TV-scheduling rule shapes. The **edit** page lagged: an `epg_show_airing`
+rule, or any rule with a `relay_on` / `relay_off` / `apply_scene` /
+`binding` action, fell back to the JSON editor — there was no field
+block to round-trip it. The edit form now mirrors the create form:
+
+- **Probe** — `epg_show_airing` joins `STRUCTURED_PROBE_KINDS`, so an
+  EPG rule edits in the structured form (show title + optional
+  network), pre-populated from the rule. Was JSON-editor-only.
+- **Actions** — `relay_off` / `relay_on` / `apply_scene` / `binding`
+  gained field blocks on the edit page, toggled by the shared
+  `rules_create_action.js` and pre-selected from the rule (the
+  `apply_scene` scene picker and the `binding` active/cleared scene
+  pickers all reflect the saved `scene_id`s).
+- **Safe fallback** — a new `_action_form_supported` gate is the
+  action-side analogue of `STRUCTURED_PROBE_KINDS`: an `apply_scene`
+  with inline `items` (no `scene_id`), or a `binding` with a non-scene
+  edge, still drops to the JSON editor rather than being silently
+  flattened on save. The structured form is offered only when both the
+  probe **and** the action can round-trip; the "isn't available"
+  notice now names whichever side fell back.
+
+The whole Erica/Jeopardy binding rule is now point-and-click to *edit*,
+not just create. No schema change. 9 new unit tests
+(`_action_form_supported` + the EPG probe-kind gate) and 4 new live
+edit-form tests (EPG render + save, binding render + round-trip).
+Gate ~725 tests.
+
 ## [0.5.94] - 2026-05-18
 
 ### Added — Google Calendar integration (OAuth) — B17
