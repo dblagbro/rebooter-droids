@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.98] - 2026-05-19
+
+### Changed — P-QA gate-3: 6 more test files now gate
+
+The CI gate has been widening test-by-test as the blockers behind each
+file got cleared. This pass clears the gate-3 backlog from
+`docs/test-plan.md`:
+
+- `test_hardening_probes` — replaced hardcoded production credentials
+  with the `admin_creds` fixture (so it works against any instance);
+  the cookie-`Secure` assertion now skips cleanly when the instance is
+  running with `REBOOTER_SESSION_COOKIE_SECURE=0` (HTTP localhost) but
+  still asserts `HttpOnly` + `SameSite` every gate.
+- `test_v033_cookie_domain` — `test_theme_cookie_legacy_name_still_read`
+  derived the cookie domain from `urlsplit(base_url).netloc`, which
+  for a `host:port` base URL included the port → the cookie was never
+  sent back. Strip the port.
+- `test_v042_watchdog_runtime::test_probe_now_http_success` — the
+  probe URL was `{base_url}/api/v1/version`, but `base_url` is the
+  *test client's* view of the app; the probe runs inside the app
+  container and couldn't reach a host-mapped port. Use the app's own
+  in-container listener (`http://localhost:8090/api/v1/version`) —
+  reachable from any deployment.
+- `test_v034_bulk_actions` — added a module-scoped autouse
+  `_seed_bulk_rows` fixture that seeds one device + one group + one
+  invitation + one enrollment token so every list page has a row and
+  the parametrized bulk-form scaffolding assertion exercises the real
+  path on a fresh CI replica (instead of skipping via the empty-state
+  fallback).
+- `test_responsive` + `test_ui_flows` — browser-driven; the
+  `chromium_browser` fixture already skips cleanly when playwright /
+  the chromium binary isn't available. Now gated; both skip uniformly
+  in CI.
+
+Gate widens from ~739 to ~800 tests (the bulk of the increase is
+`test_ui_flows`'s browser suite, which actually runs when playwright
++ chromium are present locally; in GitHub Actions without a browser
+those tests skip cleanly). The `test-plan.md` "Known coverage gaps"
+item is reduced — the only remaining ungated file is
+`test_v0520_long_poll_commands`, excluded by design (it deliberately
+holds requests for 4-6 s per test).
+
 ## [0.5.97] - 2026-05-19
 
 ### Added — device-detail Watchdog / Schedule sections list real rules
