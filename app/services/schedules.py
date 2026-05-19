@@ -6,6 +6,7 @@ tick lives in `app/services/schedule_runtime.py`.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -67,6 +68,26 @@ def get(schedule_id: str) -> dict | None:
     with session_scope() as session:
         s = session.get(Schedule, schedule_id)
         return serialize(s) if s else None
+
+
+def list_for_device(device_id: str) -> list[dict]:
+    """Schedules whose target resolves to include `device_id` — mirrors
+    `watchdog.list_rules_for_device`. Reuses the runtime resolver so the
+    device-detail page lists exactly what the schedule tick would act
+    on (`device` targets + `group` memberships; `tag` targets resolve to
+    no devices today). Distinct targets are resolved once each."""
+    from app.services.watchdog_runtime import resolve_target_devices
+
+    resolved: dict[str, list[str]] = {}
+    out: list[dict] = []
+    for sched in list_all():
+        target = sched.get("target") or {}
+        key = json.dumps(target, sort_keys=True)
+        if key not in resolved:
+            resolved[key] = resolve_target_devices(target)
+        if device_id in resolved[key]:
+            out.append(sched)
+    return out
 
 
 def create(

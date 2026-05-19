@@ -16,6 +16,7 @@ the human-readable shape immediately.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -102,6 +103,29 @@ def get_rule(rule_id: str) -> dict | None:
             return None
         sentence = render_rule_sentence(r)
         return serialize_rule(r, sentence=sentence)
+
+
+def list_rules_for_device(device_id: str) -> list[dict]:
+    """Watchdog rules whose target resolves to include `device_id`.
+
+    Reuses the runtime's `resolve_target_devices` so the device-detail
+    page shows exactly what the watchdog would act on — direct `device`
+    targets and `group` memberships. (`tag` targets resolve to no
+    devices today, so a tag-targeted rule appears on no device's page —
+    consistent with the runtime treating them as a no-op.) Distinct
+    targets are resolved once each."""
+    from app.services.watchdog_runtime import resolve_target_devices
+
+    resolved: dict[str, list[str]] = {}
+    out: list[dict] = []
+    for rule in list_rules():
+        target = rule.get("target") or {}
+        key = json.dumps(target, sort_keys=True)
+        if key not in resolved:
+            resolved[key] = resolve_target_devices(target)
+        if device_id in resolved[key]:
+            out.append(rule)
+    return out
 
 
 def list_recent_events(rule_id: str, limit: int = 50) -> list[dict]:

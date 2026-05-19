@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.97] - 2026-05-19
+
+### Added — device-detail Watchdog / Schedule sections list real rules
+
+The device-detail page's Watchdog and Schedule sections were
+unconditional empty-state stubs ("…ship in P4") — they never queried
+the backend, so even a device covered by rules showed "none". They now
+list the rules and schedules acting on the device:
+
+- `watchdog.list_rules_for_device(device_id)` and
+  `schedules.list_for_device(device_id)` — both reuse the watchdog
+  runtime's `resolve_target_devices`, so the page lists exactly what
+  the runtime would act on: direct `device` targets and `group`
+  memberships. (`tag` targets resolve to no devices today — a
+  tag-targeted rule shows on no device's page, matching the runtime
+  no-op.) Distinct targets are resolved once each.
+- The Watchdog section shows each rule's name, plain-English sentence,
+  armed/disabled status, and failure streak, with an Edit link; the
+  Schedule section shows name, sentence, next run and status. Both
+  keep an honest empty state when nothing targets the device.
+- Fixed: the schedule section's empty-state CTA pointed at the rules
+  page — now links to `/schedules`.
+
+6 new unit tests + 4 new live tests (direct, group-membership, empty
+state, schedule).
+
 ## [0.5.96] - 2026-05-19
 
 ### Fixed — status page "active rules" tile shows a live count

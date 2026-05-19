@@ -409,24 +409,90 @@
   {% endif %}
 </section>
 
-{# ── watchdog (P4 stub) ─────────────────────────────────────────────── #}
+{# ── watchdog ──────────────────────────────────────────────────────── #}
+{# v0.5.97: was a P4 stub — now lists the watchdog rules whose target
+   resolves to this device (direct device target, or a group it's in). #}
 <section class="v3-card" id="watchdog">
   <h2>Watchdog</h2>
+  {% if watchdog_rules %}
+  <p class="muted" style="margin-top:0">
+    {{ watchdog_rules|length }} watchdog rule{{ '' if watchdog_rules|length == 1 else 's' }}
+    act on this device — directly, or through a group it belongs to.
+  </p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Rule</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for r in watchdog_rules %}
+    <tr>
+      <td data-label="Rule">
+        <strong>{{ r.name }}</strong><br>
+        <span class="muted" style="font-size:.85rem">{{ r.sentence }}</span>
+      </td>
+      <td data-label="Status">
+        {% if r.enabled %}<span class="badge green">{{ r.status }}</span>
+        {% else %}<span class="badge">disabled</span>{% endif %}
+        {% if r.failure_streak and r.failure_streak > 0 %}
+          <br><span class="badge red" style="font-size:.7rem">streak: {{ r.failure_streak }}/{{ r.failure_threshold }} fail</span>
+        {% endif %}
+      </td>
+      <td style="white-space:nowrap">
+        <a class="btn-secondary" style="font-size:.8rem"
+           href="{{ url_for('admin_ui.rules_edit_page', rule_id=r.id) }}">Edit rule</a>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
   {% set empty_title = "No watchdog rules targeting this device" %}
-  {% set empty_body = "When watchdog rules ship in P4, every rule that includes this device will appear here with its last-trigger reason and a quick re-arm/disable affordance." %}
+  {% set empty_body = "No watchdog rule's target resolves to this device — directly, or through a group it belongs to. Add one to auto-recover it when a probe fails." %}
   {% set empty_cta_label = "Manage rules" %}
   {% set empty_cta_href = url_for('admin_ui.rules_page') %}
   {% include "_components/empty_state.html" %}
+  {% endif %}
 </section>
 
-{# ── schedule (P4 stub) ─────────────────────────────────────────────── #}
+{# ── schedule ──────────────────────────────────────────────────────── #}
+{# v0.5.97: was a P4 stub — now lists the schedules whose target
+   resolves to this device. #}
 <section class="v3-card" id="schedule">
   <h2>Schedule</h2>
+  {% if device_schedules %}
+  <p class="muted" style="margin-top:0">
+    {{ device_schedules|length }} schedule{{ '' if device_schedules|length == 1 else 's' }}
+    act on this device — directly, or through a group it belongs to.
+  </p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Schedule</th><th>Next run</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for s in device_schedules %}
+    <tr>
+      <td data-label="Schedule">
+        <strong>{{ s.name }}</strong><br>
+        <span class="muted" style="font-size:.85rem">{{ s.sentence }}</span>
+      </td>
+      <td class="muted" style="font-size:.85rem" data-label="Next run">
+        {{ s.next_run_at or '—' }}
+      </td>
+      <td data-label="Status">
+        {% if s.enabled %}<span class="badge green">enabled</span>
+        {% else %}<span class="badge">disabled</span>{% endif %}
+      </td>
+      <td style="white-space:nowrap">
+        <a class="btn-secondary" style="font-size:.8rem"
+           href="{{ url_for('admin_ui.schedules_page') }}">Manage</a>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
   {% set empty_title = "No schedules targeting this device" %}
-  {% set empty_body = "Recurring power cycles (e.g. nightly modem reboots) ship in P4 alongside watchdog rules." %}
+  {% set empty_body = "No schedule's target resolves to this device. Add one for recurring power cycles — e.g. a nightly modem reboot." %}
   {% set empty_cta_label = "Manage schedules" %}
-  {% set empty_cta_href = url_for('admin_ui.rules_page') %}
+  {% set empty_cta_href = url_for('admin_ui.schedules_page') %}
   {% include "_components/empty_state.html" %}
+  {% endif %}
 </section>
 
 {# ── audit (v0.2.9) ─────────────────────────────────────────────────── #}
