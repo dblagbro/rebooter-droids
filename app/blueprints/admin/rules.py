@@ -15,7 +15,7 @@ from __future__ import annotations
 from flask import abort, flash, g, redirect, render_template, request, url_for
 
 from app.blueprints.admin import admin_ui_bp, admin_api_bp
-from app.blueprints.admin._common import _ctx
+from app.blueprints.admin._common import FormValidationError, _ctx, _int_field
 from app.blueprints.admin._rules_forms import (
     RuleFormError,
     build_action_from_form,
@@ -183,7 +183,11 @@ def rules_create_submit():
         target = build_target_from_form(request.form)
         action = build_action_from_form(request.form)
         maint_windows = build_maintenance_windows_from_form(request.form)
-    except RuleFormError as e:
+        failure_threshold = _int_field(request.form, "failure_threshold", default=3)
+        recovery_threshold = _int_field(request.form, "recovery_threshold", default=2)
+        window_seconds = _int_field(request.form, "window_seconds", default=60)
+        cooldown_seconds = _int_field(request.form, "cooldown_seconds", default=300)
+    except (RuleFormError, FormValidationError) as e:
         flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_page"))
 
@@ -193,10 +197,10 @@ def rules_create_submit():
             probe=probe,
             target=target,
             action=action,
-            failure_threshold=int(request.form.get("failure_threshold") or 3),
-            recovery_threshold=int(request.form.get("recovery_threshold") or 2),
-            window_seconds=int(request.form.get("window_seconds") or 60),
-            cooldown_seconds=int(request.form.get("cooldown_seconds") or 300),
+            failure_threshold=failure_threshold,
+            recovery_threshold=recovery_threshold,
+            window_seconds=window_seconds,
+            cooldown_seconds=cooldown_seconds,
             maintenance_windows=maint_windows,
             created_by_user_id=g.current_user.id,
         )
@@ -269,18 +273,20 @@ def rules_create_json_submit():
             probe=body.get("probe") or {},
             target=body.get("target") or {},
             action=body.get("action") or {},
-            failure_threshold=int(body.get("failure_threshold", 3)),
-            recovery_threshold=int(body.get("recovery_threshold", 2)),
-            window_seconds=int(body.get("window_seconds", 60)),
-            cooldown_seconds=int(body.get("cooldown_seconds", 300)),
-            max_retries=int(body.get("max_retries", 3)),
-            retry_delay_seconds=int(body.get("retry_delay_seconds", 60)),
+            failure_threshold=_int_field(body, "failure_threshold", default=3),
+            recovery_threshold=_int_field(body, "recovery_threshold", default=2),
+            window_seconds=_int_field(body, "window_seconds", default=60),
+            cooldown_seconds=_int_field(body, "cooldown_seconds", default=300),
+            max_retries=_int_field(body, "max_retries", default=3),
+            retry_delay_seconds=_int_field(body, "retry_delay_seconds", default=60),
             escalation=body.get("escalation"),
             maintenance_windows=body.get("maintenance_windows"),
             description=body.get("description"),
             site_id=body.get("site_id"),
             created_by_user_id=g.current_user.id,
         )
+    except FormValidationError as e:
+        return _err(str(e))
     except WatchdogValidationError as e:
         return _err(f"Validation failed: {e}")
 
@@ -358,18 +364,20 @@ def rules_edit_submit(rule_id: str):
             probe=body.get("probe") or {},
             target=body.get("target") or {},
             action=body.get("action") or {},
-            failure_threshold=int(body.get("failure_threshold", 3)),
-            recovery_threshold=int(body.get("recovery_threshold", 2)),
-            window_seconds=int(body.get("window_seconds", 60)),
-            cooldown_seconds=int(body.get("cooldown_seconds", 300)),
-            max_retries=int(body.get("max_retries", 3)),
-            retry_delay_seconds=int(body.get("retry_delay_seconds", 60)),
+            failure_threshold=_int_field(body, "failure_threshold", default=3),
+            recovery_threshold=_int_field(body, "recovery_threshold", default=2),
+            window_seconds=_int_field(body, "window_seconds", default=60),
+            cooldown_seconds=_int_field(body, "cooldown_seconds", default=300),
+            max_retries=_int_field(body, "max_retries", default=3),
+            retry_delay_seconds=_int_field(body, "retry_delay_seconds", default=60),
             escalation=body.get("escalation"),
             maintenance_windows=body.get("maintenance_windows"),
             description=body.get("description"),
             site_id=body.get("site_id"),
             updated_by_user_id=g.current_user.id,
         )
+    except FormValidationError as e:
+        return _err(str(e))
     except WatchdogValidationError as e:
         return _err(f"Validation failed: {e}")
     if rule is None:
@@ -404,7 +412,11 @@ def rules_edit_form_submit(rule_id: str):
         target = build_target_from_form(request.form)
         action = build_action_from_form(request.form)
         maint_windows = build_maintenance_windows_from_form(request.form)
-    except RuleFormError as e:
+        failure_threshold = _int_field(request.form, "failure_threshold", default=3)
+        recovery_threshold = _int_field(request.form, "recovery_threshold", default=2)
+        window_seconds = _int_field(request.form, "window_seconds", default=60)
+        cooldown_seconds = _int_field(request.form, "cooldown_seconds", default=300)
+    except (RuleFormError, FormValidationError) as e:
         flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_edit_page", rule_id=rule_id))
 
@@ -415,10 +427,10 @@ def rules_edit_form_submit(rule_id: str):
             probe=probe,
             target=target,
             action=action,
-            failure_threshold=int(request.form.get("failure_threshold") or 3),
-            recovery_threshold=int(request.form.get("recovery_threshold") or 2),
-            window_seconds=int(request.form.get("window_seconds") or 60),
-            cooldown_seconds=int(request.form.get("cooldown_seconds") or 300),
+            failure_threshold=failure_threshold,
+            recovery_threshold=recovery_threshold,
+            window_seconds=window_seconds,
+            cooldown_seconds=cooldown_seconds,
             # Not surfaced in the structured form — preserve as-is.
             max_retries=existing["max_retries"],
             retry_delay_seconds=existing["retry_delay_seconds"],

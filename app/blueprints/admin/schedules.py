@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from flask import flash, g, redirect, render_template, request, url_for
 
 from app.blueprints.admin import admin_api_bp, admin_ui_bp
-from app.blueprints.admin._common import _ctx
+from app.blueprints.admin._common import FormValidationError, _ctx, _int_field
 from app.middleware.admin_auth import (
     ADMIN_AND_UP,
     admin_required_api,
@@ -58,7 +58,19 @@ def schedules_create_submit():
     at_time_utc = (request.form.get("at_time_utc") or "").strip() or None
     weekdays_raw = request.form.getlist("weekdays")
     weekdays = [int(w) for w in weekdays_raw if w.isdigit()]
-    duration_seconds = int(request.form.get("duration_seconds") or 0)
+    try:
+        duration_seconds = _int_field(
+            request.form, "duration_seconds", default=0,
+        )
+        power_off_seconds = _int_field(
+            request.form, "power_off_seconds", default=5,
+        )
+        post_reboot_holdoff_seconds = _int_field(
+            request.form, "post_reboot_holdoff_seconds", default=180,
+        )
+    except FormValidationError as e:
+        flash(str(e), "error")
+        return redirect(url_for("admin_ui.schedules_page"))
 
     target = {}
     target_kind = (request.form.get("target_kind") or "").strip()
@@ -90,10 +102,8 @@ def schedules_create_submit():
             weekdays=weekdays,
             start_at=start_at,
             duration_seconds=duration_seconds,
-            power_off_seconds=int(request.form.get("power_off_seconds") or 5),
-            post_reboot_holdoff_seconds=int(
-                request.form.get("post_reboot_holdoff_seconds") or 180
-            ),
+            power_off_seconds=power_off_seconds,
+            post_reboot_holdoff_seconds=post_reboot_holdoff_seconds,
             description=request.form.get("description"),
             created_by_user_id=g.current_user.id,
         )
@@ -174,12 +184,16 @@ def create_schedule_api():
             at_time_utc=body.get("at_time_utc"),
             weekdays=body.get("weekdays") or [],
             start_at=start_at,
-            duration_seconds=int(body.get("duration_seconds") or 0),
-            power_off_seconds=int(body.get("power_off_seconds") or 5),
-            post_reboot_holdoff_seconds=int(body.get("post_reboot_holdoff_seconds") or 180),
+            duration_seconds=_int_field(body, "duration_seconds", default=0),
+            power_off_seconds=_int_field(body, "power_off_seconds", default=5),
+            post_reboot_holdoff_seconds=_int_field(
+                body, "post_reboot_holdoff_seconds", default=180,
+            ),
             description=body.get("description"),
             created_by_user_id=g.current_user.id,
         )
+    except FormValidationError as e:
+        return err("validation_failed", str(e), status=400)
     except ScheduleValidationError as e:
         return err("validation_failed", str(e), status=400)
     audit_service.record(
