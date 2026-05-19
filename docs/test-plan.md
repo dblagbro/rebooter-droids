@@ -1,8 +1,11 @@
 # Test plan
 
-Status: **2026-05-17** — CI gate at ~535 tests / 67 files, run behind
-nginx (P-QA gate-2 widening + gate-3 fixes + a growing `tests/unit/`
-tree; charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`).
+Status: **2026-05-19** — CI gate at ~850 tests run behind nginx
+(P-QA gate-1 + gate-2 widening + the **gate-3 backlog cleared in
+v0.5.98** + the `tests/unit/` tree, grown by the v0.5.99 watchdog
+tick + state-machine slice and the v0.5.100 firmware-deployment
+slice). Charter `docs/notes/2026-05-15-pause-state-and-resume-charter.md`
+is fully closed.
 
 This document is the canonical description of how rebooter-droids is
 tested. It replaces the prior per-sweep verdict-logging version of this
@@ -12,18 +15,28 @@ history only).
 
 ## How the suite is shaped today
 
-- **443 collected test items**, all under `tests/qa/`, in ~59 files
-  named per release (`test_v0535_*`, `test_v0568_*`, …).
-- They are **HTTP integration tests** driven with `requests` against a
-  *running* server — `conftest.py`'s `base_url` fixture defaults to
-  the live deployment (`https://www.voipguru.org/rebooter`) and
-  `admin_token` logs in with a real admin. There are **no in-process
-  unit tests** and no Flask-test-client coverage.
-- A subset are Playwright browser tests (the `responsive` marker).
+- **~850 collected test items**, in two trees: most of `tests/qa/`
+  (the historical HTTP-integration files, ~64 named per release —
+  `test_v0535_*`, `test_v0568_*`, …) plus a growing in-process
+  `tests/unit/` tree (~115 tests across the rules-form builders,
+  scheduling math, watchdog probe-dispatcher + state machine + tick,
+  the announce state machine, the deployments service, and the
+  per-service slices listed below).
+- The QA tree is **HTTP integration tests** driven with `requests`
+  against a *running* server — `conftest.py`'s `base_url` fixture
+  defaults to the live deployment (`https://www.voipguru.org/rebooter`)
+  and `admin_token` logs in with a real admin. The `tests/unit/`
+  tree runs purely in-process against an isolated SQLite via the
+  shared `hub_db` fixture — fast, no HTTP, no Docker.
+- A subset are Playwright browser tests (`test_responsive.py`,
+  `test_ui_flows.py`) — the `chromium_browser` fixture skips them
+  cleanly when playwright or the chromium binary isn't available.
 
-This shape is why "poor QA" was a charter problem: per-release
+This shape was driven by the "poor QA" charter problem: per-release
 snapshot tests against production cannot gate a change, and until
-2026-05-15 **nothing ran them automatically** on push or PR.
+2026-05-15 **nothing ran them automatically** on push or PR. The CI
+gate cleared that. The shape now adds an in-process tree so
+service-layer logic gets fast, HTTP-free coverage too.
 
 ## Surfaces under test
 
@@ -50,10 +63,12 @@ On every push to `main` and every pull request, CI:
 ### What `-m ci` covers
 
 The `ci` marker tags tests **verified green against a fresh ephemeral
-instance**. As of the gate-2 widening (v0.5.79), the gate-3 fixes, the
-`tests/unit/` tree and the nginx front (v0.5.84), that is **~433 tests
-across 62 files** — every test file confirmed to pass `pytest -m ci`
-twice against a from-scratch instance (fresh Postgres + populated DB):
+instance**. As of the gate-2 widening (v0.5.79), the **gate-3 backlog
+cleared in v0.5.98**, the `tests/unit/` tree (with the watchdog tick +
+state-machine slice from v0.5.99 and the deployments slice from
+v0.5.100), and the nginx front (v0.5.84), that is **~850 tests**
+— every test file confirmed to pass `pytest -m ci` twice against a
+from-scratch instance (fresh Postgres + populated DB):
 
 - **Registration / device surface** — `test_device_api.py`,
   `test_v0568_adoption_token_redelivery.py`, `test_v027_heartbeat_state.py`
@@ -153,77 +168,72 @@ docker rm -f rd-ci-app rd-ci-pg rd-ci-nginx
 docker volume rm rd-ci-firmware && docker network rm rd-ci
 ```
 
-## Known non-gated test failures (2026-05-17 regression sweep)
+## Known non-gated test failures — RESOLVED in v0.5.98
 
-The full `tests/` suite (598 collected) was run against a fresh
-nginx-fronted Postgres replica: **593 passed, 5 failed, 5 skipped**.
-All 5 failures were classified — **none is a product regression**:
+The 2026-05-17 regression sweep had classified 5 failures against a
+fresh nginx-fronted Postgres replica; **all five were cleared in
+v0.5.98 and v0.5.99** (the latter via the watchdog tick + state-machine
+slice). For historical reference:
 
-| Test | Class | Why it fails outside production |
+| Test | Class | Resolution |
 |---|---|---|
-| `test_hardening_probes::test_session_cookie_attributes` | test-quality | Hardcodes prod creds `dblagbro`/`Super*120120`; login fails on any other instance. Does **not** honour `REBOOTER_QA_EMAIL/PASS`. |
-| `test_hardening_probes::test_logout_does_not_revoke_cookie_server_side` | test-quality | Same hardcoded-creds issue. |
-| `test_responsive::test_mobile_topbar_nav_links_reachable` | stale test | Asserts 5 top-nav / 5 bottom-nav links; the nav legitimately has **6** (`layout.html` — Status/Devices/Rules/History/**Power**/Settings — the Power link shipped with B16). Update the assertion to 6. |
-| `test_v033_cookie_domain::test_theme_cookie_legacy_name_still_read` | test-environment | Sets a cookie with `domain=urlsplit(base_url).netloc`; against a `host:port` base URL the port is included in the domain → the cookie is never sent. The code (`settings.py:437`) **does** still read the legacy `theme` cookie — verified. Passes against a port-less prod URL. |
-| `test_v042_watchdog_runtime::test_probe_now_http_success` | environmental | Documented below — probe target unreachable from inside the container. |
+| `test_hardening_probes::test_session_cookie_attributes` | test-quality | v0.5.98 — replaced hardcoded creds with `admin_creds`; the Secure-cookie assertion now skips cleanly when `REBOOTER_SESSION_COOKIE_SECURE=0` (HTTP localhost) but still asserts `HttpOnly` + `SameSite` every gate. |
+| `test_hardening_probes::test_logout_does_not_revoke_cookie_server_side` | test-quality | v0.5.98 — same `admin_creds` swap. |
+| `test_responsive::test_mobile_topbar_nav_links_reachable` | stale test | Pre-cleared (assertion was already updated to 6). v0.5.98 — file gated; the `chromium_browser` fixture skips browser tests cleanly when playwright / chromium isn't available. |
+| `test_v033_cookie_domain::test_theme_cookie_legacy_name_still_read` | test-environment | v0.5.98 — `cookielib`'s `domain=netloc` machinery doesn't reach a bare-`localhost` host or include a port; send the cookie explicitly via the GET request's `cookies=` instead. |
+| `test_v042_watchdog_runtime::test_probe_now_http_success` | environmental | v0.5.98 — the probe URL was the test-client view of `base_url`; the probe runs *inside* the app container. Switched to `http://localhost:8090/api/v1/version` — the app's own in-container listener, reachable from any deployment. |
 
-**Correction to the prior accounting:** the gate-3 note below previously
-stated `test_hardening_probes` is ungated only because of the
-`RATE_LIMIT_EXEMPT_IPS=*` / `SESSION_COOKIE_SECURE=0` gate config. That
-is incomplete — the *primary* blocker is hardcoded production
-credentials. Any fix must (a) honour `REBOOTER_QA_EMAIL/PASS` and only
-then (b) add the per-test skips for the config-disabled assertions.
+Only `test_v0520_long_poll_commands` is now intentionally out of
+gate (its long-poll holds tie up the runner 4–6 s per test by design).
 
 ## Known coverage gaps (the honest list)
 
-1. **~4 of the ~64 test files are still not in the CI gate** (gate-3
-   backlog). The `0P`-all-fail, partial-fail, in-process, timing-e2e
-   and nginx-layer buckets are now fixed and gated; what's left needs
-   more than an assertion tweak. The fix checklist that cleared the
-   gated files: (a) the per-file `_login()` must honour
-   `REBOOTER_QA_EMAIL/PASS`, not hardcoded creds; (b) seed any data the
-   test assumes with a module-scoped autouse fixture; (c) widen HTML
-   regexes — the responsive reflow added `data-label` attributes, so
-   `<td><code>` must become `<td[^>]*><code>`; (d) in-process tests use
-   an isolated SQLite DB + `init_engine` + a bare Flask app context
-   (see `test_v0514` / `test_v0536`); (e) the watchdog + schedule
-   runtimes take an injectable `now` so timing e2e is deterministic
-   in-process (see `test_v0414` / `test_v0417`); (f) the gate runs
-   behind nginx (`ci/nginx.conf`), so the prefix-proxy and firmware
-   static-serving tests run for real. The remainder:
-   - *Hardcoded creds + CI-environment-incompatible* —
-     `test_hardening_probes` hardcodes production credentials (so it
-     fails on every non-prod instance — fix: honour
-     `REBOOTER_QA_EMAIL/PASS`), AND has a rate-limit test (the gate
-     sets `RATE_LIMIT_EXEMPT_IPS=*`) and a cookie-`Secure` test (the
-     gate sets `SESSION_COOKIE_SECURE=0`) that assert behaviour the
-     gate's own config disables (fix: per-test skips keyed on those
-     settings). Both must be fixed before it can gate.
-   - *Base-URL assumes no port* — `test_v033_cookie_domain
-     ::test_theme_cookie_legacy_name_still_read` sets a cookie scoped
-     to `urlsplit(base_url).netloc`, which includes `:port` for a
-     `host:port` base URL → cookie never sent. Fix: strip the port
-     (`.split(":")[0]`) when deriving the cookie domain.
-   - *Server-side probe target* — `test_v042_watchdog_runtime`'s one
-     failure (`test_probe_now_http_success`) probes `base_url` from
-     inside the app container, which can't reach the host-mapped port.
-     Needs a probe target reachable from the app, or an in-process
-     rewrite of the probe-now path.
-   - *Order-dependent* — `test_v034_bulk_actions` asserts `/app/groups`
-     shows bulk-form scaffolding, which only renders with a group
-     present; gate it once it seeds its own group.
-2. **In-process unit coverage is growing.** `tests/unit/` covers the
-   `_rules_forms` builders, schedule recurrence math, `create_rule`
-   validation, the canonical probe-kind registry, the
-   `upsert_announcement` state machine, the `enrollment`,
-   `device_power`, `commands`, `heartbeats`, `unregistered`, `events`,
-   `invitations`, `password_resets`, `inbox` and `external_sensors`
-   services, and the watchdog `run_probe` dispatcher. **BUG-059 is
-   fixed** (v0.5.88) — the `as_aware` / `with_variant` / dialect-branch
-   landmines that crashed the SQLite test backend are cleared, and all
-   six previously-blocked services now have coverage. Still HTTP-only
-   and worth `tests/unit/` coverage next: the watchdog
-   tick/state-transition loop, and `deployments`.
+1. **Gate-3 backlog — CLEARED in v0.5.98.** The four `0P`-all-fail
+   files plus the two playwright-only files now all gate cleanly. The
+   per-file fixes that landed:
+   - `test_hardening_probes` — replaced the hardcoded production
+     creds with the `admin_creds` fixture; `test_session_cookie_attributes`
+     now asserts `HttpOnly` + `SameSite` unconditionally and skips the
+     Secure check when the instance has `REBOOTER_SESSION_COOKIE_SECURE=0`
+     (HTTP localhost); `test_login_rate_limit_kicks_in` already skipped
+     cleanly when `REBOOTER_RATE_LIMIT_EXEMPT_IPS` covers the client.
+   - `test_v033_cookie_domain::test_theme_cookie_legacy_name_still_read`
+     — `cookielib`'s `domain=netloc` machinery doesn't ship a cookie
+     back to `localhost` or with a port; sends the cookie via the
+     GET request's `cookies=` instead.
+   - `test_v042_watchdog_runtime::test_probe_now_http_success` — the
+     probe URL was the *test client's* view of `base_url`; the probe
+     runs inside the app container. Probes
+     `http://localhost:8090/api/v1/version` — the app's own
+     in-container listener, reachable from any deployment.
+   - `test_v034_bulk_actions` — added a module-scoped autouse
+     `_seed_bulk_rows` fixture (device + group + invitation + token)
+     so every parametrised list page has a row to render the
+     bulk-form scaffolding for.
+   - `test_responsive` + `test_ui_flows` — browser-driven; the
+     `chromium_browser` fixture skips uniformly when playwright /
+     chromium isn't available. Gated as such.
+   Only `test_v0520_long_poll_commands` stays out, by design (the
+   tests deliberately hold requests 4–6 s each).
+2. **In-process unit coverage — closed the named gaps in
+   v0.5.99 + v0.5.100.** `tests/unit/` now covers the `_rules_forms`
+   builders, schedule recurrence math, `create_rule` validation, the
+   canonical probe-kind registry, the `upsert_announcement` state
+   machine, the `enrollment`, `device_power`, `commands`,
+   `heartbeats`, `unregistered`, `events`, `invitations`,
+   `password_resets`, `inbox`, `external_sensors`, and **scenes**
+   services, the **watchdog `run_probe` dispatcher**, the
+   **watchdog state machine** (`_update_state_and_maybe_fire` +
+   `_rule_is_due` + `_in_maintenance_window`), the **watchdog `tick()`
+   orchestrator** (env-disabled, portal maintenance, due-ness, rule
+   maintenance window, probe-error recovery, threshold-cross fire),
+   and the **firmware-deployment service** end-to-end
+   (`create_deployment` + `assignment_for_device` +
+   `mark_assignment_delivered` + `reconcile_assignment_reported_version`
+   + `list_deployments`). **BUG-059 is fixed** (v0.5.88) — the
+   `as_aware` / `with_variant` / dialect-branch landmines that crashed
+   the SQLite test backend are cleared. The originally-named gaps
+   (watchdog tick + state loop; `deployments`) are now covered.
 3. **End-to-end adoption test — DONE.** The
    announce → pending-adoption → adopt → token-mint → `/register` →
    first-heartbeat → "online" flow (~60 KB across `announcements.py`
@@ -234,30 +244,41 @@ then (b) add the per-test skips for the config-disabled assertions.
    closes out as `registered`. This was the charter's (P-REG)
    highest-value missing test; the v0.5.36→v0.5.68 siteless-token
    regression is the class of bug it guards.
-4. **Playwright `responsive` tests are not in CI** — they need a
-   browser image (the gate's `pip install -e ".[dev]"` has no
-   playwright, so they skip cleanly); deferred. One is also stale
-   (`test_mobile_topbar_nav_links_reachable`, asserts 5 nav links;
-   there are 6).
+4. **Playwright tests gate uniformly now.** Both `test_responsive.py`
+   and `test_ui_flows.py` carry `pytestmark = pytest.mark.ci` as of
+   v0.5.98; the `chromium_browser` fixture skips them cleanly when
+   playwright or the chromium binary isn't available. Local CI
+   replicas with chromium installed actually run the browser flows
+   (~60 tests in `test_ui_flows.py`); GitHub Actions without a
+   browser image skips them cleanly. The previously-stale
+   `test_mobile_topbar_nav_links_reachable` (5-vs-6 nav links) was
+   pre-cleared.
 5. **`qa-notes.md` is unmaintained** (~105 K tokens). Not deleted yet
-   (it has historical value) but it is not a plan.
-6. **bug-log.md drifts** — fixed bugs left tagged `open` (BUG-054,
-   BUG-055; previously BUG-052). See BUG-061.
+   (it has historical value) but it is not a plan. Candidate for
+   archival / deletion next sweep.
+6. **bug-log.md drifts** — was the BUG-061 finding; fixed in the same
+   sweep. Stale-`open` tags should be flagged on every release-notes
+   review.
 
-## How to widen the gate further (gate-3)
+## How to widen the gate further
 
-The path, in priority order:
+The gate-3 path is now drained — the named-file backlog cleared in
+v0.5.98 and the two `tests/unit/` slices it pointed at landed in
+v0.5.99 and v0.5.100. Forward gate work is therefore *additive*
+rather than backlog-clearing:
 
-1. **Fix the brittle files.** For each `0P` file: run it against a
-   fresh ephemeral instance, then either seed the data it assumes or
-   replace the stale HTML-string assertion, and add `pytestmark =
-   pytest.mark.ci`. The gate-2 widening already triaged every file;
-   this is the per-file repair work.
-2. **Grow `tests/unit/`.** The tree is started (v0.5.82) — keep adding
-   service-layer coverage there: it's fast, no HTTP, no Docker, and
-   auto-gated. Adoption/enrollment edge cases, the watchdog probe
-   dispatch and the announce state machine all belong here.
-3. **Add the Playwright `responsive` tests to CI** behind a browser
-   step once the above are stable.
-
-Each step is independently shippable; do them in order.
+1. **Grow `tests/unit/`.** The fastest, highest-leverage CI work —
+   no HTTP, no Docker, auto-gated. The originally-named gaps
+   (watchdog tick + state loop; `deployments`) are now covered;
+   the next candidates are whatever new service shows up in a
+   diff. Adoption/enrollment edge cases, the `schedules` runtime
+   tick (companion to the watchdog one) and the `inbox` attention
+   pipeline are the obvious next targets.
+2. **Optional: add `test_v0520_long_poll_commands` behind a
+   `slow` mark.** Today it's excluded by design (4–6 s holds per
+   test = ~15 s added to the gate). A dedicated `slow` job that
+   runs on PR merge but not every push would let it gate without
+   bloating the fast path.
+3. **Optional: a browser-installed CI lane.** The playwright
+   files already gate cleanly via skip; a parallel `ci-browser`
+   job that installs chromium would actually exercise them.
