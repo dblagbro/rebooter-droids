@@ -49,6 +49,8 @@ from app.services.devices import (
     update_device,
 )
 from app.services.sites import list_sites as svc_list_sites_only
+from app.services import schedules as schedules_svc
+from app.services import watchdog as watchdog_svc
 
 
 def _show_qa_fixtures(raw: str | None, default: bool) -> bool:
@@ -120,7 +122,16 @@ def device_detail_page(device_id: str):
         abort(404)
     sites = svc_list_sites_only()
     return render_template(
-        "device_detail.html", **_ctx({"device": detail, "sites": sites})
+        "device_detail.html",
+        **_ctx({
+            "device": detail,
+            "sites": sites,
+            # v0.5.97: the Watchdog / Schedule sections were stubs —
+            # now list the rules / schedules whose target resolves to
+            # this device (directly or via a group).
+            "watchdog_rules": watchdog_svc.list_rules_for_device(device_id),
+            "device_schedules": schedules_svc.list_for_device(device_id),
+        }),
     )
 
 
