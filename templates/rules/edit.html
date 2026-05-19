@@ -25,9 +25,11 @@
 {% set mws = rule.maintenance_windows or [] %}
 {% set mw0 = mws[0] if mws else {} %}
 
-{% if probe_form_supported %}
+{% if form_supported %}
 {# ── v0.5.77 (#15): structured edit form — mirrors the create form
-   (templates/rules/index.html), pre-populated from the rule. ── #}
+   (templates/rules/index.html), pre-populated from the rule.
+   v0.5.95: epg_show_airing probe + relay/apply_scene/binding actions
+   reach parity with the create form. ── #}
 <section class="v3-card" style="margin-top:1rem">
   <h2>Edit rule</h2>
   <p class="muted" style="font-size:.85rem; margin-top:0">
@@ -53,6 +55,7 @@
           <option value="ha_state_is"{% if pk=='ha_state_is' %} selected{% endif %}>home assistant — entity state matches</option>
           <option value="weather_alert_active"{% if pk=='weather_alert_active' %} selected{% endif %}>weather — active NWS alert</option>
           <option value="ical_event_active"{% if pk=='ical_event_active' %} selected{% endif %}>calendar — iCal event currently airing</option>
+          <option value="epg_show_airing"{% if pk=='epg_show_airing' %} selected{% endif %}>tv guide — show currently airing (EPG)</option>
           <option value="power_above"{% if pk=='power_above' %} selected{% endif %}>power — avg watts above threshold</option>
           <option value="power_below"{% if pk=='power_below' %} selected{% endif %}>power — avg watts below threshold</option>
           <option value="power_zero_while_on"{% if pk=='power_zero_while_on' %} selected{% endif %}>power — near-zero draw while relay on (phantom failure)</option>
@@ -217,20 +220,87 @@
           </p>
         {% endif %}
       </div>
+
+      {# v0.5.95 (edit-form parity): EPG "show airing now" probe.
+         No source picker — EPG reads the shared TVMaze cache. #}
+      <div id="probe_epg_show_airing_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        <label>Show title (case-insensitive substring match)
+          <input type="text" name="epg_show" value="{{ rule.probe.get('show','') }}" placeholder="e.g. Jeopardy">
+        </label>
+        <label>Network (optional)
+          <input type="text" name="epg_network" value="{{ rule.probe.get('network','') }}" placeholder="e.g. ABC — leave blank for any network">
+        </label>
+      </div>
     </fieldset>
     <script src="{{ url_for('static', filename='js/rules_create_probe.js') }}" defer></script>
 
+    {# v0.5.95 (edit-form parity): scene_id of each binding edge,
+       pre-selected in the binding block's two scene pickers. #}
+    {% set bind_active = (act.get('on_active') or {}).get('scene_id') %}
+    {% set bind_clear = (act.get('on_clear') or {}).get('scene_id') %}
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
-      <legend>What to do when it fails</legend>
+      <legend>What to do</legend>
       <label>Action
-        <select name="action_kind">
+        <select name="action_kind" id="action_kind">
           <option value="cycle"{% if ak=='cycle' %} selected{% endif %}>cycle — power-cycle the target</option>
           <option value="hold_off"{% if ak=='hold_off' %} selected{% endif %}>hold_off — power off until manually restored</option>
+          <option value="relay_off"{% if ak=='relay_off' %} selected{% endif %}>relay_off — turn the target off</option>
+          <option value="relay_on"{% if ak=='relay_on' %} selected{% endif %}>relay_on — turn the target on</option>
+          <option value="apply_scene"{% if ak=='apply_scene' %} selected{% endif %}>apply_scene — apply a saved scene</option>
+          <option value="binding"{% if ak=='binding' %} selected{% endif %}>binding — scene follows the probe (level-triggered)</option>
           <option value="notify_only"{% if ak=='notify_only' %} selected{% endif %}>notify_only — no power action</option>
         </select>
       </label>
-      <label>power_off_seconds (cycle) <input type="number" name="power_off_seconds" value="{{ act.get('power_off_seconds',5) }}" min="1" max="60"></label>
-      <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="{{ act.get('post_reboot_holdoff_seconds',180) }}" min="0" max="3600"></label>
+      {# Per-action-kind blocks, toggled by rules_create_action.js. #}
+      <div id="action_cycle_block">
+        <label>power_off_seconds (cycle) <input type="number" name="power_off_seconds" value="{{ act.get('power_off_seconds',5) }}" min="1" max="60"></label>
+        <label>post_reboot_holdoff_seconds <input type="number" name="post_reboot_holdoff_seconds" value="{{ act.get('post_reboot_holdoff_seconds',180) }}" min="0" max="3600"></label>
+      </div>
+      <div id="action_apply_scene_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        {% if scenes %}
+          <label>Scene to apply
+            <select name="scene_id">
+              {% for s in scenes %}
+                <option value="{{ s.id }}"{% if act.get('scene_id')==s.id %} selected{% endif %}>{{ s.name }} ({{ s.device_count }} device{{ '' if s.device_count == 1 else 's' }})</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No scenes yet — create one under
+            <a href="{{ url_for('admin_ui.list_scenes_page') }}">Scenes →</a> first.
+          </p>
+        {% endif %}
+      </div>
+      <div id="action_binding_block" style="display:none; padding:.4rem; background:rgba(80,180,255,0.05); border-radius:4px; margin-top:.4rem">
+        <p class="muted" style="font-size:.85rem; margin:.2rem 0">
+          A binding is level-triggered — the target follows the probe.
+          Pick the scene to apply while the probe succeeds, and the one
+          to restore when it stops.
+        </p>
+        {% if scenes %}
+          <label>Scene while the condition holds
+            <select name="binding_active_scene_id">
+              {% for s in scenes %}
+                <option value="{{ s.id }}"{% if bind_active==s.id %} selected{% endif %}>{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Scene when it clears
+            <select name="binding_clear_scene_id">
+              {% for s in scenes %}
+                <option value="{{ s.id }}"{% if bind_clear==s.id %} selected{% endif %}>{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% else %}
+          <p class="muted" style="margin:0; font-size:.85rem">
+            No scenes yet — create them under
+            <a href="{{ url_for('admin_ui.list_scenes_page') }}">Scenes →</a> first.
+          </p>
+        {% endif %}
+      </div>
+      <script src="{{ url_for('static', filename='js/rules_create_action.js') }}" defer></script>
     </fieldset>
 
     <fieldset style="border:1px solid var(--border); padding:.5rem; margin: .5rem 0">
@@ -315,14 +385,21 @@
 <div class="v3-card" style="margin-top:1rem; border-color:var(--accent-amber)">
   <p style="margin-top:0"><strong>Structured editing isn't available for this rule.</strong></p>
   <p class="muted" style="font-size:.85rem; margin-bottom:0">
+    {% if not probe_form_supported %}
     Its probe kind — <code>{{ rule.probe.kind }}</code> — isn't one the
-    structured form can edit safely. Use the JSON editor below.
+    structured form can edit safely.
+    {% else %}
+    Its action — <code>{{ rule.action.kind }}</code> — uses a shape the
+    structured form can't round-trip (e.g. an inline-<code>items</code>
+    scene or a non-scene binding edge).
+    {% endif %}
+    Use the JSON editor below.
   </p>
 </div>
 {% endif %}
 
 {# ── JSON editor — advanced / escape hatch ─────────────────────────── #}
-<details class="v3-card" style="margin-top:1rem"{% if not probe_form_supported or json_editor_error %} open{% endif %}>
+<details class="v3-card" style="margin-top:1rem"{% if not form_supported or json_editor_error %} open{% endif %}>
   <summary style="cursor:pointer; font-weight:600; font-size:1.05rem">⚙ Advanced — edit rule JSON directly</summary>
   <p class="muted" style="font-size:.85rem; margin:.5rem 0">
     Same body shape as <a href="https://github.com/dblagbro/rebooter-droids/blob/main/docs/API.md" target="_blank">the create-rule API</a>.
@@ -344,20 +421,19 @@
   </form>
 </details>
 
-{# v0.5.30 (Phase 2B back-port — intermediate): per-kind probe-shape
-   reference cards. Full structured-form on the edit page is deferred
-   to a later ship; in the meantime operators editing an integration
-   rule have copy-pasteable JSON examples for each kind here.
+{# v0.5.30 (Phase 2B back-port): per-kind probe-shape reference cards.
+   The structured form above now covers most probe kinds; these cards
+   remain useful for the JSON-only kinds (host_awake, mqtt_topic_equals)
+   and as a copy-paste starting point in the JSON editor.
 
    Each `<details>` opens to a JSON snippet of just the `"probe": …`
    portion. Operator pastes into the textarea above and tweaks. #}
 <div class="v3-card" style="margin-top:1rem">
   <h3 style="margin-top:0">Probe shape reference</h3>
   <p class="muted" style="font-size:.85rem">
-    Quick reference for the four integration probe kinds shipped in
-    v0.5.17 + v0.5.23. Use these as a starting point when editing the
-    JSON above; full per-kind structured-form on this page is
-    queued for a future ship.
+    Copy-paste starting points for the <code>"probe"</code> block in the
+    JSON editor above — handy for the kinds the structured form doesn't
+    cover (<code>host_awake</code>, <code>mqtt_topic_equals</code>).
   </p>
 
   <details style="margin-top:.6rem">
