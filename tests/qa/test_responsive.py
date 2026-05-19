@@ -15,6 +15,12 @@ of the QA suite) — set `REBOOTER_QA_BASE` to point them elsewhere.
 
 import pytest
 
+# v0.5.98 (P-QA gate-3): the browser tests skip cleanly when playwright
+# isn't installed (or the chromium binary is missing) — the
+# `chromium_browser` fixture handles both — so this file is safe to
+# gate. The CI gate runs without browsers and these all skip.
+pytestmark = pytest.mark.ci
+
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 

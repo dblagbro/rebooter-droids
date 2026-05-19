@@ -21,6 +21,18 @@ import requests
 
 from .conftest import unique_suffix
 
+# v0.5.98 (P-QA gate-3): the probe-now HTTP success test previously
+# probed `base_url` from inside the app container, which couldn't reach
+# a host-mapped port. The probe URL is now the app's own in-container
+# listener (`http://localhost:8090/...`), which is reachable from any
+# deployment — CI, dev, or prod — since the app always listens on 8090
+# inside its container.
+pytestmark = pytest.mark.ci
+
+# The app's own in-container listener. Always reachable from inside the
+# app container (it IS the app), regardless of how the host fronts it.
+_IN_CONTAINER_VERSION = "http://localhost:8090/api/v1/version"
+
 
 @pytest.fixture(scope="module")
 def shell_session(base_url, admin_creds):
@@ -71,7 +83,7 @@ def test_probe_now_http_success(base_url, shell_session):
         shell_session,
         base_url,
         name=f"qa042hs-{unique_suffix()}",
-        probe={"kind": "http", "url": f"{base_url}/api/v1/version"},
+        probe={"kind": "http", "url": _IN_CONTAINER_VERSION},
     )
     try:
         r = _probe_now(shell_session, base_url, rule["id"])
