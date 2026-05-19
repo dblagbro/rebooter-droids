@@ -116,9 +116,14 @@
       <div class="sub muted">enrolled, no first contact</div>
     </a>
     <a class="stat" href="{{ url_for('admin_ui.rules_page') }}">
-      <div class="num">0</div>
+      <div class="num">{{ stats.rules_active }}</div>
       <div class="label">active rules</div>
-      <div class="sub muted">watchdogs ship in P4</div>
+      <div class="sub muted">
+        {%- if stats.rules_total > stats.rules_active %} of {{ stats.rules_total }} total · {{ stats.rules_total - stats.rules_active }} disabled
+        {%- elif stats.rules_total %} all enabled
+        {%- else %} none yet — add one
+        {%- endif -%}
+      </div>
     </a>
   </div>
 </section>
