@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.99] - 2026-05-19
+
+### Added — `tests/unit/` coverage for the watchdog tick + state machine
+
+Test-only ship. `tests/unit/test_watchdog_binding.py` already covered
+the level-triggered binding path; this fills in the *non-binding*
+state machine and the tick orchestration.
+
+- `test_watchdog_state_transitions.py` — covers
+  `_update_state_and_maybe_fire` end-to-end for `notify_only` rules:
+  success-when-armed no-op, failure-streak below threshold,
+  threshold-cross fire + `action_fired` event, cooldown gate
+  recording `cooldown_skip`, refire after cooldown elapses,
+  recovery-streak progression, recovery-threshold rearm,
+  `probe_error` holds streaks, `last_probed_at` / `last_outcome`
+  always update. Also covers `_rule_is_due` (no-probe / inside-window
+  / past-window) and `_in_maintenance_window` (empty / hit / miss /
+  malformed / naive-UTC timestamps).
+- `test_watchdog_tick.py` — covers the `tick()` orchestrator:
+  `REBOOTER_WATCHDOG_DISABLED=1` short-circuit, portal maintenance
+  mode short-circuit, disabled-rule filtering, "not yet due" skip,
+  rule maintenance window → `maintenance_skip` event, raising probe
+  → `probe_error` event + errors stat, success outcome wiring, full
+  failure-threshold → fire across two ticks. Uses the v0.5.82
+  injectable `now` and monkeypatches `run_probe` so no real network
+  is touched.
+
+25 new unit tests. Gate widens from ~800 to ~825.
+
 ## [0.5.98] - 2026-05-19
 
 ### Changed — P-QA gate-3: 6 more test files now gate
