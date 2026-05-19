@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.100] - 2026-05-19
+
+### Added — `tests/unit/` coverage for the firmware-deployment service
+
+Test-only ship. Closes the second of the two follow-ups
+(`tests/unit/` for `deployments`) noted in the pause-state notes after
+the watchdog tick + state-machine slice landed in v0.5.99.
+
+- `test_deployments_service.py` — covers
+  `app/services/deployments.py` end-to-end:
+  - `create_deployment` — target-type validation (rejects unknown
+    types, requires target_id when not `all_devices`); release lookup;
+    fan-out to `device` / `group` / `site` / `all_devices` targets;
+    channel inheritance vs override; the supersede-prior-pending
+    invariant (covers both `pending` and `delivered`).
+  - `assignment_for_device` — no-active → None, pending+delivered
+    returned, terminal states (`completed` / `failed` / `superseded`)
+    ignored.
+  - `mark_assignment_delivered` — pending→delivered promotion;
+    no-pending no-op.
+  - `reconcile_assignment_reported_version` — records reported
+    version, marks completed when reported matches target, clears
+    prior `error_message` on completion, stores error messages,
+    no-ops on missing/empty device id, holds in `delivered` when
+    versions differ.
+  - `list_deployments` — assignment-state count breakdown and
+    newest-first ordering.
+
+25 new unit tests. Gate widens from ~825 to ~850.
+
 ## [0.5.99] - 2026-05-19
 
 ### Added — `tests/unit/` coverage for the watchdog tick + state machine
