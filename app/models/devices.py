@@ -17,6 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 REGISTRATION_STATES = (
     "pending",
@@ -167,7 +168,11 @@ class DeviceCredential(Base):
     last_used_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
 
 
-class EnrollmentToken(Base):
+class EnrollmentToken(TenantScoped, Base):
+    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK).
+    # A token mints a device into an org's site. See design §2.
+    # `Device`, `DeviceCredential`, `DeviceHeartbeat` stay Tier-B (org
+    # derived via `device -> site`) — no column.
     __tablename__ = "enrollment_tokens"
 
     id: Mapped[str] = mapped_column(

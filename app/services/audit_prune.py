@@ -70,6 +70,7 @@ def prune_old_audit_events() -> dict:
                     target_id=event.target_id,
                     details=event.details,
                     ip=event.ip,
+                    organization_id=event.organization_id,
                     archived_at=now,
                 )
                 session.add(archive_row)
