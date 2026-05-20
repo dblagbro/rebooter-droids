@@ -27,9 +27,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 
-class DeviceAnnouncement(Base):
+class DeviceAnnouncement(TenantScoped, Base):
+    # org-boundary phase 2: `device_announcements` is a Tier-A entity per
+    # the design doc §2 (SET NULL, "Pre-adoption; may have no org yet.
+    # Nullable until adopted."). Phase 1's table list omitted it; phase 2
+    # adds the nullable `organization_id` column (via the TenantScoped
+    # mixin) + the matching migration + backfill entry so it is filtered
+    # consistently with the other Tier-A tables. The column stays
+    # NULLABLE permanently — an un-adopted announcement legitimately has
+    # no org — so this table is the one Tier-A entity NOT subject to the
+    # phase-3 NOT-NULL flip.
     __tablename__ = "device_announcements"
 
     id: Mapped[str] = mapped_column(

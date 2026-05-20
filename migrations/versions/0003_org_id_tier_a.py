@@ -20,10 +20,12 @@ The data backfill that populates these columns runs separately as the
 idempotent `ensure_default_organization_backfill()` in
 app/services/bootstrap.py (design section 6.1).
 
-TODO(org-phase2): a later migration ALTERs these columns to SET NOT NULL
+TODO(org-phase3): a later migration ALTERs these columns to SET NOT NULL
 (after the backfill is confirmed on every DB), swaps the on-delete
 behaviour, and adds the per-org unique constraints (design sections 6.2,
-6.3). None of that is in phase 1.
+6.3). None of that is in phase 1 or phase 2 — phase 2 is the runtime
+enforcement mechanism (app/services/tenant_scope.py), not constraint
+hardening.
 """
 from __future__ import annotations
 
