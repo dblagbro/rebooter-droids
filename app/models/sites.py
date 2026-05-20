@@ -8,9 +8,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 
-class Site(Base):
+class Site(TenantScoped, Base):
+    # TODO(org-phase2): `Site` is the pivot — org owns sites. The phase-2
+    # migration flips `organization_id` to NOT NULL with an on-delete
+    # RESTRICT FK and swaps `name`'s global unique for a per-org
+    # UNIQUE(organization_id, name). See design §2, §6.3.
     __tablename__ = "sites"
 
     id: Mapped[str] = mapped_column(

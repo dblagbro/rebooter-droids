@@ -8,6 +8,10 @@ class Base(DeclarativeBase):
 
 
 from app.models.users import User  # noqa: E402,F401
+from app.models.organizations import (  # noqa: E402,F401
+    Organization,
+    OrganizationMembership,
+)
 from app.models.sites import Site  # noqa: E402,F401
 from app.models.devices import (  # noqa: E402,F401
     Device,

@@ -43,6 +43,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 
 SCOPE_GLOBAL = "global"
@@ -52,7 +53,11 @@ SCOPE_DEVICE = "device"
 ALL_SCOPE_TYPES = (SCOPE_GLOBAL, SCOPE_SITE, SCOPE_GROUP, SCOPE_DEVICE)
 
 
-class RoleBinding(Base):
+class RoleBinding(TenantScoped, Base):
+    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK);
+    # reinterpret scope_type='global' as "global within this org"; and
+    # widen `uq_role_binding_scope` to include `organization_id`. See
+    # design §4.2, §4.3.
     __tablename__ = "role_bindings"
 
     id: Mapped[str] = mapped_column(
