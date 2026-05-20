@@ -123,6 +123,15 @@ def device_detail_page(device_id: str):
     if detail is None:
         abort(404)
     sites = svc_list_sites_only()
+    # Tier-2 Feature 2: pre-populate the structured desired-config form
+    # and decide whether it can round-trip the stored config without
+    # loss (else the partial falls back to JSON-only).
+    from app.blueprints.admin._device_config_forms import (
+        desired_config_to_form_values,
+        is_form_representable,
+    )
+
+    desired_cfg = detail.get("desired_config") or {}
     return render_template(
         "device_detail.html",
         **_ctx({
@@ -133,8 +142,30 @@ def device_detail_page(device_id: str):
             # this device (directly or via a group).
             "watchdog_rules": watchdog_svc.list_rules_for_device(device_id),
             "device_schedules": schedules_svc.list_for_device(device_id),
+            # Tier-2 Feature 2: friendly device-config form.
+            "cfg_form": desired_config_to_form_values(desired_cfg),
+            "form_supported": is_form_representable(desired_cfg),
+            "config_support_badges": CONFIG_SUPPORT_BADGES,
         }),
     )
+
+
+# Tier-2 Feature 2: per-key support tier for the device-config form,
+# mirroring the support tiers in docs/firmware-apply-config-schema-v01.md.
+# `device_name` is the only key validated end-to-end with the firmware;
+# every other key is "accepted" — parsed by apply_config but the drift
+# round-trip is not yet individually verified.
+CONFIG_SUPPORT_BADGES = {
+    "device_name": "verified",
+    "relay_restore_behavior": "accepted",
+    "monitor_interval_seconds": "accepted",
+    "boot_warmup_seconds": "accepted",
+    "manual_button_enabled": "accepted",
+    "internet": "accepted",
+    "device": "accepted",
+    "notifications": "accepted",
+    "power": "accepted",
+}
 
 
 @admin_ui_bp.post("/devices/<device_id>")
@@ -508,16 +539,59 @@ def device_set_protection(device_id: str):
 @admin_ui_bp.post("/devices/<device_id>/desired-config")
 @admin_required_ui
 def device_desired_config_save_submit(device_id: str):
-    """Operator submits the JSON blob from the device-detail
-    'Desired config' card. Validation is in the service."""
+    """Operator submits the device-detail 'Desired config' card.
+
+    Tier-2 Feature 2: the form posts an `editor` discriminator —
+    `form` runs the structured-form builder, `json` (or absent, for
+    backwards compatibility) runs the original raw-JSON parse path.
+    Either way the service (`set_desired_config`) is the validation
+    backstop and the audit event is the same.
+    """
     import json
     from flask import flash
 
     from app.services import device_config
 
-    raw = (request.form.get("desired_config_json") or "").strip()
     desired_mode = (request.form.get("desired_mode") or "").strip() or None
-    if not raw:
+    editor = (request.form.get("editor") or "json").strip().lower()
+
+    if editor == "form":
+        # Structured form: build the payload from the flat cfg_* fields.
+        from app.blueprints.admin._device_config_forms import (
+            DeviceConfigFormError,
+            build_desired_config_from_form,
+        )
+
+        existing = device_config.get_desired_config(device_id) or {}
+        try:
+            payload = build_desired_config_from_form(
+                request.form, existing=existing
+            )
+        except DeviceConfigFormError as e:
+            flash(str(e), "error")
+            return redirect(
+                url_for("admin_ui.device_detail_page", device_id=device_id)
+            )
+    else:
+        # Raw-JSON escape hatch (the original v0.5.22 path).
+        raw = (request.form.get("desired_config_json") or "").strip()
+        if not raw:
+            payload = {}
+        else:
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError as e:
+                flash(f"Invalid JSON: {e}", "error")
+                return redirect(
+                    url_for("admin_ui.device_detail_page", device_id=device_id)
+                )
+            if not isinstance(payload, dict):
+                flash("Desired config must be a JSON object.", "error")
+                return redirect(
+                    url_for("admin_ui.device_detail_page", device_id=device_id)
+                )
+
+    if not payload:
         # Empty submit → clear the desired_config.
         try:
             device_config.set_desired_config(
@@ -535,14 +609,7 @@ def device_desired_config_save_submit(device_id: str):
             target_id=device_id,
         )
         return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as e:
-        flash(f"Invalid JSON: {e}", "error")
-        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
-    if not isinstance(payload, dict):
-        flash("Desired config must be a JSON object.", "error")
-        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+
     try:
         out = device_config.set_desired_config(
             device_id, payload, by_user_id=g.current_user.id, desired_mode=desired_mode
@@ -561,6 +628,7 @@ def device_desired_config_save_submit(device_id: str):
         details={
             "keys": sorted(payload.keys()),
             "desired_mode": desired_mode,
+            "editor": editor,
         },
     )
     flash(
