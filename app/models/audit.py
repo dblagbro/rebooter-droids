@@ -15,9 +15,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import ts_column
+from app.services.tenant_scope import TenantScoped
 
 
-class AuditEvent(Base):
+class AuditEvent(TenantScoped, Base):
+    # TODO(org-phase2): `organization_id` stays NULLABLE even after
+    # phase 2 — platform/system audit rows (RBAC backfills, etc.) have no
+    # org. It is stamped from the active org at `audit.record()` time and
+    # platform-NULL rows are visible only to platform staff. See
+    # design §3.6. `AuditEventArchive` mirrors this — see below.
     __tablename__ = "audit_events"
 
     # BigInteger on Postgres; Integer on SQLite so the PK autoincrements
@@ -69,6 +75,14 @@ class AuditEventArchive(Base):
     target_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Mirror of AuditEvent.organization_id so the prune copy stays
+    # complete. A plain nullable column — NOT the TenantScoped mixin: the
+    # archive is not a phase-2 query-filter target (only `audit_events`
+    # is Tier-A, design §3.6). Stays nullable forever — platform/system
+    # audit rows have no org.
+    # TODO(org-phase2): keep this in sync with AuditEvent.organization_id.
+    organization_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     archived_at: Mapped[datetime] = ts_column()
 

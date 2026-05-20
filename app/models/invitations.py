@@ -8,9 +8,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 
-class Invitation(Base):
+class Invitation(TenantScoped, Base):
+    # TODO(org-phase2): flip `organization_id` to NOT NULL — an invite is
+    # always into one org (design §5.2). On-delete becomes CASCADE.
     __tablename__ = "invitations"
 
     id: Mapped[str] = mapped_column(
