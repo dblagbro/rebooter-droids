@@ -1,0 +1,273 @@
+{# ── Desired-config structured form partial — Tier-2 Feature 2 ──────────
+   Replaces the raw-JSON <textarea> on the device-detail page with a
+   field-based form covering ALLOWED_DESIRED_CONFIG_KEYS. The raw JSON
+   editor stays available behind the "Advanced" <details> escape hatch.
+
+   Expected context:
+     device            — the device row dict
+     can_edit          — bool, operator may edit
+     desired_set       — bool, a non-empty desired_config exists
+     cfg_form          — dict of cfg_* prefixed pre-populated values
+                         (from _device_config_forms.desired_config_to_form_values)
+     form_supported    — bool, structured form can round-trip this config
+                         (from _device_config_forms.is_form_representable)
+     config_support_badges — dict key → ("verified"|"accepted", help text)
+
+   No inline JS — collapsibles are <details>, consistent with the
+   CSP-tight posture (script-src 'self', no unsafe-inline).
+#}
+
+{% macro support_badge(key) %}
+  {%- set tier = config_support_badges.get(key) -%}
+  {%- if tier == 'verified' -%}
+    <span class="badge green dcf-badge" title="Validated end-to-end with the firmware — push, apply, echo, drift round-trip all confirmed.">verified</span>
+  {%- else -%}
+    <span class="badge dcf-badge" title="Accepted by the firmware's apply_config parser, but the drift round-trip is not yet individually verified — older firmware may ignore it.">accepted</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% if not can_edit %}
+  <p class="muted">View-only — admin role required to edit.</p>
+{% else %}
+
+{% if not form_supported %}
+  <p class="dcf-note muted">
+    This device's stored config uses a key or shape the structured form
+    cannot edit without data loss — use the Advanced (raw JSON) editor below.
+  </p>
+{% endif %}
+
+{% if form_supported %}
+<form method="post" action="{{ url_for('admin_ui.device_desired_config_save_submit', device_id=device.id) }}" class="dcf-form">
+  <input type="hidden" name="editor" value="form">
+
+  <label class="dcf-row">
+    <span class="dcf-label">Desired mode (optional)</span>
+    <select name="desired_mode">
+      <option value="" {% if not device.desired_mode %}selected{% endif %}>(unset)</option>
+      <option value="smart_plug" {% if device.desired_mode == 'smart_plug' %}selected{% endif %}>smart_plug — just a switch</option>
+      <option value="internet_watchdog" {% if device.desired_mode == 'internet_watchdog' %}selected{% endif %}>internet_watchdog</option>
+      <option value="device_watchdog" {% if device.desired_mode == 'device_watchdog' %}selected{% endif %}>device_watchdog</option>
+    </select>
+    <span class="dcf-help">How this device should operate. Drives the watchdog wiring.</span>
+  </label>
+
+  {# ── core scalar fields ──────────────────────────────────────────── #}
+  <fieldset class="dcf-fieldset">
+    <legend>Basics {{ support_badge('device_name') }}</legend>
+
+    <label class="dcf-row">
+      <span class="dcf-label">Device name</span>
+      <input type="text" name="cfg_device_name" maxlength="120"
+             value="{{ cfg_form.get('cfg_device_name', '') }}"
+             placeholder="e.g. Erica's Subwoofer">
+      <span class="dcf-help">Friendly name shown on the device. Validated end-to-end with the firmware.</span>
+    </label>
+
+    <label class="dcf-row">
+      <span class="dcf-label">Relay restore behavior {{ support_badge('relay_restore_behavior') }}</span>
+      <select name="cfg_relay_restore_behavior">
+        <option value="" {% if not cfg_form.get('cfg_relay_restore_behavior') %}selected{% endif %}>(unset)</option>
+        <option value="restore_previous" {% if cfg_form.get('cfg_relay_restore_behavior') == 'restore_previous' %}selected{% endif %}>restore_previous — back to last state</option>
+        <option value="always_on" {% if cfg_form.get('cfg_relay_restore_behavior') == 'always_on' %}selected{% endif %}>always_on</option>
+        <option value="always_off" {% if cfg_form.get('cfg_relay_restore_behavior') == 'always_off' %}selected{% endif %}>always_off</option>
+      </select>
+      <span class="dcf-help">What the relay does after a power loss / reboot.</span>
+    </label>
+
+    <label class="dcf-row">
+      <span class="dcf-label">Monitor interval (seconds) {{ support_badge('monitor_interval_seconds') }}</span>
+      <input type="number" name="cfg_monitor_interval_seconds" min="1" step="1"
+             value="{{ cfg_form.get('cfg_monitor_interval_seconds', '') }}"
+             placeholder="e.g. 30">
+      <span class="dcf-help">How often the device runs its on-box monitoring loop.</span>
+    </label>
+
+    <label class="dcf-row">
+      <span class="dcf-label">Boot warm-up (seconds) {{ support_badge('boot_warmup_seconds') }}</span>
+      <input type="number" name="cfg_boot_warmup_seconds" min="0" step="1"
+             value="{{ cfg_form.get('cfg_boot_warmup_seconds', '') }}"
+             placeholder="e.g. 60">
+      <span class="dcf-help">Grace period after boot before watchdog action can fire.</span>
+    </label>
+
+    <label class="dcf-row dcf-row-check">
+      <input type="hidden" name="cfg_manual_button_enabled_present" value="1">
+      <input type="checkbox" name="cfg_manual_button_enabled" value="1"
+             {% if cfg_form.get('cfg_manual_button_enabled') %}checked{% endif %}>
+      <span class="dcf-label">Manual button enabled {{ support_badge('manual_button_enabled') }}</span>
+      <span class="dcf-help">Allow the physical button on the device to toggle the relay.</span>
+    </label>
+  </fieldset>
+
+  {# ── internet-watchdog block ─────────────────────────────────────── #}
+  <details class="dcf-fieldset-details">
+    <summary>Internet watchdog {{ support_badge('internet') }}</summary>
+    <fieldset class="dcf-fieldset">
+      <label class="dcf-row">
+        <span class="dcf-label">Targets (one host per line)</span>
+        <textarea name="cfg_internet_targets" rows="3"
+                  placeholder="1.1.1.1&#10;8.8.8.8">{{ cfg_form.get('cfg_internet_targets', '') }}</textarea>
+        <span class="dcf-help">Hosts the device pings to decide whether the internet is up.</span>
+      </label>
+      {% for sub, label in [
+        ('failure_threshold_seconds', 'Failure threshold (seconds)'),
+        ('power_off_seconds', 'Power-off duration (seconds)'),
+        ('post_reboot_holdoff_seconds', 'Post-reboot hold-off (seconds)'),
+        ('max_cycles_per_incident', 'Max cycles per incident'),
+        ('max_cycles_per_hour', 'Max cycles per hour'),
+        ('cooldown_seconds', 'Cooldown (seconds)'),
+        ('dns_refresh_seconds', 'DNS refresh (seconds)'),
+        ('recovery_stability_seconds', 'Recovery stability (seconds)'),
+      ] %}
+      <label class="dcf-row">
+        <span class="dcf-label">{{ label }}</span>
+        <input type="number" name="cfg_internet_{{ sub }}" min="0" step="1"
+               value="{{ cfg_form.get('cfg_internet_' ~ sub, '') }}">
+      </label>
+      {% endfor %}
+    </fieldset>
+  </details>
+
+  {# ── single-device-watchdog block ────────────────────────────────── #}
+  <details class="dcf-fieldset-details">
+    <summary>Device watchdog {{ support_badge('device') }}</summary>
+    <fieldset class="dcf-fieldset">
+      <label class="dcf-row">
+        <span class="dcf-label">Target (host or URL)</span>
+        <input type="text" name="cfg_device_target"
+               value="{{ cfg_form.get('cfg_device_target', '') }}"
+               placeholder="e.g. 192.168.1.50">
+        <span class="dcf-help">The single device this unit watches and power-cycles.</span>
+      </label>
+      {% for sub, label in [
+        ('failure_threshold_seconds', 'Failure threshold (seconds)'),
+        ('power_off_seconds', 'Power-off duration (seconds)'),
+        ('post_reboot_holdoff_seconds', 'Post-reboot hold-off (seconds)'),
+        ('max_cycles_per_incident', 'Max cycles per incident'),
+        ('max_cycles_per_hour', 'Max cycles per hour'),
+        ('cooldown_seconds', 'Cooldown (seconds)'),
+        ('recovery_stability_seconds', 'Recovery stability (seconds)'),
+      ] %}
+      <label class="dcf-row">
+        <span class="dcf-label">{{ label }}</span>
+        <input type="number" name="cfg_device_{{ sub }}" min="0" step="1"
+               value="{{ cfg_form.get('cfg_device_' ~ sub, '') }}">
+      </label>
+      {% endfor %}
+    </fieldset>
+  </details>
+
+  {# ── power telemetry block ───────────────────────────────────────── #}
+  <details class="dcf-fieldset-details">
+    <summary>Power telemetry {{ support_badge('power') }}</summary>
+    <fieldset class="dcf-fieldset">
+      <label class="dcf-row dcf-row-check">
+        <input type="hidden" name="cfg_power_enabled_present" value="1">
+        <input type="checkbox" name="cfg_power_enabled" value="1"
+               {% if cfg_form.get('cfg_power_enabled') %}checked{% endif %}>
+        <span class="dcf-label">Power sampling enabled</span>
+      </label>
+      <label class="dcf-row">
+        <span class="dcf-label">Sample rate (Hz)</span>
+        <input type="number" name="cfg_power_sample_rate_hz" min="0" step="1"
+               value="{{ cfg_form.get('cfg_power_sample_rate_hz', '') }}">
+      </label>
+      <label class="dcf-row">
+        <span class="dcf-label">Batch window (seconds)</span>
+        <input type="number" name="cfg_power_batch_seconds" min="0" step="1"
+               value="{{ cfg_form.get('cfg_power_batch_seconds', '') }}">
+      </label>
+    </fieldset>
+  </details>
+
+  {# ── notifications block ─────────────────────────────────────────── #}
+  <details class="dcf-fieldset-details">
+    <summary>Notifications {{ support_badge('notifications') }}</summary>
+    <fieldset class="dcf-fieldset">
+      {% for sub, label in [
+        ('enabled', 'Notifications enabled'),
+        ('send_on_trigger', 'Send on trigger'),
+        ('send_on_recovery', 'Send on recovery'),
+        ('send_on_max_cycles_reached', 'Send on max cycles reached'),
+        ('send_test_notification_enabled', 'Test notification enabled'),
+      ] %}
+      <label class="dcf-row dcf-row-check">
+        <input type="hidden" name="cfg_notifications_{{ sub }}_present" value="1">
+        <input type="checkbox" name="cfg_notifications_{{ sub }}" value="1"
+               {% if cfg_form.get('cfg_notifications_' ~ sub) %}checked{% endif %}>
+        <span class="dcf-label">{{ label }}</span>
+      </label>
+      {% endfor %}
+      <label class="dcf-row">
+        <span class="dcf-label">Type</span>
+        <input type="text" name="cfg_notifications_type"
+               value="{{ cfg_form.get('cfg_notifications_type', '') }}"
+               placeholder="e.g. webhook">
+      </label>
+      <label class="dcf-row">
+        <span class="dcf-label">Webhook URL</span>
+        <input type="text" name="cfg_notifications_webhook_url"
+               value="{{ cfg_form.get('cfg_notifications_webhook_url', '') }}"
+               placeholder="https://…">
+      </label>
+      <label class="dcf-row">
+        <span class="dcf-label">Webhook method</span>
+        <input type="text" name="cfg_notifications_webhook_method"
+               value="{{ cfg_form.get('cfg_notifications_webhook_method', '') }}"
+               placeholder="POST">
+      </label>
+      <label class="dcf-row">
+        <span class="dcf-label">Webhook auth token</span>
+        <input type="password" name="cfg_notifications_webhook_auth_token"
+               autocomplete="new-password"
+               placeholder="leave blank to keep unchanged">
+        <span class="dcf-help">Write-only secret. Leave blank to keep the stored value; never displayed back.</span>
+      </label>
+    </fieldset>
+  </details>
+
+  <div class="dcf-actions">
+    <button type="submit" class="btn">Save desired config</button>
+    {% if desired_set and device.central_management_enabled %}
+      <button type="submit" formaction="{{ url_for('admin_ui.device_desired_config_push_submit', device_id=device.id) }}" class="btn-secondary"
+              title="Enqueue apply_config now (operator-explicit; ignores the desired_config.enabled feature flag)">Push to device now</button>
+    {% endif %}
+  </div>
+</form>
+{% endif %}
+
+{# ── Advanced — raw JSON escape hatch ──────────────────────────────── #}
+<details class="v3-card dcf-advanced"{% if not form_supported %} open{% endif %}>
+  <summary>⚙ Advanced — edit desired config as raw JSON</summary>
+  <p class="muted dcf-note">
+    The full JSON editor. Accepts any key in
+    <code>ALLOWED_DESIRED_CONFIG_KEYS</code> and arbitrary nested shapes —
+    use it for keys the structured form above does not cover.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.device_desired_config_save_submit', device_id=device.id) }}" class="dcf-form">
+    <input type="hidden" name="editor" value="json">
+    <label class="dcf-row">
+      <span class="dcf-label">Desired mode (optional)</span>
+      <select name="desired_mode">
+        <option value="" {% if not device.desired_mode %}selected{% endif %}>(unset)</option>
+        <option value="smart_plug" {% if device.desired_mode == 'smart_plug' %}selected{% endif %}>smart_plug</option>
+        <option value="internet_watchdog" {% if device.desired_mode == 'internet_watchdog' %}selected{% endif %}>internet_watchdog</option>
+        <option value="device_watchdog" {% if device.desired_mode == 'device_watchdog' %}selected{% endif %}>device_watchdog</option>
+      </select>
+    </label>
+    <label class="dcf-row">
+      <span class="dcf-label">Desired-config JSON</span>
+      <textarea name="desired_config_json" rows="10" class="dcf-json"
+                placeholder='{"device_name": "Erica''s Subwoofer", "manual_button_enabled": true}'>{% if desired_set %}{{ device.desired_config|tojson(indent=2) }}{% endif %}</textarea>
+    </label>
+    <div class="dcf-actions">
+      <button type="submit" class="btn">Save desired config (JSON)</button>
+      {% if desired_set and device.central_management_enabled %}
+        <button type="submit" formaction="{{ url_for('admin_ui.device_desired_config_push_submit', device_id=device.id) }}" class="btn-secondary"
+                title="Enqueue apply_config now">Push to device now</button>
+      {% endif %}
+    </div>
+  </form>
+</details>
+{% endif %}
