@@ -12,7 +12,7 @@ from app.services.tenant_scope import TenantScoped
 
 
 class Site(TenantScoped, Base):
-    # TODO(org-phase2): `Site` is the pivot — org owns sites. The phase-2
+    # TODO(org-phase3): `Site` is the pivot — org owns sites. The phase-2
     # migration flips `organization_id` to NOT NULL with an on-delete
     # RESTRICT FK and swaps `name`'s global unique for a per-org
     # UNIQUE(organization_id, name). See design §2, §6.3.

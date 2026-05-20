@@ -1,21 +1,23 @@
-"""Organization (tenant) model — multi-tenant boundary, Phase 1.
+"""Organization (tenant) model — multi-tenant boundary.
 
 Per `docs/notes/2026-05-20-organization-boundary-design.md` §1 and §4.1.
 
-This file introduces the first-class top-level tenant entity. Phase 1 is
-the *additive foundation only* — these tables are created and an
-`organization_id` column is added (nullable) to the Tier-A tables, but
-nothing is filtered or enforced yet.
-
+This file introduces the first-class top-level tenant entity.
 `Organization` is the tenant; `OrganizationMembership` is the M:N join
 between users and organizations (a user — e.g. an MSP/contractor — can
 belong to more than one org, so `users` itself does NOT carry an
 `organization_id` column).
 
-TODO(org-phase2): the `do_orm_execute` tenant filter, `before_flush`
-write-stamping, the org ContextVar plumbing, NOT-NULL + per-org unique
-constraints, and RBAC re-scoping all hook in on top of this model. See
-the design doc §3, §4, §6.3.
+Phase 1 shipped the additive foundation (these tables + nullable
+`organization_id` on the Tier-A tables). Phase 2 ships the runtime
+enforcement on top: the `do_orm_execute` tenant read filter, the
+`before_flush` write-stamping, the org ContextVar plumbing and RBAC
+re-scoping — all in `app/services/tenant_scope.py` and wired from the
+auth middleware.
+
+TODO(org-phase3): NOT-NULL flip on `organization_id`, per-org unique
+constraints, FK on-delete swaps and Postgres RLS are deferred to
+phase 3 — see the design doc §6.3, §8.1 step 9.
 """
 
 from __future__ import annotations

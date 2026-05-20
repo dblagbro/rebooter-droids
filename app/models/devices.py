@@ -169,7 +169,7 @@ class DeviceCredential(Base):
 
 
 class EnrollmentToken(TenantScoped, Base):
-    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK).
+    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK).
     # A token mints a device into an org's site. See design §2.
     # `Device`, `DeviceCredential`, `DeviceHeartbeat` stay Tier-B (org
     # derived via `device -> site`) — no column.
