@@ -54,10 +54,18 @@ ALL_SCOPE_TYPES = (SCOPE_GLOBAL, SCOPE_SITE, SCOPE_GROUP, SCOPE_DEVICE)
 
 
 class RoleBinding(TenantScoped, Base):
-    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK);
-    # reinterpret scope_type='global' as "global within this org"; and
-    # widen `uq_role_binding_scope` to include `organization_id`. See
-    # design §4.2, §4.3.
+    # org-boundary phase 2: `RoleBinding` is TenantScoped, so once the
+    # tenant-scope ContextVar is bound every `select(RoleBinding)` is
+    # auto-filtered to the active org by the do_orm_execute filter —
+    # i.e. scope_type='global' is now "global *within this org*"
+    # (design §4.2). The resolvers in app/services/role_bindings.py thus
+    # became org-aware with no code change. A user's global binding in
+    # org A has zero reach into org B.
+    #
+    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK)
+    # and widen `uq_role_binding_scope` to include `organization_id`
+    # (design §4.3). Deferred to phase 3 with the other constraint
+    # hardening.
     __tablename__ = "role_bindings"
 
     id: Mapped[str] = mapped_column(

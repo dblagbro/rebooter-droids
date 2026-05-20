@@ -175,7 +175,7 @@ KNOWN_ACTION_KINDS = LEAF_ACTION_KINDS + (ACTION_KIND_BINDING,)
 
 
 class WatchdogRule(TenantScoped, Base):
-    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK).
+    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK).
     # See design §2. `WatchdogProbeEvent` stays Tier-B (org derived via
     # the rule) — no column.
     __tablename__ = "watchdog_rules"

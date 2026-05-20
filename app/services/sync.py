@@ -256,6 +256,18 @@ def apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
     Runs inside ``suppress_emission()`` and flushes within it, so the
     applier's own writes never trigger the emission hooks (no hub-to-hub
     re-emit loop).
+
+    TODO(org-phase3): multi-hub sync crosses a tenant trust boundary by
+    design (org-boundary design §3.7). The applier currently runs under
+    `tenant_scope.system()` (the scheduler wraps the replicator tick),
+    so the `before_flush` org-stamping is bypassed — meaning an applied
+    row keeps whatever `organization_id` the peer sent, UNVERIFIED. Phase
+    3 must, per §3.7: (a) extend `outbox_events.scope_claims` to carry
+    `organization_id`, (b) refuse to apply an event whose org does not
+    exist locally, and (c) run each apply inside
+    `tenant_scope.org_context(<event org>)` so a buggy/hostile peer
+    cannot inject a row into the wrong org. Until then the replicator is
+    a known unscoped path — see the phase-2 report.
     """
     with suppress_emission():
         applied = _apply_outbox_event(session, event)

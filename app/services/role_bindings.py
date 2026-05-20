@@ -290,6 +290,81 @@ def can_act_on_group(user_id: str, group_id: str, role_needed: str) -> bool:
     return eff == ALL_SENTINEL or group_id in eff
 
 
+# ── ORG-AWARE RBAC (org-boundary phase 2 — design §4.2) ──────────────────
+# `role_bindings` is a TenantScoped (Tier-A) table. Once the tenant-scope
+# ContextVar is bound for a request (see app/middleware/admin_auth.py),
+# the `do_orm_execute` filter automatically narrows EVERY
+# `select(RoleBinding)` above to the active org — so a user's `global`
+# binding in org A has zero reach into org B (design §4.2: "reinterpret
+# `global` as global *within this org*"). The resolvers therefore need no
+# code change to become org-aware: RBAC and tenant isolation compose.
+#
+# What this section adds is the design §4.2 *defense-in-depth* check: a
+# `site`/`group`/`device` binding whose `scope_id` points at a resource
+# that does NOT belong to the binding's own org is corrupt data. The
+# tenant filter already prevents such a binding from being *seen*
+# cross-org, but a binding pointing at a foreign resource id is still a
+# data-integrity bug worth surfacing.
+
+
+def binding_scope_belongs_to_org(
+    scope_type: str, scope_id: str | None, organization_id: str
+) -> bool:
+    """Defense-in-depth (design §4.2): confirm a binding's scoped
+    resource (`site`/`group`/`device`) actually belongs to the binding's
+    org. A `global` binding has no scoped resource — always True.
+
+    This is a data-integrity check, NOT subject to the shadow/enforce
+    rollout toggle — so it queries with an EXPLICIT
+    `WHERE organization_id = <org>` predicate (under a `system()` bypass
+    so the implicit do_orm_execute filter, which is shadow-mode-gated,
+    does not interfere). A foreign-org resource simply fails the
+    predicate, which is the "does not belong" answer.
+
+    Returns True for an unknown scope_type (nothing to verify) and for a
+    missing scope_id on a non-global binding (a separate corruption the
+    `grant()` validation already rejects).
+    """
+    if scope_type == SCOPE_GLOBAL or not scope_id:
+        return scope_type == SCOPE_GLOBAL
+    from app.services import tenant_scope
+
+    with tenant_scope.system():
+        with session_scope() as session:
+            if scope_type == SCOPE_SITE:
+                return (
+                    session.scalar(
+                        select(Site.id).where(
+                            Site.id == scope_id,
+                            Site.organization_id == organization_id,
+                        )
+                    )
+                    is not None
+                )
+            if scope_type == SCOPE_GROUP:
+                from app.models import Group
+
+                return (
+                    session.scalar(
+                        select(Group.id).where(
+                            Group.id == scope_id,
+                            Group.organization_id == organization_id,
+                        )
+                    )
+                    is not None
+                )
+            if scope_type == SCOPE_DEVICE:
+                # Device is Tier-B — its org is DERIVED via site. Look
+                # the device up, then confirm its site belongs to the
+                # binding's org.
+                device = session.get(Device, scope_id)
+                if device is None or not device.site_id:
+                    return False
+                site = session.get(Site, device.site_id)
+                return site is not None and site.organization_id == organization_id
+    return True
+
+
 # ── SHADOW-MODE ENFORCEMENT (A2 — v0.5.35, B1 RBAC Phase 1) ──────────────
 # The resolvers above answer "can this user act on X?". The require_*
 # helpers below turn that answer into a *gate*: in shadow mode a miss is

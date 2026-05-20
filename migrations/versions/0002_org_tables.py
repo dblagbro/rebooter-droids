@@ -11,9 +11,10 @@ This revision is purely additive — it creates the two new tenant tables.
 The nullable `organization_id` columns on the Tier-A tables land in the
 next revision (0003), after these tables exist so the FK targets resolve.
 
-TODO(org-phase2): a later migration flips the Tier-A `organization_id`
+TODO(org-phase3): a later migration flips the Tier-A `organization_id`
 columns to NOT NULL, swaps per-table on-delete behaviour, and adds the
-per-org unique constraints. None of that is in phase 1.
+per-org unique constraints. None of that is in phase 1 or phase 2 —
+phase 2 is the runtime enforcement mechanism, not constraint hardening.
 """
 from __future__ import annotations
 
