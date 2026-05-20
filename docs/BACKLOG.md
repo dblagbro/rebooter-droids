@@ -80,9 +80,13 @@ The v0.5.61 → v0.5.100 arc shipped:
   recovery, threshold-cross fire), and the firmware-deployment
   service end-to-end (validation, fan-out, supersede invariant,
   `reconcile_assignment_reported_version`, list/counts).
-- **B11 multi-hub sync** — applier + emission + bootstrap-seam all
-  shipped (v0.5.70–.72); sync converges end-to-end. `sync.enabled`
-  stays default-off pending the operator's go-ahead.
+- **B11 multi-hub sync — LIVE.** Applier + emission + bootstrap-seam
+  shipped v0.5.70–.72; `sync.enabled=true` on both hubs in production
+  since 2026-05-16, fully converged in both directions. v0.5.102 added
+  the admin-Bearer-auth `/api/v1/admin/sync/status` endpoint, the
+  operator preflight script (`scripts/sync-dual-hub-preflight.sh`),
+  and `docs/runbooks/sync-enable.md`; the live convergence preflight
+  ran 2026-05-19 and PASSED (create→A→B in 3 s, delete→A→B in 5 s).
 
 ### Charter work — all closed
 
@@ -97,7 +101,7 @@ The v0.5.61 → v0.5.100 arc shipped:
 
 | Item | Size | Status |
 |---|---|---|
-| **B11 — flip `sync.enabled` on** | — | Applier/emission/bootstrap all shipped (v0.5.70–.72); converges end-to-end, default-off. **Operator's call** to re-enable. |
+| **Low-heap power-upload transport** | medium (design first) | Firmware-team memo `docs/notes/2026-05-17-low-heap-power-upload-memo.md`: ESP8266 wall units (`.225`, `.69`) can't run `central=true + power=true` — separate HTTPS round-trip exhausts heap. Hub-team response in `docs/notes/2026-05-19-from-hub-low-heap-power-upload-design.md` recommends Option A (heartbeat-carried compact power summary). **Awaiting firmware-team sign-off** before any code. ~30 LOC + tests once approved. |
 | **EPG show↔network mapping helper** | small | A discovery aid for the `epg_show_airing` probe — optional polish on the TV feature. Not requested. |
 | **P1.3 loaded-power validation** | small | **Firmware-blocked** — every real CSE7766 sample is no-load (0 W); cost/kWh analytics can't be validated until firmware delivers a known-load capture. |
 | **P3b** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
@@ -149,7 +153,7 @@ The v0.5.61 → v0.5.100 arc shipped:
 - ✅ **B8** Schedules primitive — v0.4.8
 - ✅ **B9** Rule advanced JSON editor — v0.4.9
 - ✅ **B10** RFC-003 redlines #1-4 — closed 2026-05-10
-- ✅ **B11** RFC-004 multi-hub sync — architecture pick closed 2026-05-10; **phases 1–7 implemented v0.5.45–.50** (outbox model, emission, replicator daemon, HMAC peer auth, sync settings UI). **Applier completed v0.5.70–.72** — full create/update LWW, natural-key reconciliation, site-FK remap, tombstone-replay protection; 18 in-process gated tests. `sync.enabled=false` by default until the operator runs the v0.5.102 dual-hub preflight + commits to the flip; see `docs/runbooks/sync-enable.md`.
+- ✅ **B11** RFC-004 multi-hub sync — architecture pick closed 2026-05-10; **phases 1–7 implemented v0.5.45–.50** (outbox model, emission, replicator daemon, HMAC peer auth, sync settings UI). **Applier completed v0.5.70–.72** — full create/update LWW, natural-key reconciliation, site-FK remap, tombstone-replay protection; 18 in-process gated tests. **Live in production** — `sync.enabled=true` on both hubs since 2026-05-16, fully converged (last_error=null in both directions). The 2026-05-19 dual-hub preflight (`scripts/sync-dual-hub-preflight.sh`, runbook `docs/runbooks/sync-enable.md`) PASSED end-to-end against the live pair: create→A→B in 3 s, delete→A→B in 5 s.
 - ✅ **B1** RBAC — **fully shipped 2026-05-15**, all phases P1–P5 (v0.5.35–v0.5.44): `role_bindings` join table, scope-aware list filtering, scoped invitations + bindings API, admin UI, enforce-mode toggle.
 - ✅ **B12** RFC-005 redlines — closed 2026-05-10 (firmware-side ownership)
 - ✅ **B13** Status-inbox watchdog.firing items — v0.4.7
