@@ -54,7 +54,7 @@ KNOWN_RECURRENCES = (REC_ONCE, REC_DAILY, REC_WEEKLY)
 
 
 class Schedule(TenantScoped, Base):
-    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK).
+    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK).
     # See design §2.
     __tablename__ = "schedules"
 

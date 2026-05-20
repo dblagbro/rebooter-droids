@@ -24,7 +24,7 @@ from app.services.tenant_scope import TenantScoped
 
 
 class Scene(TenantScoped, Base):
-    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK)
+    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK)
     # and swap `name`'s global unique for UNIQUE(organization_id, name).
     # See design §2, §6.3.
     __tablename__ = "scenes"
