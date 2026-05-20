@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -13,6 +14,39 @@ from app.models.users import (
     ROLE_VIEWER,
 )
 from app.services.auth import decode_token, load_user
+
+log = logging.getLogger(__name__)
+
+
+def _bind_tenant_scope(user) -> None:
+    """Bind the multi-tenant org scope for an authenticated user request.
+
+    Called from `role_required_*` right after `g.current_user` is set
+    (design §3.2). Resolves the user's active org and pushes it onto the
+    `tenant_scope` ContextVar so every Tier-A ORM SELECT in the view is
+    auto-filtered. The ContextVar is cleared in `teardown_request`
+    (see `register_tenant_teardown`) so a pooled worker never leaks one
+    request's org into the next.
+
+    Best-effort: a resolution hiccup must not 500 an otherwise-valid
+    request. On failure the scope stays unbound — and the
+    `do_orm_execute` filter then flags any Tier-A access loudly as a
+    `tenant.unscoped_access` audit row, which is the intended behaviour.
+    """
+    try:
+        from app.services import org_membership, tenant_scope
+
+        org_id = org_membership.resolve_active_org(
+            user, session_org_id=session.get("active_org_id")
+        )
+        tenant_scope.set_org(org_id)
+        # Keep the session in sync so the org-switcher and subsequent
+        # requests see a validated value (never widens access — it is
+        # re-validated every request).
+        if org_id is not None:
+            session["active_org_id"] = org_id
+    except Exception:
+        log.exception("tenant-scope binding failed for user %s", getattr(user, "id", None))
 
 # Convenience role sets used throughout the blueprints.
 ANY_AUTHENTICATED = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER}
@@ -123,6 +157,9 @@ def role_required_api(*allowed_roles: str):
                     status=403,
                 )
             g.current_user = user
+            # org-boundary phase 2: bind the tenant scope right after the
+            # principal is known (design §3.2). Cleared in teardown.
+            _bind_tenant_scope(user)
             return fn(*args, **kwargs)
 
         return wrapper
@@ -147,6 +184,9 @@ def role_required_ui(*allowed_roles: str):
                     403,
                 )
             g.current_user = user
+            # org-boundary phase 2: bind the tenant scope right after the
+            # principal is known (design §3.2). Cleared in teardown.
+            _bind_tenant_scope(user)
             return fn(*args, **kwargs)
 
         return wrapper
@@ -216,6 +256,27 @@ def scope_required_api(role_needed: str, *, scope: str, id_kwarg: str):
         return wrapper
 
     return decorator
+
+
+def register_tenant_teardown(app) -> None:
+    """Register the `teardown_request` hook that clears the tenant-scope
+    ContextVar at the end of every request (design §3.2, §8.2).
+
+    This MUST run on a `teardown_request` (which fires even when the view
+    raised) and not merely an `after_request` — otherwise a request that
+    500s mid-handler would leave its org bound on the pooled worker and
+    the *next* request served by that worker would silently run under the
+    previous tenant's scope. That is a cross-tenant data leak.
+    """
+
+    @app.teardown_request
+    def _clear_tenant_scope(_exc):  # noqa: ANN001
+        try:
+            from app.services import tenant_scope
+
+            tenant_scope.reset()
+        except Exception:
+            log.exception("tenant-scope teardown reset failed")
 
 
 def scope_required_ui(role_needed: str, *, scope: str, id_kwarg: str):
