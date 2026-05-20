@@ -78,7 +78,14 @@ def register():
     try:
         device, raw_secret = consume_enrollment_token(token, body)
     except EnrollmentError as e:
-        status = 410 if e.code == "enrollment_expired" else 409 if e.code == "enrollment_consumed" else 400
+        # S1-7: `device_already_registered` is a 409 Conflict — the
+        # operator should use the Restore path, not retry /register.
+        if e.code == "enrollment_expired":
+            status = 410
+        elif e.code in ("enrollment_consumed", "device_already_registered"):
+            status = 409
+        else:
+            status = 400
         return err(e.code, e.message, status=status)
 
     return ok(

@@ -13,10 +13,12 @@ See `docs/architecture.md` §"Source layout" for the split rationale.
 from __future__ import annotations
 
 from app.services.devices._mutations import (
+    MergeRetireError,
     UnknownPatchFieldError,
     delete_device,
     delete_devices_bulk,
     enqueue_display_name_sync,
+    merge_retire_device,
     update_device,
 )
 from app.services.devices._query import (
@@ -51,8 +53,10 @@ __all__ = [
     "get_device_detail",
     # Writes
     "UnknownPatchFieldError",
+    "MergeRetireError",
     "delete_device",
     "delete_devices_bulk",
+    "merge_retire_device",
     "update_device",
     "enqueue_display_name_sync",
     # Version helpers (re-exported from _versions.py)
