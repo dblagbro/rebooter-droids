@@ -194,6 +194,87 @@ def system_config() -> dict:
     return out
 
 
+# ── resolved network URLs (DB override → env → config default) ────
+
+
+def resolve_public_base_url() -> str:
+    """S1-4/S1-5: the *live* public base URL.
+
+    Resolution order: `network.public_base_url` DB override (set via
+    the Settings → Network UI) → `REBOOTER_PUBLIC_BASE_URL` env var →
+    the `Settings.public_base_url` config default.
+
+    Pre-fix, consumers (e.g. `announcements.upsert_announcement`
+    building `central_register_url`) read `load_settings().public_base_url`
+    directly — env-only — so the Network-settings UI override was a dead
+    write that never reached devices. Route URL-building through this
+    helper so the override actually takes effect.
+    """
+    from app.config import load_settings
+
+    v = get("network.public_base_url", env_var="REBOOTER_PUBLIC_BASE_URL", default=None)
+    if v:
+        return str(v)
+    return load_settings().public_base_url
+
+
+def resolve_firmware_public_base() -> str:
+    """S1-4/S1-5: the *live* firmware public base URL.
+
+    Same DB override → env → config-default resolution as
+    `resolve_public_base_url`.
+    """
+    from app.config import load_settings
+
+    v = get(
+        "network.firmware_public_base",
+        env_var="REBOOTER_FIRMWARE_PUBLIC_BASE",
+        default=None,
+    )
+    if v:
+        return str(v)
+    return load_settings().firmware_public_base
+
+
+def _host_of(url: str | None) -> str:
+    from urllib.parse import urlparse
+
+    if not url:
+        return ""
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def voipguru_www_warnings() -> list[str]:
+    """S1-4/S1-5: warn-only check for the voipguru.org-without-www case.
+
+    Returns a list of human-readable warnings — one per resolved URL
+    (`public_base_url`, `firmware_public_base`) whose host is exactly
+    `voipguru.org` with no `www.` prefix. The live site is served at
+    `www.voipguru.org`; a bare-apex URL handed to a device fails to
+    resolve / redirect-loops.
+
+    WARN ONLY — this never rewrites the value. Used by the startup
+    validator and the Network-settings on-save check.
+    """
+    warnings: list[str] = []
+    checks = (
+        ("public_base_url", resolve_public_base_url()),
+        ("firmware_public_base", resolve_firmware_public_base()),
+    )
+    for label, url in checks:
+        if _host_of(url) == "voipguru.org":
+            warnings.append(
+                f"{label} host is 'voipguru.org' without a 'www.' prefix "
+                f"({url!r}). The live site is www.voipguru.org — devices "
+                f"may fail to resolve this URL. Update Settings -> Network "
+                f"(or the REBOOTER_*_BASE env var) to use 'www.voipguru.org'."
+            )
+    return warnings
+
+
 def is_live_editable(name: str) -> bool:
     """Whether changing this setting takes effect without a
     container restart. Used by the UI to label fields with
