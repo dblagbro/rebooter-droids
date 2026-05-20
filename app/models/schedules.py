@@ -38,6 +38,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 
 # Schedule kinds
@@ -52,7 +53,9 @@ REC_WEEKLY = "weekly"
 KNOWN_RECURRENCES = (REC_ONCE, REC_DAILY, REC_WEEKLY)
 
 
-class Schedule(Base):
+class Schedule(TenantScoped, Base):
+    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK).
+    # See design §2.
     __tablename__ = "schedules"
 
     id: Mapped[str] = mapped_column(

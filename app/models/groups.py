@@ -8,9 +8,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 
-class Group(Base):
+class Group(TenantScoped, Base):
+    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK)
+    # and swap `name`'s global unique for UNIQUE(organization_id, name).
+    # See design §2, §6.3.
     __tablename__ = "groups"
 
     id: Mapped[str] = mapped_column(

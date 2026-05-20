@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
+from app.services.tenant_scope import TenantScoped
 
 # Allowed `kind` values. Each one has a `_poll_<kind>` branch in
 # `services/external_sensors.py::_poll_kind`, optional kind-specific
@@ -69,7 +70,10 @@ KIND_TO_MODALITY = {
 }
 
 
-class ExternalSensorSource(Base):
+class ExternalSensorSource(TenantScoped, Base):
+    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK).
+    # See design §2. `ExternalSensorSample` stays Tier-B (org derived via
+    # the source) — no column.
     __tablename__ = "external_sensor_sources"
 
     id: Mapped[str] = mapped_column(
