@@ -75,6 +75,29 @@ fixture can no longer mask a field-name drift.
 
 Gate widens 856 → 862 (5 sync-admin-status + 1 seeded round-trip).
 
+### Operator validation — convergence test PASSED against production
+
+After the ship, ran `scripts/sync-dual-hub-preflight.sh` against the
+live pair (tmrwww01 ↔ tmrwww02). Two bugs fell out of the first run
+— both in the script, not the wire:
+
+1. The `curl_a` / `curl_b` helpers passed `"$@"` *and* `"$HUB$1"` to
+   curl, so curl saw two URLs and the response body was concatenated
+   garbage that broke downstream jq.
+2. The jq path was `.data[]?` but `/api/v1/admin/sites` returns
+   `{ok: true, data: {sites: [...]}}`. Path fixed to `.data.sites[]?`.
+
+Trap-driven cleanup ran correctly even on the crashed run (no stray
+marker on either hub — verified). After fix:
+
+- **Create** on hub-A → converged on hub-B in **3 seconds**.
+- **Delete** on hub-A → tombstone reflected on hub-B in **5 seconds**.
+- Both within the ~10 s replicator tick cadence.
+- ID preserved across hubs.
+
+The script (in `scripts/`, outside the Docker image) is updated in
+this same ship; the v0.5.102 image is unchanged.
+
 ## [0.5.101] - 2026-05-19
 
 ### Fixed — numeric form inputs can no longer 500 the page
