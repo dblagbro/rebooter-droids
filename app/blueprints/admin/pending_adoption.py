@@ -25,6 +25,7 @@ from app.services.announcements import (
     AnnouncementError,
     adopt as svc_adopt,
     delete as svc_delete,
+    force_adopt_reconcile as svc_force_adopt,
     list_announcements as svc_list,
     reject as svc_reject,
 )
@@ -236,6 +237,38 @@ def pending_adoption_reject_submit(announcement_id: str):
     return redirect(url_for("admin_ui.pending_adoption_page"))
 
 
+# S1-6: force-adopt / clear stuck state. Reconciles a pending /
+# awaiting_register announcement row whose MAC matches an already-
+# active Device — stamps consumed_at + clears the adoption token so
+# the row leaves the stuck state. WARN: only valid when the device
+# really did register; the service refuses otherwise.
+@admin_ui_bp.post("/pending-adoption/<announcement_id>/force-adopt")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def pending_adoption_force_adopt_submit(announcement_id: str):
+    try:
+        result = svc_force_adopt(announcement_id)
+    except AnnouncementError as e:
+        flash(f"Force-adopt failed: {e.message}", "error")
+        return redirect(url_for("admin_ui.pending_adoption_page"))
+    audit_service.record(
+        "device_announcement.force_adopt_reconciled",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device_announcement",
+        target_id=announcement_id,
+        details={
+            "mac_address": result["mac_address"],
+            "reconciled_device_id": result.get("reconciled_device_id"),
+        },
+    )
+    flash(
+        f"Reconciled stuck announcement for MAC {result['mac_address']} "
+        f"against active device {result.get('reconciled_device_id')}.",
+        "info",
+    )
+    return redirect(url_for("admin_ui.pending_adoption_page"))
+
+
 @admin_ui_bp.post("/pending-adoption/<announcement_id>/delete")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def pending_adoption_delete_submit(announcement_id: str):
@@ -283,6 +316,31 @@ def adopt_api(announcement_id: str):
         target_id=announcement_id,
         details={
             "mac_address": result["mac_address"],
+            "via": "api",
+        },
+    )
+    return ok(result)
+
+
+# S1-6: JSON API counterpart of the force-adopt / clear-stuck-state
+# admin action.
+@admin_api_bp.post("/pending-adoption/<announcement_id>/force-adopt")
+@role_required_api(*ADMIN_AND_UP)
+def force_adopt_api(announcement_id: str):
+    try:
+        result = svc_force_adopt(announcement_id)
+    except AnnouncementError as e:
+        status = 404 if e.code == "not_found" else 409
+        return err(e.code, e.message, status=status)
+    audit_service.record(
+        "device_announcement.force_adopt_reconciled",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device_announcement",
+        target_id=announcement_id,
+        details={
+            "mac_address": result["mac_address"],
+            "reconciled_device_id": result.get("reconciled_device_id"),
             "via": "api",
         },
     )

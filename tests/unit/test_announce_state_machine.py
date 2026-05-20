@@ -20,6 +20,7 @@ import pytest
 
 from app.services.announcements import (
     AnnouncementError,
+    _normalize_mac,
     adopt,
     list_announcements,
     mark_consumed,
@@ -29,8 +30,11 @@ from app.services.announcements import (
 
 
 def _announcement_id(mac: str) -> str:
+    # S1-6: announce rows store the MAC in canonical form, so the
+    # lookup must compare normalised MACs (not the raw colon-form).
+    want = _normalize_mac(mac)
     for a in list_announcements(include_consumed=True):
-        if a["mac_address"] == mac:
+        if _normalize_mac(a["mac_address"]) == want:
             return a["id"]
     raise AssertionError(f"no announcement row for {mac}")
 
@@ -56,7 +60,7 @@ def test_repeat_announce_before_adopt_stays_pending_and_counts(hub_db):
     third = upsert_announcement(mac_address=mac)
     assert third["status"] == "pending"
     rows = [a for a in list_announcements(include_consumed=True)
-            if a["mac_address"] == mac]
+            if _normalize_mac(a["mac_address"]) == _normalize_mac(mac)]
     assert len(rows) == 1, "announce upserts one row per MAC"
     assert rows[0]["announce_count"] == 3
 
