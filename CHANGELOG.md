@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.102] - 2026-05-19
+
+### Changed — B11 sync: doc truthfulness + preflight + runbook
+
+The "B11 applier is a stub" framing in `design.md §6` and the
+`BACKLOG.md` B11 historical entry was **30+ versions stale**. The
+applier shipped fully in v0.5.70–.72 (LWW + natural-key reconciliation
++ site-FK remap + tombstone replay protection) and is gated by 18
+in-process tests across `test_v0570_b11_applier.py` +
+`test_v0571_b11_emission.py` + `test_v0572_b11_natural_key.py`. No
+code work remained for the applier itself; what was missing was an
+operator-facing preflight + runbook so the `sync.enabled` flip could
+be exercised confidently.
+
+- **`design.md §6`** (Multi-hub posture) rewritten: B11 is
+  code-complete; `sync.enabled` remains default-off because the flip
+  is the operator's call after a dual-hub preflight, not because the
+  code is unfinished. **§7** "Deliberately deferred" line refreshed to
+  match.
+- **`BACKLOG.md`** historical B11 entry updated — drops the stale
+  "Scaffold only" + "create/update LWW is still a stub" wording.
+- **`docs/runbooks/sync-enable.md`** — new operator playbook. Covers
+  what the flip does, the preconditions checklist, the three-phase
+  preflight (read-only → flip → convergence-test), 24-h soak
+  guidance, kill-switch + rollback procedures.
+
+### Added — admin sync-status endpoint + preflight script
+
+- **`GET /api/v1/admin/sync/status`** (admin-Bearer-auth) — wraps the
+  existing HMAC-only `/api/v1/sync/status` so admin tooling can query
+  the same outbox + cursor data plus the `sync.enabled` flag,
+  configured peer list (`id` + `base_url` only — never the HMAC key),
+  and a `hmac_key_set` boolean. Operator-useful regardless of the
+  preflight; needed by the preflight script.
+- **`scripts/sync-dual-hub-preflight.sh`** — operator harness for the
+  B11 flip. Two modes: `--read-only` (preconditions only — peer
+  config, HMAC, hub_ids differ, current outbox + cursor snapshot) and
+  default convergence-test (creates a marker Site on hub-A, polls
+  hub-B for it, deletes it on hub-A, polls hub-B for the tombstone;
+  reports both convergence latencies). Never flips `sync.enabled`
+  itself — that stays an explicit operator decision per the runbook.
+
+### Tests
+
+- `tests/qa/test_v05102_sync_admin_status.py` (5 tests) — pins the new
+  admin endpoint's shape, the `sync.enabled=false` default safety
+  property, the HMAC-key-never-leaked invariant, the admin-auth
+  requirement, and the peer-entry credential-surface tightness.
+
+`sync.enabled` was **not touched** this ship. Post-deploy verification
+caught a separate stale assumption: **the live production cluster
+already has `sync.enabled=true` on both hubs** (set in a prior session;
+both directions fully converged — tmrwww01 outbox max_seq=14, tmrwww02
+cursor for www at seq=14; tmrwww02 outbox max_seq=5, tmrwww01 cursor
+for www2 at seq=5; both `last_error=null` since 2026-05-16). The new
+runbook is now best read as "verify-what's-running + recover-if-needed"
+rather than "first-time-flip"; the kill-switch + rollback sections
+apply unchanged.
+
+Also caught pre-commit: the new admin endpoint mapped the peer-config
+field as `base_url`, but the production-truth + replicator-truth field
+is `url`. Fixed in `peer_hubs_safe`; the runbook example + the
+QA test field-name assertion updated to match; added
+`test_seeded_peer_url_round_trips` so an empty-`peer_hubs` test
+fixture can no longer mask a field-name drift.
+
+Gate widens 856 → 862 (5 sync-admin-status + 1 seeded round-trip).
+
 ## [0.5.101] - 2026-05-19
 
 ### Fixed — numeric form inputs can no longer 500 the page
