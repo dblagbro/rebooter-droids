@@ -34,6 +34,15 @@ class UnknownPatchFieldError(ValueError):
         self.fields = fields
 
 
+class MergeRetireError(ValueError):
+    """Raised by `merge_retire_device` for an invalid merge request."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 def delete_device(device_id: str) -> bool:
     """Hard-delete a device + cascade (credentials, heartbeats, events,
     commands, deployment_assignments, group memberships).
@@ -107,6 +116,92 @@ def update_device(device_id: str, patch: dict) -> dict | None:
             session.add(d)
         session.flush()
         return serialize_device(d)
+
+
+def merge_retire_device(keep_device_id: str, retire_device_id: str) -> dict:
+    """S1-7: merge/retire one of two duplicate Device rows.
+
+    The `.69` symptom: a device that re-registered through the fresh-
+    adopt path produced a *second* Device row for the same physical
+    MAC. The operator needs to consolidate on one row.
+
+    This action keeps `keep_device_id` and retires `retire_device_id`
+    by setting its `registration_state='decommissioned'`. The retired
+    row is NOT hard-deleted — heartbeats, events, commands, deployment
+    assignments and audit rows FK-reference it; deleting would cascade
+    away real history. Decommissioning takes it out of the active
+    fleet views (`find_by_mac`, list filters) while preserving the
+    record.
+
+    Guards:
+    - both ids must resolve to a Device,
+    - the two must be distinct,
+    - both must share a MAC (verified via the normalized `find_by_mac`),
+    - the keep row must not itself already be decommissioned.
+
+    Returns a dict describing the merge for the caller's audit event.
+    Raises `MergeRetireError` on any guard failure.
+    """
+    if not keep_device_id or not retire_device_id:
+        raise MergeRetireError(
+            "validation_failed", "keep_device_id and retire_device_id are required"
+        )
+    if keep_device_id == retire_device_id:
+        raise MergeRetireError(
+            "validation_failed", "keep and retire device must be different"
+        )
+
+    # Deferred import — _query imports _serialize from this package.
+    from app.services.devices._query import find_by_mac
+
+    with session_scope() as session:
+        keep = session.get(Device, keep_device_id)
+        retire = session.get(Device, retire_device_id)
+        if keep is None:
+            raise MergeRetireError("not_found", f"keep device {keep_device_id} not found")
+        if retire is None:
+            raise MergeRetireError(
+                "not_found", f"retire device {retire_device_id} not found"
+            )
+        if keep.registration_state == "decommissioned":
+            raise MergeRetireError(
+                "validation_failed",
+                "keep device is decommissioned; pick an active row to keep",
+            )
+        if retire.registration_state == "decommissioned":
+            raise MergeRetireError(
+                "already_retired",
+                f"device {retire_device_id} is already decommissioned",
+            )
+
+        # Verify both rows share a MAC. `find_by_mac` normalizes the
+        # MAC and excludes already-decommissioned rows, so a positive
+        # match here confirms the two are the same physical hardware.
+        keep_mac = (keep.mac_address or "").strip()
+        retire_mac = (retire.mac_address or "").strip()
+        if not keep_mac or not retire_mac:
+            raise MergeRetireError(
+                "mac_mismatch",
+                "both devices must have a MAC address to merge",
+            )
+        matches = {d["id"] for d in find_by_mac(keep_mac)}
+        if retire_device_id not in matches or keep_device_id not in matches:
+            raise MergeRetireError(
+                "mac_mismatch",
+                "the two devices do not share a MAC address; refusing to merge",
+            )
+
+        retire.registration_state = "decommissioned"
+        retire.updated_at = datetime.now(timezone.utc)
+        session.add(retire)
+        session.flush()
+        return {
+            "keep_device_id": keep_device_id,
+            "retire_device_id": retire_device_id,
+            "mac_address": keep_mac,
+            "keep_display_name": keep.display_name,
+            "retired_display_name": retire.display_name,
+        }
 
 
 def enqueue_display_name_sync(
