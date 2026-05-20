@@ -151,6 +151,18 @@ def create_app() -> Flask:
     except Exception:
         app.logger.exception("Startup bootstrap failed; the app will continue running")
 
+    # S1-4/S1-5: startup validator — warn (never rewrite) if the
+    # resolved public/firmware base URL host is `voipguru.org` without a
+    # `www.` prefix. The live site is www.voipguru.org; a bare-apex URL
+    # handed to a device fails to resolve. Warn-only; the app continues.
+    try:
+        from app.services.runtime_settings import voipguru_www_warnings
+
+        for _w in voipguru_www_warnings():
+            app.logger.warning("network-config validator: %s", _w)
+    except Exception:
+        app.logger.exception("network-config validator failed; continuing")
+
     # B11 (RFC-004 Option C): register the multi-hub sync-emission ORM
     # hooks so every device/site/group/user mutation lands an outbox
     # event. Idempotent; must be in place before any mutation or the

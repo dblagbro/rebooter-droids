@@ -229,6 +229,11 @@ def settings_network_save_submit():
         "CORS allowlist + cookie domain require a container restart.",
         "info",
     )
+    # S1-4/S1-5: on-save warning banner — flag the voipguru.org-without-
+    # www case so the operator notices immediately. WARN ONLY; the save
+    # above already happened and is never auto-rewritten.
+    for w in runtime_settings.voipguru_www_warnings():
+        flash(w, "error")
     return redirect(url_for("admin_ui.settings_network_page"))
 
 
@@ -257,6 +262,70 @@ def settings_network_clear_submit():
         "info",
     )
     return redirect(url_for("admin_ui.settings_network_page"))
+
+
+# S1-4/S1-5: network-truth diagnostic. Reports the public base URL
+# from every layer side-by-side so an operator can see exactly which
+# value devices receive and where it came from. Read-only, admin-auth.
+@admin_api_bp.get("/network-truth")
+@admin_required_api
+def network_truth_api():
+    """Side-by-side report of public-base-URL resolution.
+
+    Returns, for `public_base_url` and `firmware_public_base`:
+      - `env`         — the raw env-var value (None if unset)
+      - `db_override` — the runtime_settings DB-override value (None
+                        if no row)
+      - `live`        — the resolved value devices actually receive
+                        (DB override → env → config default)
+      - `config_default` — the `Settings` dataclass value (env or
+                        hard default)
+
+    Plus `central_register_url` — exactly what `/announce` emits — and
+    a `www_prefix_warning` flag for the voipguru.org-without-www case.
+    """
+    import os
+
+    from app.config import load_settings
+    from app.services import runtime_settings as rs
+
+    settings = load_settings()
+    live_public = rs.resolve_public_base_url()
+    live_firmware = rs.resolve_firmware_public_base()
+
+    def _host_missing_www(url: str) -> bool:
+        from urllib.parse import urlparse
+
+        try:
+            host = (urlparse(url).hostname or "").lower()
+        except Exception:
+            return False
+        return host == "voipguru.org"
+
+    payload = {
+        "public_base_url": {
+            "env": os.environ.get("REBOOTER_PUBLIC_BASE_URL"),
+            "db_override": rs.get("network.public_base_url", default=None)
+            if rs.has_db_value("network.public_base_url")
+            else None,
+            "config_default": settings.public_base_url,
+            "live": live_public,
+        },
+        "firmware_public_base": {
+            "env": os.environ.get("REBOOTER_FIRMWARE_PUBLIC_BASE"),
+            "db_override": rs.get("network.firmware_public_base", default=None)
+            if rs.has_db_value("network.firmware_public_base")
+            else None,
+            "config_default": settings.firmware_public_base,
+            "live": live_firmware,
+        },
+        "central_register_url": live_public.rstrip("/") + "/api/v1/device/register",
+        "www_prefix_warning": {
+            "public_base_url": _host_missing_www(live_public),
+            "firmware_public_base": _host_missing_www(live_firmware),
+        },
+    }
+    return ok(payload)
 
 
 @admin_ui_bp.get("/settings/auth")
