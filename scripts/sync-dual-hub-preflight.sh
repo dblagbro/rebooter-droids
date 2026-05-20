@@ -72,8 +72,11 @@ ok()   { printf "  \033[32m✓\033[0m %s\n" "$*"; }
 warn() { printf "  \033[33m⚠\033[0m %s\n" "$*"; }
 bad()  { printf "  \033[31m✗\033[0m %s\n" "$*"; }
 
-curl_a() { curl -sf -H "Authorization: Bearer $TOKEN_A" "$@" "$HUB_A$1"; }
-curl_b() { curl -sf -H "Authorization: Bearer $TOKEN_B" "$@" "$HUB_B$1"; }
+# curl_a / curl_b: GET the path on the named hub with admin Bearer auth.
+# (Pre-fix the helpers passed both "$@" *and* "$HUB_X$1" → curl saw two
+# URLs and the response was concatenated, which broke jq downstream.)
+curl_a() { curl -sf -H "Authorization: Bearer $TOKEN_A" "$HUB_A$1"; }
+curl_b() { curl -sf -H "Authorization: Bearer $TOKEN_B" "$HUB_B$1"; }
 
 # A more careful curl that prints both URL + status on failure.
 fetch() {
@@ -184,9 +187,12 @@ trap cleanup EXIT
 say "4. Polling hub B for the marker (timeout ${TIMEOUT_SECONDS}s)"
 T0=$(date +%s)
 CONVERGED_CREATE=0
+# The admin sites list returns `{ok, data: {sites: [...]}}`. jq's `?`
+# operator suppresses errors when the path is missing so polling-before-
+# converge doesn't crash; we just keep iterating until the marker appears.
 while (( $(date +%s) - T0 < TIMEOUT_SECONDS )); do
     HIT=$(curl_b "/api/v1/admin/sites" \
-        | jq -r --arg n "$MARKER" '.data[]? | select(.name == $n) | .id' \
+        | jq -r --arg n "$MARKER" '.data.sites[]? | select(.name == $n) | .id' \
         | head -1)
     if [[ -n "$HIT" ]]; then
         ELAPSED=$(( $(date +%s) - T0 ))
@@ -212,7 +218,7 @@ T1=$(date +%s)
 CONVERGED_DELETE=0
 while (( $(date +%s) - T1 < TIMEOUT_SECONDS )); do
     HIT=$(curl_b "/api/v1/admin/sites" \
-        | jq -r --arg n "$MARKER" '.data[]? | select(.name == $n) | .id' \
+        | jq -r --arg n "$MARKER" '.data.sites[]? | select(.name == $n) | .id' \
         | head -1)
     if [[ -z "$HIT" ]]; then
         ELAPSED=$(( $(date +%s) - T1 ))
