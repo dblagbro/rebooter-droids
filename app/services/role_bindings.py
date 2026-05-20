@@ -314,9 +314,13 @@ def binding_scope_belongs_to_org(
     resource (`site`/`group`/`device`) actually belongs to the binding's
     org. A `global` binding has no scoped resource — always True.
 
-    Runs inside `tenant_scope.org_context(organization_id)` so the
-    lookups themselves are org-filtered: a foreign-org resource simply
-    won't be found, which is exactly the "does not belong" answer.
+    This is a data-integrity check, NOT subject to the shadow/enforce
+    rollout toggle — so it queries with an EXPLICIT
+    `WHERE organization_id = <org>` predicate (under a `system()` bypass
+    so the implicit do_orm_execute filter, which is shadow-mode-gated,
+    does not interfere). A foreign-org resource simply fails the
+    predicate, which is the "does not belong" answer.
+
     Returns True for an unknown scope_type (nothing to verify) and for a
     missing scope_id on a non-global binding (a separate corruption the
     `grant()` validation already rejects).
@@ -325,24 +329,34 @@ def binding_scope_belongs_to_org(
         return scope_type == SCOPE_GLOBAL
     from app.services import tenant_scope
 
-    if scope_type == SCOPE_SITE:
-        # Site is Tier-A — an org-filtered lookup answers directly.
-        with tenant_scope.org_context(organization_id):
-            with session_scope() as session:
-                return session.get(Site, scope_id) is not None
-    if scope_type == SCOPE_GROUP:
-        # Group is Tier-A — org-filtered lookup answers directly.
-        from app.models import Group
+    with tenant_scope.system():
+        with session_scope() as session:
+            if scope_type == SCOPE_SITE:
+                return (
+                    session.scalar(
+                        select(Site.id).where(
+                            Site.id == scope_id,
+                            Site.organization_id == organization_id,
+                        )
+                    )
+                    is not None
+                )
+            if scope_type == SCOPE_GROUP:
+                from app.models import Group
 
-        with tenant_scope.org_context(organization_id):
-            with session_scope() as session:
-                return session.get(Group, scope_id) is not None
-    if scope_type == SCOPE_DEVICE:
-        # Device is Tier-B — its org is DERIVED via site. Look the
-        # device up unscoped (system bypass), then confirm its site
-        # belongs to the binding's org.
-        with tenant_scope.system():
-            with session_scope() as session:
+                return (
+                    session.scalar(
+                        select(Group.id).where(
+                            Group.id == scope_id,
+                            Group.organization_id == organization_id,
+                        )
+                    )
+                    is not None
+                )
+            if scope_type == SCOPE_DEVICE:
+                # Device is Tier-B — its org is DERIVED via site. Look
+                # the device up, then confirm its site belongs to the
+                # binding's org.
                 device = session.get(Device, scope_id)
                 if device is None or not device.site_id:
                     return False
