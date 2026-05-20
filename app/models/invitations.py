@@ -12,7 +12,7 @@ from app.services.tenant_scope import TenantScoped
 
 
 class Invitation(TenantScoped, Base):
-    # TODO(org-phase2): flip `organization_id` to NOT NULL — an invite is
+    # TODO(org-phase3): flip `organization_id` to NOT NULL — an invite is
     # always into one org (design §5.2). On-delete becomes CASCADE.
     __tablename__ = "invitations"
 

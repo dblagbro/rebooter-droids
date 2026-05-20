@@ -71,7 +71,7 @@ KIND_TO_MODALITY = {
 
 
 class ExternalSensorSource(TenantScoped, Base):
-    # TODO(org-phase2): flip `organization_id` to NOT NULL (RESTRICT FK).
+    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK).
     # See design §2. `ExternalSensorSample` stays Tier-B (org derived via
     # the source) — no column.
     __tablename__ = "external_sensor_sources"
