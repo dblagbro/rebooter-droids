@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from app.db import session_scope
 from app.models import (
     AuditEvent,
+    DeviceAnnouncement,
     EnrollmentToken,
     Group,
     Invitation,
@@ -42,7 +43,9 @@ from app.services.tenant_scope import TenantScoped
 
 # ── TenantScoped mixin (static) ────────────────────────────────────────
 
-# The 10 Tier-A models the design lists in section 2.
+# The Tier-A models the design lists in section 2. Phase 1 marked 10;
+# org-boundary phase 2 added `DeviceAnnouncement` (design §2 lists it as
+# Tier-A — phase 1's table list omitted it).
 _TIER_A_MODELS = (
     Site,
     Group,
@@ -54,6 +57,7 @@ _TIER_A_MODELS = (
     RoleBinding,
     Invitation,
     AuditEvent,
+    DeviceAnnouncement,
 )
 
 
