@@ -39,10 +39,34 @@
   </div>
 </section>
 
-{# ── attention feed ──────────────────────────────────────────────────── #}
+{# ── needs-attention summary card (Tier-2 Feature 5) ──────────────────
+   A compact, glanceable roll-up of the derived `attention_items`
+   (offline / never-heartbeated / unregistered-auth). It is the
+   priority block on a phone — first thing below the verdict. The
+   richer per-device inbox feed follows below. CSS-first: the card
+   collapses to a single column on narrow viewports. #}
+<section class="v3-needs" aria-label="Needs attention summary">
+  <h2 class="v3-section-title">Needs attention</h2>
+  {% if attention_items %}
+  <ul class="v3-needs-list">
+  {% for it in attention_items %}
+    <li class="v3-needs-item v3-sev-{{ it.severity }}">
+      <a class="v3-needs-link" href="{{ url_for(it.href_endpoint) }}">
+        <span class="v3-needs-count">{{ it.count }}</span>
+        <span class="v3-needs-label">{{ it.label }}</span>
+      </a>
+    </li>
+  {% endfor %}
+  </ul>
+  {% else %}
+  <p class="v3-needs-clear muted">All good — nothing needs attention.</p>
+  {% endif %}
+</section>
+
+{# ── attention feed — per-device detail (below the summary card) ─────── #}
 {% if inbox.attention %}
 <section class="v3-attention" aria-label="Attention items">
-  <h2 class="v3-section-title">Needs attention</h2>
+  <h2 class="v3-section-title">Attention details</h2>
   <ul class="v3-attention-list">
   {% for item in inbox.attention %}
     <li class="v3-attention-item v3-sev-{{ item.severity }}">
@@ -160,4 +184,26 @@
   <p class="muted">No recent activity.</p>
   {% endif %}
 </section>
+
+{# ── Jump to — collapsible nav shortcuts (Tier-2 Feature 5) ────────────
+   Below the fold and collapsed by default so it never crowds the
+   priority content on a phone. <details> = no JS, CSP-safe. #}
+<details class="v3-card v3-jumpto">
+  <summary>Jump to…</summary>
+  <ul class="v3-jumpto-list">
+    <li><a href="{{ url_for('admin_ui.list_devices_page') }}">Devices</a></li>
+    <li><a href="{{ url_for('admin_ui.enrollment_tokens_page') }}">Enrollment tokens</a></li>
+    <li><a href="{{ url_for('admin_ui.list_groups_page') }}">Groups</a></li>
+    <li><a href="{{ url_for('admin_ui.list_sites_page') }}">Sites</a></li>
+    <li><a href="{{ url_for('admin_ui.list_firmware_page') }}">Firmware</a></li>
+    <li><a href="{{ url_for('admin_ui.events_page') }}">Events</a></li>
+    <li><a href="{{ url_for('admin_ui.rules_page') }}">Watchdog rules</a></li>
+    <li><a href="{{ url_for('admin_ui.unregistered_devices_page') }}">Unregistered devices</a></li>
+    {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+    <li><a href="{{ url_for('admin_ui.users_page') }}">Users</a></li>
+    <li><a href="{{ url_for('admin_ui.invitations_page') }}">Invitations</a></li>
+    <li><a href="{{ url_for('admin_ui.audit_page') }}">Audit log</a></li>
+    {% endif %}
+  </ul>
+</details>
 {% endblock %}

@@ -98,7 +98,7 @@ def stats(online_threshold_seconds: int = 180) -> dict:
             or 0
         )
 
-        return {
+        payload = {
             "devices_total": total,
             "devices_online": online,
             # `devices_offline` keeps its v0.2.6 meaning "everything not
@@ -120,6 +120,78 @@ def stats(online_threshold_seconds: int = 180) -> dict:
             "online_threshold_seconds": online_threshold_seconds,
             "computed_at": _iso(now),
         }
+
+    # Tier-2 Feature 5: derived "Needs attention" summary. Pure
+    # derivation from the counts already gathered above — no extra
+    # query. `stats()` does not know `unregistered_active` (that count
+    # is injected per-request by `_common._ctx`), so the baseline list
+    # here covers the device-side signals; the dashboard route calls
+    # `derive_attention_items` again with the unregistered count to get
+    # the complete list. Either way it is the same pure derivation.
+    payload["attention_items"] = derive_attention_items(payload)
+    return payload
+
+
+# Severity ranking for ordering the attention card (highest first).
+_ATTENTION_SEVERITY_RANK = {"critical": 0, "warn": 1, "info": 2}
+
+
+def derive_attention_items(
+    s: dict, *, unregistered_active: int = 0
+) -> list[dict]:
+    """Derive the dashboard "Needs attention" list from a `stats()`
+    payload (+ the per-request `unregistered_active` count). Pure
+    function — no DB, no app context — so it is directly unit-testable.
+
+    Each item is a dict:
+      {key, label, count, severity, href_endpoint}
+    `severity` is one of `critical` / `warn` / `info`; `href_endpoint`
+    is the `url_for` endpoint the card deep-links to.
+
+    Returns a severity-ordered list; an empty list means the fleet is
+    clean and the card renders its zero-state.
+    """
+    items: list[dict] = []
+
+    offline = s.get("devices_offline_with_history", 0) or 0
+    if offline > 0:
+        items.append({
+            "key": "devices_offline",
+            "label": (
+                f"{offline} device{'s' if offline != 1 else ''} offline"
+            ),
+            "count": offline,
+            "severity": "warn",
+            "href_endpoint": "admin_ui.list_devices_page",
+        })
+
+    never = s.get("devices_never_heartbeated", 0) or 0
+    if never > 0:
+        items.append({
+            "key": "devices_never_heartbeated",
+            "label": (
+                f"{never} device{'s' if never != 1 else ''} never heartbeated"
+            ),
+            "count": never,
+            "severity": "warn",
+            "href_endpoint": "admin_ui.list_devices_page",
+        })
+
+    unreg = unregistered_active or 0
+    if unreg > 0:
+        items.append({
+            "key": "unregistered_active",
+            "label": (
+                f"{unreg} unregistered auth attempt"
+                f"{'s' if unreg != 1 else ''}"
+            ),
+            "count": unreg,
+            "severity": "info",
+            "href_endpoint": "admin_ui.unregistered_devices_page",
+        })
+
+    items.sort(key=lambda it: _ATTENTION_SEVERITY_RANK.get(it["severity"], 9))
+    return items
 
 
 def recent_activity(limit: int = 25) -> list[dict]:

@@ -22,24 +22,33 @@ from app.services import audit as audit_service
 def index():
     """v0.3.1 (P2): Status page replaces the v0.2.x stat-grid
     dashboard. The new shape answers "does anything need attention?"
-    first, with totals + activity feed available below the fold."""
+    first, with totals + activity feed available below the fold.
+
+    Tier-2 Feature 5: mobile-first restructure. The only Python change
+    is the derived `attention_items` list — `_ctx` already injects
+    `unregistered_active`, so the list is completed here with that
+    per-request count folded in."""
     from app.services import dashboard as dash_service
     from app.services import inbox as inbox_service
 
     from app.services import runtime_flags
 
-    return render_template(
-        "status.html",
-        **_ctx(
-            {
-                "active": "status",
-                "inbox": inbox_service.health_and_attention(limit=50),
-                "stats": dash_service.stats(),
-                "feed": dash_service.recent_activity(limit=15),
-                "maintenance": runtime_flags.maintenance_mode_details(),
-            }
-        ),
+    ctx = _ctx(
+        {
+            "active": "status",
+            "inbox": inbox_service.health_and_attention(limit=50),
+            "stats": dash_service.stats(),
+            "feed": dash_service.recent_activity(limit=15),
+            "maintenance": runtime_flags.maintenance_mode_details(),
+        }
     )
+    # Complete the "Needs attention" derivation with the per-request
+    # unregistered-auth count (which `stats()` cannot see).
+    ctx["attention_items"] = dash_service.derive_attention_items(
+        ctx["stats"],
+        unregistered_active=ctx.get("unregistered_active", 0),
+    )
+    return render_template("status.html", **ctx)
 
 
 # ── v0.4.7 (B7): portal-wide watchdog maintenance toggle ──────────────────

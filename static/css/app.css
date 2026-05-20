@@ -1063,3 +1063,91 @@ tr:hover td { background: var(--bg-elev-2); }
   .dcf-row:not(.dcf-row-check) .dcf-label { margin-bottom: 0; }
   .dcf-row:not(.dcf-row-check) .dcf-help { grid-column: 2; }
 }
+
+/* ── Tier-2 Feature 5 — mobile-first dashboard pass ─────────────────────
+ * The "Needs attention" summary card + the collapsible "Jump to" list.
+ * Mobile-first: single column at phone width, a 2-up grid from 640px.
+ * The stat-grid 2-up already lives above. <details> drives the
+ * collapsibles — no JS, consistent with the CSP-tight posture. */
+
+/* Needs-attention summary card */
+.v3-needs {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.v3-needs-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+@media (min-width: 640px) {
+  .v3-needs-list { grid-template-columns: repeat(2, 1fr); }
+}
+.v3-needs-item {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+.v3-needs-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* ≥44px touch target */
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  color: inherit;
+  text-decoration: none;
+}
+.v3-needs-link:hover { text-decoration: none; }
+.v3-needs-count {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  min-width: 2ch;
+  text-align: right;
+}
+.v3-needs-label {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.v3-needs-clear {
+  margin: var(--space-3) 0 0;
+  font-size: 0.9rem;
+}
+
+/* Collapsible "Jump to" — below the fold, collapsed by default */
+.v3-jumpto { margin-top: var(--space-5); }
+.v3-jumpto > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.v3-jumpto-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-1);
+}
+@media (min-width: 640px) {
+  .v3-jumpto-list { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1024px) {
+  .v3-jumpto-list { grid-template-columns: repeat(3, 1fr); }
+}
+.v3-jumpto-list a {
+  display: block;
+  /* ≥44px touch target */
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+}
+.v3-jumpto-list a:hover { background: var(--bg-elev-2); text-decoration: none; }
