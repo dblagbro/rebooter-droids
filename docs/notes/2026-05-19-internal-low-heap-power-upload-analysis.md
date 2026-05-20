@@ -1,58 +1,71 @@
-# From hub: design proposal — low-heap power-upload transport
+# INTERNAL — low-heap power-upload transport: hub-side analysis
+
+> **Status: HOLD. INTERNAL ONLY.** Hub-team analysis, not for
+> forwarding. The firmware team has indicated they will send a
+> follow-up memo; we wait for that before engaging. Do not share
+> any of the content below with the firmware team without explicit
+> operator sign-off.
 
 **Date:** 2026-05-19
-**From:** rebooter-droids hub team
-**To:** firmware team
-**Re:** `docs/notes/2026-05-17-low-heap-power-upload-memo.md`
-**Status:** Hub-side proposal for firmware-team review — **awaiting
-sign-off before any hub code lands.**
+**Audience:** rebooter-droids hub team / operator only
+**Re:** the firmware team's 2026-05-17 memo
+`docs/notes/2026-05-17-low-heap-power-upload-memo.md`
 
-## Restating the problem
+## Why this file exists
 
-Per your 2026-05-17 memo, ESP8266 Sonoff S31s `.225` and `.69`:
+When the firmware team's next memo arrives, we want a pre-thought-out
+view of the design space and our preferred direction so we can engage
+on the merits quickly. This file is that thinking — recorded here so
+it isn't lost, but **paused** until the operator decides how and when
+to engage the firmware team.
+
+## Restating what the firmware team established
+
+Per `docs/notes/2026-05-17-low-heap-power-upload-memo.md`:
 
 - Stable: `central=true, power=false` *or* `central=false, power=true`
 - **Unstable**: `central=true, power=true`
 
-Progression through `0.1.38 → 0.1.39 → 0.1.40-dev-central-safe` trimmed
-response-body allocation and tightened the upload cadence, but `.69`
-still rebooted with `reset_reason="Exception"` during `central+power`.
-The conclusion you reached — and the data supports it — is that the
-constrained ESP8266 path **cannot tolerate a separate HTTPS round-trip
-to `/api/v1/device/power-samples` under current heap limits**, not
-that the JSON payload itself is too big.
+Progression `0.1.38 → 0.1.39 → 0.1.40-dev-central-safe` trimmed
+response-body allocation and tightened upload cadence; `.69` still
+rebooted with `reset_reason="Exception"` during `central+power`.
+Their conclusion: the constrained ESP8266 path **cannot tolerate a
+separate HTTPS round-trip to `/api/v1/device/power-samples` under
+current heap limits** — not that the JSON payload itself is too big.
 
-This memo answers your three proposed directions with a recommendation,
-the rationale, and a concrete hub-side implementation outline.
+They proposed three directions for hub-product alignment. We score
+them below.
 
 ## The three directions, scored
 
 | | (A) Heartbeat-carried compact summary | (B) Lighter dedicated ingest | (C) Class-based transport policy |
 |---|---|---|---|
-| **Eliminates a TLS handshake?** | ✅ yes — folds into the existing heartbeat connection | ❌ no — still a second HTTPS round-trip | depends on which it picks |
-| **Per-sample fidelity** | ❌ drops to 1 / heartbeat interval (~60 s) | ✅ preserved (firmware-cadence) | depends |
+| **Eliminates a TLS handshake?** | yes — folds into the existing heartbeat connection | no — still a second HTTPS round-trip | depends on which it picks |
+| **Per-sample fidelity** | drops to 1 / heartbeat interval (~60 s) | preserved (firmware-cadence) | depends |
 | **Hub-side complexity** | small (~30 LOC + new `source="heartbeat"` enum) | medium (new endpoint + parallel maintenance) | larger — a class taxonomy + per-class router |
 | **Schema migration** | none (existing `DevicePowerSample` columns reused) | none–small | none |
 | **Adds heartbeat-contract coupling?** | yes — optional nullable fields | no | depends |
 | **Generalises to future device classes** | partial | no | yes (that's its purpose) |
-| **Solves the unstable-`.225`/`.69` state** | **yes — if HTTPS handshake is the heap killer** | only if the killer is response parsing, not handshake | C-with-A: yes ; C-with-B: same as B |
+| **Solves the unstable-`.225`/`.69` state** | yes — if HTTPS handshake is the heap killer | only if the killer is response parsing, not handshake | C-with-A: yes ; C-with-B: same as B |
 
-## Recommendation: ship **(A)** first; structure it so **(C)** drops on
-top of it later if a second device class ever needs a different policy.
+## Internal recommendation (subject to firmware-team input)
+
+**Ship (A) first; structure it so (C) drops on top of it later if a
+second device class ever needs a different policy.**
 
 ### Why (A)
 
-1. **Your data already names HTTPS round-trip as the suspect**, not JSON
-   parsing. `0.1.40` cut response-body allocation and per-upload heap
-   chatter and `.69` still crashed. (B) doesn't change that — it just
-   trims further. (A) avoids the round-trip entirely by reusing the
-   heartbeat's already-open connection.
-2. **The fidelity loss is acceptable for wall-installed ESP8266 units.**
-   At 1 sample/minute the hub still gets a continuous record of "device
-   is on / drawing N watts now", which is all the cost-per-kWh + B16
-   power-page surfaces actually need for these low-heap units. The
-   high-resolution path (per-100ms / per-1s) stays available on
-   roomier hardware.
+1. **The firmware team's data already names HTTPS round-trip as the
+   suspect**, not JSON parsing. `0.1.40` cut response-body allocation
+   and per-upload heap chatter and `.69` still crashed. (B) doesn't
+   change that — it just trims further. (A) avoids the round-trip
+   entirely by reusing the heartbeat's already-open connection.
+2. **The fidelity loss is acceptable for wall-installed ESP8266
+   units.** At 1 sample/minute the hub still gets a continuous record
+   of "device is on / drawing N watts now", which is all the
+   cost-per-kWh + B16 power-page surfaces actually need for these
+   low-heap units. The high-resolution path (per-100ms / per-1s)
+   stays available on roomier hardware.
 3. **(C) on top of (A) is trivial later** — class-based policy is just
    "if device class is `esp8266`, the firmware uses the heartbeat
    path; otherwise the dedicated endpoint stays". We don't need to
@@ -63,11 +76,11 @@ top of it later if a second device class ever needs a different policy.
 ### Why not (B) alone
 
 (B) is the right answer only if **response-body parsing** was the
-heap killer. Your three-version progression strongly suggests it
-isn't — the connection-establishment overhead is what's left to trim.
-A lighter endpoint reduces JSON-parse cost but keeps the TLS+TCP
-state both ends. We'd ship (B), still see exceptions on `.225` /
-`.69`, then have to backtrack to (A) anyway.
+heap killer. The firmware team's three-version progression strongly
+suggests it isn't — the connection-establishment overhead is what's
+left to trim. A lighter endpoint reduces JSON-parse cost but keeps
+the TLS+TCP state both ends. We'd ship (B), still see exceptions on
+`.225` / `.69`, then have to backtrack to (A) anyway.
 
 ### Why not (C) first
 
@@ -78,6 +91,9 @@ state — but starting at (C) is over-engineering for "we have two
 unstable devices, every other device is fine."
 
 ## Hub-side implementation outline for (A)
+
+This is what we'd build IF the firmware team agrees with the (A)
+direction in their next memo. **We are not building any of this now.**
 
 **Wire change (additive, optional, backward-compat).**
 
@@ -97,11 +113,11 @@ etc.; we add:
 }
 ```
 
-Everything inside `power_compact` is optional except `p_w`. Firmware
-sends only what it can afford. **No schema change on the hub** — these
-map onto the existing `DevicePowerSample` columns we already store from
-the dedicated endpoint; the only new value is `source="heartbeat"` in
-the existing `source` enum.
+Everything inside `power_compact` is optional except `p_w`. **No
+schema change on the hub** — these map onto the existing
+`DevicePowerSample` columns we already store from the dedicated
+endpoint; the only new value is `source="heartbeat"` in the existing
+`source` enum.
 
 **Hub-side code (single-session, no extra round-trip).**
 
@@ -139,40 +155,28 @@ mixed series.
 2. Unit: `record_heartbeat` calls `ingest_compact_power_sample` exactly once per heartbeat when `power_compact` is present, never when it's absent.
 3. Live: post a heartbeat with `power_compact` against the gate's app, assert one `DevicePowerSample` row appears with `source="heartbeat"`.
 
-## Migration path (if you ever want B or full C)
+## Fallback path if (A) turns out to be insufficient
 
 - (B) becomes purely additive — a `/api/v1/device/power-samples-light`
-  endpoint with `204 No Content` ack. Hub-side ~40 LOC. We ship if
-  (A) turns out to be too lossy for some new use case.
+  endpoint with `204 No Content` ack. Hub-side ~40 LOC.
 - (C) becomes a one-line policy: "if device.class == 'esp8266', the
   hub *expects* the heartbeat-power path; if class == 'esp32-class' or
   unset, expect the dedicated endpoint." The class field already has
-  a natural home in `Device.capabilities` or a new column; the policy
-  itself is per-class, not per-device.
+  a natural home in `Device.capabilities` or a new column.
 
-## What we're asking from the firmware team
+## Open questions to think about while we wait
 
-1. Sign off on **(A) as the first ship**, with (B)/(C) explicitly
-   deferred as fallbacks if (A) turns out to be insufficient.
-2. Decide which of the optional `power_compact` sub-fields are heap-
-   affordable today on `.225` / `.69`. The minimum viable shape is
-   `{"p_w": …}`; everything else is welcome but optional.
-3. Confirm the timing — once (A) ships hub-side (likely one ship,
-   small surface), the firmware-side change is the only remaining
-   blocker for moving the ESP8266 fleet back to `central=true,
-   power=true`.
+Internal — useful prep for whenever we do engage:
 
-If you'd prefer (B) for reasons I haven't covered (e.g. heap
-measurements showing response parse, not handshake, was the killer
-in `0.1.40`), let's swap. The hub-side cost is roughly the same.
+1. Which optional `power_compact` sub-fields are heap-affordable on
+   `.225` / `.69` today? Minimum viable shape is `{"p_w": …}`. We
+   don't know without firmware-team measurements.
+2. Is the operator's preference to keep the dedicated endpoint on
+   roomy devices, or migrate everyone to (A) for consistency? Either
+   works; (A) is just lossier so we'd lose per-second resolution on
+   `.48`-class devices that don't need it lost.
+3. Does the cost/kWh + B16 power-page UX degrade noticeably with
+   1 sample/minute on the constrained units? Worth a quick sketch
+   before the firmware team responds.
 
-## What we're NOT asking
-
-- We are **not** asking firmware to redesign the local power
-  monitor. The local sample rate and accuracy are fine; (A) only
-  changes the *transport* by which the latest reading reaches the
-  hub.
-- We are **not** asking firmware to give up the dedicated endpoint
-  on roomy devices. The compact path is opt-in per device.
-
-— hub team
+— hub team (internal)

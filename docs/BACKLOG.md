@@ -101,7 +101,7 @@ The v0.5.61 → v0.5.100 arc shipped:
 
 | Item | Size | Status |
 |---|---|---|
-| **Low-heap power-upload transport** | medium (design first) | Firmware-team memo `docs/notes/2026-05-17-low-heap-power-upload-memo.md`: ESP8266 wall units (`.225`, `.69`) can't run `central=true + power=true` — separate HTTPS round-trip exhausts heap. Hub-team response in `docs/notes/2026-05-19-from-hub-low-heap-power-upload-design.md` recommends Option A (heartbeat-carried compact power summary). **Awaiting firmware-team sign-off** before any code. ~30 LOC + tests once approved. |
+| **Low-heap power-upload transport** | medium (design first) | Firmware-team memo `docs/notes/2026-05-17-low-heap-power-upload-memo.md`: ESP8266 wall units (`.225`, `.69`) can't run `central=true + power=true` — separate HTTPS round-trip exhausts heap. **HOLD — waiting on the firmware team's next memo** before engaging. Internal hub-side design analysis (3 options scored, prefer A — heartbeat-folded) parked at `docs/notes/2026-05-19-internal-low-heap-power-upload-analysis.md` for when the operator decides how / when to engage. **Do not share with the firmware team without operator sign-off.** |
 | **EPG show↔network mapping helper** | small | A discovery aid for the `epg_show_airing` probe — optional polish on the TV feature. Not requested. |
 | **P1.3 loaded-power validation** | small | **Firmware-blocked** — every real CSE7766 sample is no-load (0 W); cost/kWh analytics can't be validated until firmware delivers a known-load capture. |
 | **P3b** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
