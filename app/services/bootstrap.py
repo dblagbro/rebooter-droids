@@ -402,9 +402,16 @@ def ensure_device_site_id_backfill() -> None:
 # docs/notes/2026-05-20-organization-boundary-design.md section 6.1.
 _ORG_BACKFILL_KEY = "organization.default_backfilled_at"
 
-# The 10 Tier-A tables that carry a nullable organization_id column
-# (the TenantScoped models). Every NULL organization_id row is assigned
-# to the one default org by the backfill below.
+# The Tier-A tables that carry a nullable organization_id column (the
+# TenantScoped models). Every NULL organization_id row is assigned to the
+# one default org by the backfill below.
+#
+# org-boundary phase 2: `device_announcements` was added — phase 1's list
+# omitted it, but the design doc §2 lists it as a Tier-A entity. Its
+# column is added by migration 0004. An un-adopted announcement may
+# legitimately have no org, so the column stays nullable permanently;
+# the backfill still stamps the pre-existing rows so a default-org
+# install has them attributed.
 _ORG_TIER_A_TABLES: tuple[str, ...] = (
     "sites",
     "groups",
@@ -416,6 +423,7 @@ _ORG_TIER_A_TABLES: tuple[str, ...] = (
     "role_bindings",
     "invitations",
     "audit_events",
+    "device_announcements",
 )
 
 
@@ -586,11 +594,13 @@ def ensure_default_organization_backfill() -> None:
     # Step 5: mark complete so this never runs again.
     rs.set_(_ORG_BACKFILL_KEY, now.isoformat())
     log.info("default-organization backfill complete")
-    # TODO(org-phase2): once this backfill is confirmed on every
-    # database, the phase-2 migration flips the Tier-A organization_id
+    # TODO(org-phase3): once this backfill is confirmed on every
+    # database, a phase-3 migration flips the Tier-A organization_id
     # columns to NOT NULL and adds the per-org unique constraints
     # (design sections 6.2, 6.3). Slot _ensure_constraints-style steps
-    # in after this call, mirroring the Device.site_id pattern.
+    # in after this call, mirroring the Device.site_id pattern. Phase 2
+    # is the runtime enforcement mechanism (see app/services/
+    # tenant_scope.py), not the constraint hardening.
 
 
 def ensure_bootstrap_admin(settings: Settings) -> None:
@@ -646,6 +656,19 @@ def ensure_bootstrap_admin(settings: Settings) -> None:
 
 
 def run_startup_bootstrap(settings: Settings) -> None:
+    # org-boundary phase 2 (design §3.4): bootstrap runs at startup
+    # before any request and legitimately touches every org's rows (it
+    # creates the default org and stamps existing rows). It runs inside
+    # an explicit `tenant_scope.system()` bypass so the do_orm_execute
+    # read filter and the before_flush write-stamping are no-ops here —
+    # never a bare unset ContextVar.
+    from app.services import tenant_scope
+
+    with tenant_scope.system():
+        _run_startup_bootstrap_inner(settings)
+
+
+def _run_startup_bootstrap_inner(settings: Settings) -> None:
     ensure_schema()
     ensure_bootstrap_admin(settings)
     # v0.5.0 (A1): one-shot RBAC backfill. Runs once per database;
