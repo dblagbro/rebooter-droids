@@ -347,13 +347,19 @@ def upsert_announcement(
             if row.delivered_at is None:
                 row.delivered_at = now
             session.flush()
-            settings = load_settings()
+            # S1-4/S1-5 fix: resolve the public base URL through
+            # runtime_settings so the Settings → Network UI override
+            # actually reaches the device. Pre-fix this read
+            # `load_settings().public_base_url` (env-only), so the DB
+            # override the operator set in the UI was a dead write.
+            from app.services import runtime_settings as _rs
+            register_base = _rs.resolve_public_base_url().rstrip("/")
             return {
                 "status": "adopted",
                 "retry_after_seconds": 0,
                 "enrollment_token": secret,
                 "central_register_url": (
-                    settings.public_base_url.rstrip("/") + "/api/v1/device/register"
+                    register_base + "/api/v1/device/register"
                 ),
                 "message": "Adopted. Use this token to register.",
             }
