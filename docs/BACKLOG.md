@@ -149,7 +149,7 @@ The v0.5.61 → v0.5.100 arc shipped:
 - ✅ **B8** Schedules primitive — v0.4.8
 - ✅ **B9** Rule advanced JSON editor — v0.4.9
 - ✅ **B10** RFC-003 redlines #1-4 — closed 2026-05-10
-- ✅ **B11** RFC-004 multi-hub sync — architecture pick closed 2026-05-10; **phases 1–7 implemented v0.5.45–.50** (outbox model, emission, replicator daemon, HMAC peer auth, sync settings UI). Scaffold only — `apply_outbox_event()` create/update upsert + LWW is still a stub (see "Truly open" above); `sync.enabled=false` by default.
+- ✅ **B11** RFC-004 multi-hub sync — architecture pick closed 2026-05-10; **phases 1–7 implemented v0.5.45–.50** (outbox model, emission, replicator daemon, HMAC peer auth, sync settings UI). **Applier completed v0.5.70–.72** — full create/update LWW, natural-key reconciliation, site-FK remap, tombstone-replay protection; 18 in-process gated tests. `sync.enabled=false` by default until the operator runs the v0.5.102 dual-hub preflight + commits to the flip; see `docs/runbooks/sync-enable.md`.
 - ✅ **B1** RBAC — **fully shipped 2026-05-15**, all phases P1–P5 (v0.5.35–v0.5.44): `role_bindings` join table, scope-aware list filtering, scoped invitations + bindings API, admin UI, enforce-mode toggle.
 - ✅ **B12** RFC-005 redlines — closed 2026-05-10 (firmware-side ownership)
 - ✅ **B13** Status-inbox watchdog.firing items — v0.4.7

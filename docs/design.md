@@ -111,17 +111,31 @@ schema review — see RFC-006 §9.
 ## 6. Multi-hub posture
 
 Two nodes (`tmrwww01` = www, `tmrwww02` = www2). B11 (RFC-004 Option C)
-shipped the outbox + replicator + HMAC peer auth, but
-`apply_outbox_event()` converges deletes/tombstones only — create/update
-last-writer-wins is still a stub. **`sync.enabled` is `false` by
-default and must stay so until the applier is finished.** The two hubs
-are independent-with-replication, not yet true active-active.
+is **code-complete**: the outbox + emission hooks + replicator daemon
++ HMAC peer auth all shipped in v0.5.45–.50, and `apply_outbox_event()`
+gained full create/update last-writer-wins, natural-key reconciliation
+(per-entity `_NATURAL_KEY` lookup), site-FK remap, tombstone-replay
+protection, and suppress-emission guarding in v0.5.70–.72. The applier
+covers the four currently-syncable entity types (`Device`, `Site`,
+`Group`, `User`) and is pinned by 18 in-process tests across
+`test_v0570_b11_applier.py` + `test_v0571_b11_emission.py` +
+`test_v0572_b11_natural_key.py`.
+
+**`sync.enabled` is still `false` by default** — the remaining work
+before flipping it on is operator-side, not code-side: a dual-hub
+end-to-end preflight against the live pair, and a soak window. See
+`docs/runbooks/sync-enable.md` for the playbook; the v0.5.102 ship
+added the preflight harness `scripts/sync-dual-hub-preflight.sh`.
+Until the operator runs the preflight + commits, the two hubs are
+independent-with-replication-ready, not yet active-active in
+production.
 
 ## 7. Deliberately deferred
 
 - Cross-modal analytics query layer (RFC-006 P3b) — gated on a schema
   review + product confirmation.
-- B11 sync applier completion — gated on the operator's sync strategy.
+- B11 `sync.enabled` flip + soak — gated on operator-run preflight
+  (see `docs/runbooks/sync-enable.md`); the code is done.
 - Pydantic request schemas (`app/schemas/` reserved) — until ≥3
   endpoints feel validation pain.
 - Redis-backed shared state — until the single-worker model is
