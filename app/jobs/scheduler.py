@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -17,6 +18,28 @@ from app.services.watchdog_runtime import tick as watchdog_tick
 
 log = logging.getLogger(__name__)
 _scheduler: BackgroundScheduler | None = None
+
+
+# org-boundary phase 2 (design §3.4): every scheduled job is a
+# legitimately-unscoped "system context" — it operates across ALL orgs
+# and must NOT be filtered by a single org's tenant scope. Each job body
+# runs inside `tenant_scope.system()` — an explicit, audited bypass,
+# never a bare unset ContextVar. A job that does genuine per-org work
+# (iterating sites/devices) is responsible for re-entering
+# `tenant_scope.org_context(org_id)` itself; the system() wrapper here is
+# the safe default that says "this code path is deliberately cross-org."
+def _system_job(fn):
+    """Wrap a scheduler-job callable so its whole body runs under an
+    explicit `tenant_scope.system()` bypass."""
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        from app.services import tenant_scope
+
+        with tenant_scope.system():
+            return fn(*args, **kwargs)
+
+    return wrapper
 
 
 def _expire_job():
@@ -121,21 +144,38 @@ def start() -> None:
     if os.environ.get("REBOOTER_SCHEDULER_DISABLED") == "1":
         return
     sched = BackgroundScheduler(daemon=True, timezone="UTC")
-    sched.add_job(_expire_job, "interval", seconds=30, id="expire_commands")
-    sched.add_job(_watchdog_job, "interval", seconds=10, id="watchdog_tick")
-    sched.add_job(_schedule_job, "interval", seconds=30, id="schedule_tick")
+    # org-boundary phase 2: every job body is wrapped in
+    # `tenant_scope.system()` via `_system_job` — these jobs are
+    # deliberately cross-org system contexts (design §3.4).
     sched.add_job(
-        _external_sensors_job, "interval", seconds=30, id="external_sensors_tick"
+        _system_job(_expire_job), "interval", seconds=30, id="expire_commands"
+    )
+    sched.add_job(
+        _system_job(_watchdog_job), "interval", seconds=10, id="watchdog_tick"
+    )
+    sched.add_job(
+        _system_job(_schedule_job), "interval", seconds=30, id="schedule_tick"
+    )
+    sched.add_job(
+        _system_job(_external_sensors_job),
+        "interval",
+        seconds=30,
+        id="external_sensors_tick",
     )
     # v0.5.48 (B11 Phase 5): multi-hub sync replicator every 3s for
     # ~1-3s steady-state latency per RFC-004 target.
-    sched.add_job(_sync_replicator_job, "interval", seconds=3, id="sync_replicator")
+    sched.add_job(
+        _system_job(_sync_replicator_job),
+        "interval",
+        seconds=3,
+        id="sync_replicator",
+    )
     # v0.5.29 (B16 Phase 1C): nightly daily rollups at 02:00 UTC.
     # Cron trigger so the run happens after the day boundary; aggregating
     # the prior full UTC day. Idempotent — re-running the same day
     # upserts cleanly (see compute_daily_rollups docstring).
     sched.add_job(
-        _power_rollups_job,
+        _system_job(_power_rollups_job),
         "cron",
         hour=2, minute=0,
         id="power_rollups_daily",
@@ -145,7 +185,7 @@ def start() -> None:
     # into audit_events_archive. Date-rollover guard inside the job
     # prevents double-runs.
     sched.add_job(
-        _audit_prune_job,
+        _system_job(_audit_prune_job),
         "cron",
         hour=3, minute=0,
         id="audit_prune_daily",
@@ -154,7 +194,7 @@ def start() -> None:
     # ~30 s out so the cache populates shortly after a deploy rather
     # than waiting a full 6 h interval.
     sched.add_job(
-        _epg_refresh_job,
+        _system_job(_epg_refresh_job),
         "interval",
         hours=6,
         id="epg_refresh",

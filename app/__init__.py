@@ -145,6 +145,14 @@ def create_app() -> Flask:
 
     init_cors(app, settings.cors_allowed_origins)
 
+    # org-boundary phase 2: clear the tenant-scope ContextVar at the end
+    # of every request so a pooled worker never leaks one request's org
+    # into the next (design §3.2, §8.2). teardown_request fires even on
+    # an exception, which after_request would not.
+    from app.middleware.admin_auth import register_tenant_teardown
+
+    register_tenant_teardown(app)
+
     from app.services.bootstrap import run_startup_bootstrap
     try:
         run_startup_bootstrap(settings)
