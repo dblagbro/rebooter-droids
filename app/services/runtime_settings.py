@@ -149,6 +149,18 @@ RBAC_KEYS = (
     ("rbac.enforce_mode", "REBOOTER_RBAC_ENFORCE_MODE"),
 )
 
+# org-boundary phase 2: tenant-isolation enforcement mode. One of
+# {"shadow", "enforce"} — default "shadow" (absence of a DB row). In
+# shadow mode the do_orm_execute read filter and the before_flush
+# cross-org-write rejection only COUNT-AND-LOG; in enforce mode they
+# actually filter / reject. Toggled live from the System tab during the
+# org-boundary cut-over (design §8.1 step 6), exactly like
+# rbac.enforce_mode. Consumed by app/services/tenant_scope.py::
+# enforce_mode(). Listed here only for discoverability.
+ORG_KEYS = (
+    ("org_isolation.enforce", "REBOOTER_ORG_ISOLATION_ENFORCE"),
+)
+
 
 def smtp_config() -> dict:
     """Returns the live SMTP config the email service should use.
