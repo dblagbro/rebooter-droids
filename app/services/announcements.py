@@ -59,6 +59,28 @@ def _iso(dt) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else None
 
 
+def _normalize_mac(mac: str | None) -> str:
+    """Canonicalise a MAC for storage + comparison (S1-6 fix).
+
+    A device's /announce and its later /register can report the same
+    physical MAC in different textual forms (``AA:BB:CC:DD:EE:FF`` vs
+    ``aabbccddeeff`` vs ``AABB.CCDD.EEFF``). An exact-string ``==``
+    between announce and register then misses the row, so
+    `mark_consumed` never stamps `consumed_at` and the announcement
+    stays stuck in `awaiting_register` forever.
+
+    Normalisation: uppercase, drop surrounding whitespace, and strip
+    the common separators ``:``, ``-``, ``.`` and any interior
+    whitespace. Returns "" for a falsy input.
+    """
+    if not mac:
+        return ""
+    out = mac.strip().upper()
+    for ch in (":", "-", ".", " ", "\t", "\r", "\n"):
+        out = out.replace(ch, "")
+    return out
+
+
 def _maybe_prepare_auto_rebind(*, session, row: DeviceAnnouncement, now: datetime) -> bool:
     """Best-effort self-heal path for a known device that lost its local token.
 
@@ -223,18 +245,22 @@ def upsert_announcement(
     """Returns a dict with the response payload for the device:
     `{status, retry_after_seconds, ...}`. Lazily upserts the row.
     """
-    mac = (mac_address or "").strip()
-    if not mac:
+    raw_mac = (mac_address or "").strip()
+    if not raw_mac:
         raise AnnouncementError("validation_failed", "mac_address is required")
-    if len(mac) > 40:
+    if len(raw_mac) > 40:
         raise AnnouncementError(
             "validation_failed", "mac_address must be 40 characters or fewer"
         )
-    if not _MAC_RE.fullmatch(mac):
+    if not _MAC_RE.fullmatch(raw_mac):
         raise AnnouncementError(
             "validation_failed",
             "mac_address must contain only hex digits, ':', '-', '.', or spaces",
         )
+    # S1-6 fix: store the MAC in a canonical form so the announce row
+    # and the later /register cross-link reliably regardless of which
+    # textual MAC format each side reports.
+    mac = _normalize_mac(raw_mac)
 
     claims = {
         "claimed_hardware_model": hardware_model,
@@ -525,16 +551,36 @@ def reject(announcement_id: str, *, by_user_id: str | None) -> dict | None:
 def mark_consumed(mac_address: str) -> None:
     """Called from `consume_enrollment_token` after a /register
     succeeds. Looks up the announcement by MAC and stamps
-    `consumed_at` if present. Best-effort — never raises."""
-    if not mac_address:
+    `consumed_at` if present. Best-effort — never raises.
+
+    S1-6 fix: the MAC is normalised on BOTH sides of the comparison.
+    Pre-fix this was an exact-string ``==``; a device that announced
+    with ``AA:BB:CC:DD:EE:FF`` but registered with ``aabbccddeeff``
+    (or vice-versa) never matched its announce row, so `consumed_at`
+    was never set and the row stayed stuck in `awaiting_register`.
+    Rows written before the on-write normalisation may still hold a
+    non-canonical MAC, so we normalise the stored value in Python
+    rather than relying solely on an equality predicate.
+    """
+    target = _normalize_mac(mac_address)
+    if not target:
         return
     try:
         with session_scope() as session:
+            # Fast path: exact match against the (now-normalised) column.
             row = session.scalar(
                 select(DeviceAnnouncement).where(
-                    DeviceAnnouncement.mac_address == mac_address
+                    DeviceAnnouncement.mac_address == target
                 )
             )
+            if row is None:
+                # Slow path: a legacy row stored with separators/case
+                # that predates on-write normalisation. Scan + compare
+                # normalised values so the cross-link still lands.
+                for candidate in session.scalars(select(DeviceAnnouncement)):
+                    if _normalize_mac(candidate.mac_address) == target:
+                        row = candidate
+                        break
             if row is not None and row.consumed_at is None:
                 row.consumed_at = datetime.now(timezone.utc)
                 # v0.5.68 (P-REG fix): the device has registered — the
@@ -547,6 +593,58 @@ def mark_consumed(mac_address: str) -> None:
         logging.getLogger(__name__).exception(
             "mark_consumed failed for mac=%s", mac_address
         )
+
+
+def force_adopt_reconcile(announcement_id: str) -> dict:
+    """Operator 'force-adopt / clear stuck state' action (S1-6).
+
+    For a pending/awaiting_register announcement row whose MAC matches
+    an already-`active` Device, the device clearly registered but the
+    announce → register cross-link was missed (e.g. mismatched MAC
+    formats before the normalisation fix). This reconciles the row by
+    stamping `consumed_at` and clearing the adoption token secret, so
+    the row leaves the stuck state without the operator having to
+    delete it or re-flash the device.
+
+    Returns the serialized row. Raises `AnnouncementError` if the row
+    is not found, is already consumed, or has no matching active
+    Device (in which case force-adopt would be wrong — use Adopt /
+    Reject instead).
+    """
+    now = datetime.now(timezone.utc)
+    with session_scope() as session:
+        row = session.get(DeviceAnnouncement, announcement_id)
+        if row is None:
+            raise AnnouncementError("not_found", "Announcement not found")
+        if row.consumed_at is not None:
+            raise AnnouncementError(
+                "already_consumed",
+                "Announcement is already reconciled (consumed_at set).",
+            )
+
+        target = _normalize_mac(row.mac_address)
+        device = None
+        if target:
+            for d in session.scalars(
+                select(Device).where(Device.registration_state == "active")
+            ):
+                if _normalize_mac(d.mac_address) == target:
+                    device = d
+                    break
+        if device is None:
+            raise AnnouncementError(
+                "no_active_device",
+                "No active device with this MAC — force-adopt only "
+                "reconciles rows whose device has already registered. "
+                "Use Adopt or Reject instead.",
+            )
+
+        row.consumed_at = now
+        row.adoption_token_secret = None
+        session.flush()
+        result = serialize(row)
+        result["reconciled_device_id"] = device.id
+        return result
 
 
 def delete(announcement_id: str) -> bool:
