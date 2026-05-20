@@ -36,11 +36,13 @@ from app.services.commands import (
 )
 from app.services.devices import (
     enqueue_display_name_sync,
+    MergeRetireError,
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
     delete_devices_bulk as svc_delete_devices_bulk,
     get_device_detail,
     list_devices as svc_list_devices,
+    merge_retire_device as svc_merge_retire_device,
     update_device,
 )
 
@@ -251,6 +253,31 @@ def devices_bulk_delete_api():
         base_details={"via": "bulk_delete", "outcome": "skipped", "reason": "is_protected"},
     )
     return ok(result, status=200)
+
+
+# S1-7: merge/retire duplicate device rows (JSON API). Body:
+# {"keep_device_id": "...", "retire_device_id": "..."}. The retired row
+# is decommissioned, never hard-deleted — FK-dependent history stays.
+@admin_api_bp.post("/devices/merge-retire")
+@role_required_api(*ADMIN_AND_UP)
+def devices_merge_retire_api():
+    body = request.get_json(silent=True) or {}
+    keep_id = (body.get("keep_device_id") or "").strip()
+    retire_id = (body.get("retire_device_id") or "").strip()
+    try:
+        result = svc_merge_retire_device(keep_id, retire_id)
+    except MergeRetireError as e:
+        status = 404 if e.code == "not_found" else 409
+        return err(e.code, e.message, status=status)
+    audit_service.record(
+        "device.merge_retired",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=retire_id,
+        details={**result, "via": "api"},
+    )
+    return ok(result)
 
 
 # v0.3.2 (P3): cancel a queued (pending-status) command (R-CTRL-8).

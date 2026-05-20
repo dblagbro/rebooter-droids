@@ -288,6 +288,39 @@ def consume_enrollment_token(token: str, registration_payload: dict) -> tuple[De
         else:
             # Fresh adoption.
             #
+            # S1-7 (.69 duplicate-row fix): before INSERTing a brand-new
+            # Device row, check whether an `active` Device already
+            # exists for this MAC. Pre-fix the fresh-adopt path
+            # unconditionally INSERTed, so a device that re-registered
+            # through announce/adopt (instead of the Restore path)
+            # silently produced a *second* row for the same physical
+            # hardware. Refuse with a clear error pointing the operator
+            # at the Restore path instead.
+            incoming_mac = (registration_payload.get("mac_address") or "").strip().upper()
+            if incoming_mac:
+                existing_active = next(
+                    (
+                        d
+                        for d in session.scalars(
+                            select(Device).where(
+                                Device.registration_state == "active",
+                                Device.mac_address.is_not(None),
+                            )
+                        )
+                        if (d.mac_address or "").strip().upper() == incoming_mac
+                    ),
+                    None,
+                )
+                if existing_active is not None:
+                    raise EnrollmentError(
+                        "device_already_registered",
+                        "An active device with this MAC address already "
+                        "exists. Use the Restore path (pending-adoption "
+                        "-> 'Restore to this device') to rebind the "
+                        "existing device row instead of creating a "
+                        "duplicate.",
+                    )
+
             # v0.5.68 (P-REG fix): `devices.site_id` is NOT NULL since
             # v0.5.36 (RBAC P2), but tokens minted by the announce/adopt
             # flow (`announcements.adopt`) carry no `site_id`. Pre-fix

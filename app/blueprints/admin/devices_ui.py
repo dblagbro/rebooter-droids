@@ -38,6 +38,7 @@ from app.services.commands import (
 )
 from app.services.devices import (
     enqueue_display_name_sync,
+    MergeRetireError,
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
     delete_devices_bulk as svc_delete_devices_bulk,
@@ -46,6 +47,7 @@ from app.services.devices import (
     is_upgrade as _is_upgrade,
     latest_stable_release_dict,
     list_devices as svc_list_devices,
+    merge_retire_device as svc_merge_retire_device,
     update_device,
 )
 from app.services.sites import list_sites as svc_list_sites_only
@@ -188,6 +190,37 @@ def device_delete_submit(device_id: str):
             target_type="device",
             target_id=device_id,
         )
+    return redirect(url_for("admin_ui.list_devices_page"))
+
+
+# S1-7: merge/retire duplicate device rows. Operator picks which of two
+# same-MAC rows to keep; the other is decommissioned (NOT hard-deleted,
+# so FK-dependent history is preserved).
+@admin_ui_bp.post("/devices/merge-retire")
+@role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+def device_merge_retire_submit():
+    from flask import flash
+
+    keep_id = (request.form.get("keep_device_id") or "").strip()
+    retire_id = (request.form.get("retire_device_id") or "").strip()
+    try:
+        result = svc_merge_retire_device(keep_id, retire_id)
+    except MergeRetireError as e:
+        flash(f"Merge failed: {e.message}", "error")
+        return redirect(url_for("admin_ui.list_devices_page"))
+    audit_service.record(
+        "device.merge_retired",
+        actor_user_id=g.current_user.id,
+        actor_email_snapshot=g.current_user.email,
+        target_type="device",
+        target_id=retire_id,
+        details=result,
+    )
+    flash(
+        f"Retired duplicate device {retire_id} "
+        f"(decommissioned); kept {keep_id} for MAC {result['mac_address']}.",
+        "info",
+    )
     return redirect(url_for("admin_ui.list_devices_page"))
 
 
