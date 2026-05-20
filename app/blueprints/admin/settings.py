@@ -16,9 +16,10 @@ from __future__ import annotations
 
 from flask import make_response, redirect, render_template, request, url_for
 
-from app.blueprints.admin import admin_ui_bp
+from app.blueprints.admin import admin_api_bp, admin_ui_bp
 from app.blueprints.admin._common import _ctx
-from app.middleware.admin_auth import admin_required_ui
+from app.middleware.admin_auth import admin_required_api, admin_required_ui
+from app.middleware.response import ok
 
 ALLOWED_THEMES = ("system", "light", "dark")
 
@@ -599,3 +600,88 @@ def settings_sync_save_submit():
 
     flash("Sync settings saved", "success")
     return redirect(url_for("admin_ui.settings_sync_page"))
+
+
+# v0.5.102 (B11 preflight): admin-Bearer-auth wrapper around the
+# wire-side `/api/v1/sync/status`. The wire endpoint requires HMAC
+# peer auth (same path the replicator uses), so the dual-hub preflight
+# script + any external operator tooling can't query it directly with
+# an admin token. This endpoint exposes the same outbox + cursor data
+# plus the `sync.enabled` flag, configured peer count, and the "HMAC
+# key set" boolean (the key itself is never returned). Read-only.
+
+@admin_api_bp.get("/sync/status")
+@admin_required_api
+def sync_admin_status_api():
+    """Admin-token-auth sync status — used by the dual-hub preflight.
+
+    Returns:
+        {
+          "enabled": bool,                 # the sync.enabled runtime flag
+          "hub_id": str,
+          "hmac_key_set": bool,            # never returns the key itself
+          "peer_hubs": [{"id", "base_url"}, …],
+          "outbox": {"max_seq": int, "total_events": int},
+          "cursors": [
+              {"peer_hub_id", "last_seq", "updated_at",
+               "last_error", "last_error_at"},
+              …
+          ],
+        }
+    """
+    import json
+    from sqlalchemy import select, func
+    from app.db import session_scope
+    from app.models.sync import OutboxEvent, SyncCursor
+    from app.services import runtime_settings as rs
+
+    enabled = bool(rs.get("sync.enabled", default=False))
+    hub_id = rs.get("sync.hub_id", default="www")
+    hmac_key_set = bool((rs.get("sync.hmac_key", default="") or "").strip())
+
+    peer_hubs_raw = rs.get("sync.peer_hubs", default="[]")
+    try:
+        peer_hubs = (
+            json.loads(peer_hubs_raw)
+            if isinstance(peer_hubs_raw, str)
+            else (peer_hubs_raw or [])
+        )
+    except (json.JSONDecodeError, TypeError):
+        peer_hubs = []
+    # Never expose secrets — only `id` + `url`. The production-truth
+    # field name is `url` (matches `sync_replicator._get_peer_hubs()`
+    # which reads `peer.get("url")` — pre-v0.5.102 the new admin
+    # endpoint mistakenly mapped `base_url`, returning `null` for
+    # every live peer config).
+    peer_hubs_safe = [
+        {"id": p.get("id"), "url": p.get("url")}
+        for p in peer_hubs
+        if isinstance(p, dict)
+    ]
+
+    with session_scope() as session:
+        max_seq = session.scalar(select(func.max(OutboxEvent.seq))) or 0
+        total_events = (
+            session.scalar(select(func.count()).select_from(OutboxEvent)) or 0
+        )
+        cursors = [
+            {
+                "peer_hub_id": c.peer_hub_id,
+                "last_seq": c.last_seq,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+                "last_error": c.last_error,
+                "last_error_at": (
+                    c.last_error_at.isoformat() if c.last_error_at else None
+                ),
+            }
+            for c in session.scalars(select(SyncCursor))
+        ]
+
+    return ok({
+        "enabled": enabled,
+        "hub_id": hub_id,
+        "hmac_key_set": hmac_key_set,
+        "peer_hubs": peer_hubs_safe,
+        "outbox": {"max_seq": max_seq, "total_events": total_events},
+        "cursors": cursors,
+    })
