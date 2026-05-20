@@ -396,6 +396,203 @@ def ensure_device_site_id_backfill() -> None:
     rs.set_(_DEVICE_SITE_ID_BACKFILL_KEY, now.isoformat())
 
 
+# org-boundary phase 1: one-shot default-organization backfill. Runs
+# once per database; tracked via a `runtime_settings` row. Modeled on
+# ensure_device_site_id_backfill above. See
+# docs/notes/2026-05-20-organization-boundary-design.md section 6.1.
+_ORG_BACKFILL_KEY = "organization.default_backfilled_at"
+
+# The 10 Tier-A tables that carry a nullable organization_id column
+# (the TenantScoped models). Every NULL organization_id row is assigned
+# to the one default org by the backfill below.
+_ORG_TIER_A_TABLES: tuple[str, ...] = (
+    "sites",
+    "groups",
+    "watchdog_rules",
+    "schedules",
+    "scenes",
+    "enrollment_tokens",
+    "external_sensor_sources",
+    "role_bindings",
+    "invitations",
+    "audit_events",
+)
+
+
+def ensure_default_organization_backfill() -> None:
+    """Assign every existing row to one default organization.
+
+    Phase 1 of the multi-tenant organization boundary (design section
+    6.1). Idempotent and one-shot, tracked via a `runtime_settings` row
+    under `organization.default_backfilled_at` — modeled exactly on
+    `ensure_device_site_id_backfill` above.
+
+    Steps:
+      1. If any `organizations` row already exists -> done.
+      2. Create one default `Organization` (name "Default Organization",
+         slug "default", status active, plan "legacy"). Its
+         `owner_user_id` is the first super-admin user, or NULL if the
+         install has none yet.
+      3. UPDATE every Tier-A table — set `organization_id` to the
+         default org id where it is NULL.
+      4. Create one `OrganizationMembership` per existing user — owner
+         for the org owner, admin/member mapped from `users.role`.
+      5. Mark `organization.default_backfilled_at`.
+
+    This must run AFTER `ensure_device_site_id_backfill()` (so every
+    device has a site, hence a clear org path) and is wired into
+    `run_startup_bootstrap` accordingly.
+
+    Phase 1 only — this stamps the (nullable) columns. The phase-2
+    migration flips them to NOT NULL once this backfill is confirmed on
+    every database.
+    """
+    from datetime import datetime, timezone
+    from functools import partial
+    from sqlalchemy import func, text
+    from app.models import Organization, OrganizationMembership, User
+    from app.models._helpers import new_id
+    from app.models.organizations import (
+        ORG_PLAN_LEGACY,
+        ORG_ROLE_ADMIN,
+        ORG_ROLE_MEMBER,
+        ORG_ROLE_OWNER,
+        ORG_STATUS_ACTIVE,
+    )
+    from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
+    from app.services import runtime_settings as rs
+
+    if rs.has_db_value(_ORG_BACKFILL_KEY):
+        return  # already done
+
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        # Step 1: idempotency — if any organization already exists,
+        # treat the backfill as complete and just mark it.
+        existing_org_count = session.scalar(
+            select(func.count()).select_from(Organization)
+        ) or 0
+        if existing_org_count > 0:
+            log.info(
+                "organizations table is non-empty (%d row(s)); "
+                "skipping default-organization backfill",
+                existing_org_count,
+            )
+            rs.set_(_ORG_BACKFILL_KEY, now.isoformat())
+            return
+
+        log.info(
+            "Running one-shot default-organization backfill "
+            "(org-boundary phase 1)"
+        )
+
+        # Step 2: pick the owner — the first super-admin user, mirroring
+        # ensure_bootstrap_admin's lookup style. May be None on an
+        # install with no super-admin yet; that is acceptable (the FK is
+        # nullable / SET NULL) but worth a loud log.
+        owner = session.scalar(
+            select(User)
+            .where(User.is_super_admin.is_(True))
+            .order_by(User.created_at)
+        )
+        if owner is None:
+            log.warning(
+                "default-organization backfill: no super-admin user "
+                "found — the default organization will be created "
+                "ownerless (owner_user_id=NULL). A platform admin "
+                "should assign ownership."
+            )
+
+        org_id = partial(new_id, "org")()
+        default_org = Organization(
+            id=org_id,
+            name="Default Organization",
+            slug="default",
+            status=ORG_STATUS_ACTIVE,
+            plan=ORG_PLAN_LEGACY,
+            # Single-tenant marker is left False here — a self-host
+            # install gets is_self_hosted_default set by a dedicated
+            # bootstrap step in phase 2 (design section 5.3). Phase 1
+            # keeps the backfill conservative.
+            is_self_hosted_default=False,
+            owner_user_id=owner.id if owner is not None else None,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(default_org)
+        session.flush()
+
+        # Step 3: stamp every Tier-A row that has no org yet. Raw UPDATE
+        # per table, exactly like ensure_device_site_id_backfill's
+        # `UPDATE devices ...`. organization_id is a real column on each
+        # of these tables after migration 0003 (or after create_all on a
+        # fresh DB).
+        total_updated = 0
+        for table in _ORG_TIER_A_TABLES:
+            updated = session.execute(
+                text(
+                    f"UPDATE {table} SET organization_id = :org_id "
+                    f"WHERE organization_id IS NULL"
+                ),
+                {"org_id": org_id},
+            ).rowcount
+            total_updated += updated
+            if updated:
+                log.info(
+                    "default-organization backfill: assigned %d %s "
+                    "row(s) to org %s",
+                    updated,
+                    table,
+                    org_id,
+                )
+        log.info(
+            "default-organization backfill: %d Tier-A row(s) assigned "
+            "to org %s across %d tables",
+            total_updated,
+            org_id,
+            len(_ORG_TIER_A_TABLES),
+        )
+
+        # Step 4: one OrganizationMembership per existing user. The org
+        # owner gets org_role 'owner'; everyone else maps from their
+        # legacy users.role — admin/super_admin -> 'admin', otherwise
+        # 'member'.
+        users = list(session.scalars(select(User)))
+        membership_count = 0
+        for u in users:
+            if owner is not None and u.id == owner.id:
+                org_role = ORG_ROLE_OWNER
+            elif u.role in (ROLE_ADMIN, ROLE_SUPER_ADMIN) or u.is_super_admin:
+                org_role = ORG_ROLE_ADMIN
+            else:
+                org_role = ORG_ROLE_MEMBER
+            session.add(
+                OrganizationMembership(
+                    id=partial(new_id, "om")(),
+                    organization_id=org_id,
+                    user_id=u.id,
+                    org_role=org_role,
+                    created_at=now,
+                )
+            )
+            membership_count += 1
+        log.info(
+            "default-organization backfill: created %d "
+            "organization_membership row(s)",
+            membership_count,
+        )
+
+    # Step 5: mark complete so this never runs again.
+    rs.set_(_ORG_BACKFILL_KEY, now.isoformat())
+    log.info("default-organization backfill complete")
+    # TODO(org-phase2): once this backfill is confirmed on every
+    # database, the phase-2 migration flips the Tier-A organization_id
+    # columns to NOT NULL and adds the per-org unique constraints
+    # (design sections 6.2, 6.3). Slot _ensure_constraints-style steps
+    # in after this call, mirroring the Device.site_id pattern.
+
+
 def ensure_bootstrap_admin(settings: Settings) -> None:
     if not (settings.bootstrap_admin_email and settings.bootstrap_admin_password):
         return
@@ -467,6 +664,17 @@ def run_startup_bootstrap(settings: Settings) -> None:
         ensure_device_site_id_backfill()
     except Exception:
         log.exception("Device.site_id backfill failed; container will continue")
+    # org-boundary phase 1: assign every existing row to one default
+    # organization. Runs AFTER ensure_device_site_id_backfill (so every
+    # device has a site, hence a clear org path) and BEFORE the
+    # constraint step. Idempotent, runtime_settings-tracked. Phase 1
+    # stamps the nullable columns only; the NOT-NULL flip is phase 2.
+    try:
+        ensure_default_organization_backfill()
+    except Exception:
+        log.exception(
+            "Default-organization backfill failed; container will continue"
+        )
     # Apply constraints that depend on backfills (v0.5.36+)
     try:
         engine = get_engine()
