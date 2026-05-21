@@ -136,6 +136,28 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
         if isinstance(reported_cfg, dict):
             device.last_reported_config = reported_cfg
             session.add(device)
+
+        # Tier-2: the firmware retires the dedicated
+        # /device/power-samples endpoint and folds a compact `power`
+        # summary object (min/avg/max W, latest V/A/PF, energy Wh, frame
+        # counts) into the heartbeat. Store it as a `source="heartbeat"`
+        # DevicePowerSample row in the same session — no extra round-trip.
+        # Best-effort: a malformed `power` object must never block the
+        # heartbeat, so the ingest is wrapped + the call is no-op'd on a
+        # bad shape rather than raising.
+        power_summary = payload.get("power")
+        if isinstance(power_summary, dict):
+            from app.services.events import ingest_power_summary
+
+            try:
+                ingest_power_summary(session, device_id, power_summary, now)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "heartbeat power-summary ingest failed for %s", device_id
+                )
+
         session.flush()
 
     # v0.5.53 (P0.3 / Phase 4B): after the heartbeat commits, re-assert

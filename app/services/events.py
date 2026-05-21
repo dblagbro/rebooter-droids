@@ -9,7 +9,12 @@ from app.models import DeviceEvent, DevicePowerSample, GroupMembership
 
 MAX_BATCH = 200
 MAX_POWER_BATCH = 3600
-ALLOWED_POWER_SOURCES = {"steady", "burst", "synthetic"}
+# `heartbeat` joins the taxonomy for Tier-2: the firmware retires the
+# dedicated /device/power-samples endpoint and folds a compact `power`
+# summary object into the heartbeat. A `source="heartbeat"` row is a
+# real (CSE7766-derived) measurement just like steady/burst — it is the
+# interval's min/avg/max rather than a single instantaneous sample.
+ALLOWED_POWER_SOURCES = {"steady", "burst", "synthetic", "heartbeat"}
 
 
 def _parse_ts(s: str | None) -> datetime | None:
@@ -164,6 +169,111 @@ def ingest_power_samples(device_id: str, samples: list[dict]) -> int:
             inserted += 1
         session.flush()
     return inserted
+
+
+def ingest_power_summary(
+    session,
+    device_id: str,
+    summary: dict,
+    received_at: datetime,
+) -> bool:
+    """Tier-2: store the compact `power` summary object the firmware now
+    folds into the `/device/heartbeat` payload.
+
+    The dedicated `/device/power-samples` endpoint is being retired; the
+    firmware sends one summary per heartbeat interval instead. The shape:
+
+        "power": {
+          "min_w": 1.2, "avg_w": 12.4, "max_w": 90.1,   # interval watts
+          "v_v": 122.7, "i_a": 0.10, "pf": 0.62,         # latest readings
+          "energy_wh": 14821,                            # cumulative Wh
+          "valid_frame_count": 58,                       # CSE7766 frames
+          "invalid_frame_count": 2,
+          "sampled_uptime_seconds": 87421,               # provenance
+          "i_ma_estimated": false, "i_ma_estimate": null # low-load semantics
+        }
+
+    Stored as a single `DevicePowerSample` row with `source="heartbeat"`,
+    consistent with the existing power data model — `avg_w` lands in the
+    canonical `p_w` column (so every existing power query/rollup keeps
+    working unchanged), the extremes in `min_w`/`max_w`, and the CSE7766
+    frame counts reuse `crc_fail_count` (invalid frames) plus a new
+    nothing — invalid frames are the data-quality signal already charted.
+
+    Org scope derives via device→site, exactly like every other power
+    row — `DevicePowerSample` carries no own scope column.
+
+    Runs inside the caller's `record_heartbeat` session_scope so there is
+    no extra round-trip / transaction. Returns True when a row was
+    written, False when the summary is absent/malformed (best-effort —
+    a bad `power` object must never block heartbeat ingestion).
+    """
+    if not isinstance(summary, dict):
+        return False
+
+    # `avg_w` is the one required field — without an average there is no
+    # meaningful power row to store. Accept the legacy `p_w` alias too.
+    avg = _as_float(_first(summary, "avg_w", "p_w"), "power.avg_w")
+    if avg is None:
+        return False
+
+    min_w = _as_float(_first(summary, "min_w"), "power.min_w")
+    max_w = _as_float(_first(summary, "max_w"), "power.max_w")
+
+    # Latest instantaneous V / A / PF. The firmware reports amps; the
+    # column stores milliamps (matching the dedicated endpoint).
+    v_v = _as_float(summary.get("v_v"), "power.v_v")
+    i_a = _as_float(_first(summary, "i_a", "i_amps"), "power.i_a")
+    i_ma = _as_int(summary.get("i_ma"), "power.i_ma")
+    if i_ma is None and i_a is not None:
+        i_ma = int(round(i_a * 1000))
+    pf = _as_float(summary.get("pf"), "power.pf")
+    hz = _as_float(summary.get("hz"), "power.hz")
+    energy_wh = _as_int(summary.get("energy_wh"), "power.energy_wh")
+
+    # CSE7766 frame counts — the invalid count is the existing
+    # data-quality signal; map it onto `crc_fail_count` so the existing
+    # power-health surfaces pick it up with no new column.
+    invalid_frames = _as_int(
+        _first(summary, "invalid_frame_count", "power_invalid_frame_count"),
+        "power.invalid_frame_count",
+    )
+
+    # Low-load current semantics (firmware 0.1.27+) carry through.
+    i_ma_estimated = _as_bool(
+        _first(summary, "i_ma_estimated", "power_current_estimated")
+    )
+    i_ma_estimate = _as_int(
+        _first(summary, "i_ma_estimate", "power_estimated_current_ma"),
+        "power.i_ma_estimate",
+    )
+
+    sampled_uptime = _as_int(
+        summary.get("sampled_uptime_seconds"), "power.sampled_uptime_seconds"
+    )
+
+    row = DevicePowerSample(
+        device_id=device_id,
+        channel_id=0,
+        sampled_at=received_at,
+        received_at=received_at,
+        sampled_uptime_seconds=sampled_uptime,
+        source="heartbeat",
+        source_flags=0,
+        v_v=v_v,
+        i_ma=i_ma,
+        i_ma_estimated=i_ma_estimated,
+        i_ma_estimate=i_ma_estimate,
+        p_w=avg,
+        min_w=min_w,
+        max_w=max_w,
+        pf=pf,
+        hz=hz,
+        energy_wh=energy_wh,
+        crc_fail_count=invalid_frames,
+    )
+    session.add(row)
+    return True
 
 
 def query_events(

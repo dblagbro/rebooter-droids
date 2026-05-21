@@ -1,0 +1,26 @@
+{% extends "setup/_wizard_shell.html" %}
+{% block wizard_body %}
+<section class="v3-card">
+  <h2>Welcome to your Rebooter hub</h2>
+  <p>
+    This hub watches your devices and power-cycles them when they stop
+    responding — so a frozen modem, router, or camera fixes itself instead
+    of waiting for you.
+  </p>
+  <p>This short setup will help you:</p>
+  <ul>
+    <li>Give your portal a name</li>
+    <li>Confirm email is working (for invites and alerts)</li>
+    <li>Set up your first device with one of three plain-language modes</li>
+  </ul>
+  <p class="muted" style="font-size:.9rem">
+    Nothing here is permanent — every setting can be changed later from
+    the Settings area.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.setup_wizard_step_submit', step='welcome') }}">
+    <div class="actions">
+      <button type="submit">Get started</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

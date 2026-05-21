@@ -67,9 +67,28 @@ def settings_system_page():
                     "enforce_mode": str(rbac_enforce_mode).strip().lower(),
                     "is_override": runtime_settings.has_db_value("rbac.enforce_mode"),
                 },
+                # Tier-2 Feature 1: first-run setup-wizard state, so the
+                # System tab can show "completed" + offer a re-run.
+                "setup": {
+                    "completed": _setup_completed_flag(),
+                    "completed_at": runtime_settings.get(
+                        "system.setup_completed_at", default=None
+                    ),
+                },
             }
         ),
     )
+
+
+def _setup_completed_flag() -> bool:
+    """Tier-2 Feature 1: whether `system.setup_completed` is truthy."""
+    from app.services import runtime_settings
+
+    val = runtime_settings.get(
+        "system.setup_completed",
+        env_var="REBOOTER_SETUP_COMPLETED", default=None,
+    )
+    return str(val or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 @admin_ui_bp.post("/settings/system/save")

@@ -1,0 +1,26 @@
+{% extends "setup/_wizard_shell.html" %}
+{% block wizard_body %}
+<section class="v3-card">
+  <h2>Email</h2>
+  <p class="muted" style="margin-top:0">
+    The hub uses email to send invitations and password-reset links.
+    It is optional — you can finish setup without it.
+  </p>
+  {% if smtp_configured %}
+    <p class="badge green" style="display:inline-block">Email is configured</p>
+    <p>Your SMTP server is set up. You're good to go.</p>
+  {% else %}
+    <p class="badge amber" style="display:inline-block">Email not configured yet</p>
+    <p>
+      Email isn't set up yet. You can configure an SMTP server later from
+      <a href="{{ url_for('admin_ui.settings_notifications_page') }}">Settings → Notifications</a>,
+      where you can also send a test message. Skipping this is fine for now.
+    </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('admin_ui.setup_wizard_step_submit', step='smtp') }}">
+    <div class="actions">
+      <button type="submit">Continue</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
