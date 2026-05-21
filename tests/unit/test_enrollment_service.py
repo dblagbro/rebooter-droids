@@ -115,6 +115,102 @@ def test_consume_qa_display_name_flags_the_device_as_fixture(hub_db):
     assert device.is_qa_fixture is True
 
 
+# ── resolve_default_site_id — the org-stamping fix ─────────────────────
+#
+# load-degradation fix (2026-05-21): `sites.organization_id` is NOT NULL
+# (org-boundary phase 3). The device-register path
+# (`consume_enrollment_token` -> `resolve_default_site_id`) runs with NO
+# bound org scope — and the `before_flush` org-stamping is a no-op both
+# when no org is bound and under `tenant_scope.system()`. So creating the
+# "Default" site with no `organization_id` raised a `NotNullViolation`
+# and `/register` 500'd. `resolve_default_site_id` must now resolve and
+# stamp the default org explicitly.
+
+
+def test_resolve_default_site_creates_default_site_with_org_when_unscoped(hub_db):
+    """`resolve_default_site_id`, run UNDER `tenant_scope.system()` (the
+    state the device-register path runs in — no bound org, before_flush
+    stamping is a no-op), must still create the `Default` site with a
+    valid non-NULL `organization_id`.
+
+    Fails on `main`: the old code created `Site(name="Default")` with no
+    org -> NotNullViolation. Passes with the fix: the org is resolved via
+    `resolve_default_org_id` and stamped explicitly.
+    """
+    from app.models import Site
+    from app.services import tenant_scope
+    from app.services.sites import resolve_default_site_id
+
+    # No site exists yet; drive the create branch the way `/register`
+    # does — inside a system() bypass, where before_flush will NOT stamp.
+    with tenant_scope.system():
+        with session_scope() as session:
+            site_id = resolve_default_site_id(session)
+
+    assert site_id, "a Default site id is returned"
+    with tenant_scope.system():
+        with session_scope() as session:
+            site = session.get(Site, site_id)
+            assert site is not None
+            assert site.name == "Default"
+            assert site.organization_id, (
+                "the Default site must be stamped with a valid "
+                "organization_id — sites.organization_id is NOT NULL"
+            )
+
+
+def test_resolve_default_site_is_idempotent_under_system(hub_db):
+    """Calling `resolve_default_site_id` twice under `system()` reuses the
+    existing `Default` site rather than creating a second one."""
+    from app.models import Site
+    from app.services import tenant_scope
+    from app.services.sites import resolve_default_site_id
+    from sqlalchemy import func
+
+    with tenant_scope.system():
+        with session_scope() as session:
+            first = resolve_default_site_id(session)
+        with session_scope() as session:
+            second = resolve_default_site_id(session)
+        with session_scope() as session:
+            count = session.scalar(
+                select(func.count()).select_from(Site).where(Site.name == "Default")
+            )
+    assert first == second
+    assert count == 1
+
+
+def test_register_creates_default_site_with_org_under_system(hub_db):
+    """End-to-end: a `/register` whose enrollment token carries no
+    `site_id`, exercised under `tenant_scope.system()` (the production
+    device-register scope), must succeed and land the device on a
+    `Default` site that carries a valid `organization_id`.
+
+    Fails on `main` with a NotNullViolation surfacing as an error out of
+    `consume_enrollment_token`; passes with the fix.
+    """
+    from app.models import Site
+    from app.services import tenant_scope
+
+    _, secret = mint_enrollment_token(hub_db, issued_by_user_id=None)
+    with tenant_scope.system():
+        device, device_token = consume_enrollment_token(
+            secret,
+            {"display_name": "Adopted plug", "mac_address": "AA:BB:CC:DD:EE:99"},
+        )
+    assert device_token.startswith("dt_")
+    assert device.site_id, "the device is sited on the resolved Default site"
+
+    with session_scope() as session:
+        site = session.get(Site, device.site_id)
+        assert site is not None
+        assert site.name == "Default"
+        assert site.organization_id, (
+            "the Default site created during register must have a valid "
+            "organization_id"
+        )
+
+
 # ── consume — rejections ───────────────────────────────────────────────
 
 def test_consume_unknown_token_raises(hub_db):
