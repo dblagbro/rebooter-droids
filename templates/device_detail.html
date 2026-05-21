@@ -560,6 +560,13 @@
 {# ── settings ───────────────────────────────────────────────────────── #}
 <section class="v3-card" id="settings">
   <h2>Settings</h2>
+  {# Tier-2 Feature 1: plain-language 3-mode setup picker. #}
+  <p class="muted" style="margin-top:0">
+    Not sure how to configure this device? The setup picker walks you
+    through the three operating modes in plain language.
+    <a class="btn btn-secondary" href="{{ url_for('admin_ui.device_configure_page', device_id=device.id) }}"
+       style="margin-left:.5rem">Set up this device</a>
+  </p>
   <form method="post" action="{{ url_for('admin_ui.device_update_submit', device_id=device.id) }}">
     <label>Display name <input type="text" name="display_name" value="{{ device.display_name or '' }}"></label>
     <label>Site

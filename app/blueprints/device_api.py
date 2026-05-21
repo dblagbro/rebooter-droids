@@ -16,7 +16,6 @@ from app.services.deployments import (
 )
 from app.services.enrollment import EnrollmentError, consume_enrollment_token
 from app.services.events import ingest_events
-from app.services.events import ingest_power_samples
 from app.services.heartbeats import record_heartbeat
 
 bp = Blueprint("device_api", __name__)
@@ -308,6 +307,19 @@ def upload_events():
 @bp.post("/power-samples")
 @device_auth_required
 def upload_power_samples():
+    """Retired — Tier-2.
+
+    The firmware now folds a compact `power` summary object into the
+    `/device/heartbeat` payload instead of POSTing a separate batch
+    here (it eliminates a TLS round-trip on heap-constrained ESP8266
+    units). The hub-side handler lives in `record_heartbeat` →
+    `events.ingest_power_summary`.
+
+    The route is kept (rather than deleted) so a device still running
+    pre-Tier-2 firmware gets an explicit `410 Gone` with guidance,
+    instead of a 404 it can't distinguish from a routing fault. The
+    ingest code path itself stays available for that grace window.
+    """
     body = request.get_json(silent=True) or {}
     device = g.current_device
     if body.get("device_id") and body["device_id"] != device.id:
@@ -315,11 +327,12 @@ def upload_power_samples():
     samples = body.get("samples") or []
     if not isinstance(samples, list):
         return err("validation_failed", "samples must be a list", status=400)
-    try:
-        n = ingest_power_samples(device.id, samples)
-    except ValueError as e:
-        return err("validation_failed", str(e), status=400)
-    return ok({"ingested": n})
+    return err(
+        "endpoint_retired",
+        "POST /device/power-samples is retired — send the compact `power` "
+        "summary object inside the /device/heartbeat payload instead.",
+        status=410,
+    )
 
 
 @bp.get("/firmware")

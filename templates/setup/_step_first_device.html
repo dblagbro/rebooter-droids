@@ -1,0 +1,43 @@
+{% extends "setup/_wizard_shell.html" %}
+{% block wizard_body %}
+{% if first_device %}
+  {# Embed the reusable 3-mode picker for the first enrolled device. The
+     picker form posts to device_configure_submit with wizard=1, which
+     redirects on to the `done` step. #}
+  <section class="v3-card">
+    <h2>Set up your first device</h2>
+    <p class="muted" style="margin-top:0">
+      You have {{ devices|length }} device{{ '' if devices|length == 1 else 's' }} enrolled.
+      Let's configure <strong>{{ first_device.display_name or first_device.id }}</strong>.
+    </p>
+  </section>
+  {% with device=first_device, current_mode=first_device.desired_mode, in_wizard=True,
+          defaults={
+            'internet_targets': '1.1.1.1\n8.8.8.8',
+            'offline_tolerance_seconds': 180,
+            'power_off_seconds': 5,
+            'post_reboot_holdoff_seconds': 180,
+            'cooldown_seconds': 600,
+            'max_cycles_per_hour': 6
+          } %}
+    {% include "setup/_mode_picker_form.html" %}
+  {% endwith %}
+{% else %}
+  <section class="v3-card">
+    <h2>Enrol your first device</h2>
+    <p>
+      You don't have any devices yet. Enrol one — flash the firmware and
+      point it at this portal — then come back to finish setup.
+    </p>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('admin_ui.enroll_device_wizard') }}">Enrol a device</a>
+    </div>
+    <p class="muted" style="font-size:.9rem; margin-top:1rem">
+      Already finished, or want to do this later?
+    </p>
+    <form method="post" action="{{ url_for('admin_ui.setup_wizard_step_submit', step='first-device') }}">
+      <button type="submit" class="btn btn-secondary">Skip — finish setup</button>
+    </form>
+  </section>
+{% endif %}
+{% endblock %}

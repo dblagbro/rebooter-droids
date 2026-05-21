@@ -1,0 +1,126 @@
+{# ── 3-mode picker form partial — Tier-2 Feature 1 ──────────────────────
+   The form body of the reusable mode picker, factored out so both the
+   standalone /app/devices/<id>/configure page and the first-run wizard's
+   `first-device` step render the same markup.
+
+   Expected context:
+     device        — the device row dict
+     picker_modes  — list of {value,label,blurb,help}
+     current_mode  — the device's existing desired_mode (or None)
+     defaults      — dict of pre-filled fine-tune defaults
+     in_wizard     — bool, True when embedded in the first-run wizard
+
+   No inline JS — per-mode question blocks are revealed by the CSS
+   `:checked` sibling selector, consistent with the CSP-tight posture.
+#}
+<form method="post" action="{{ url_for('admin_ui.device_configure_submit', device_id=device.id) }}" class="mode-picker">
+  {% if in_wizard %}<input type="hidden" name="wizard" value="1">{% endif %}
+
+  <section class="v3-card">
+    <h2>1 · Name the device</h2>
+    <label>A friendly name for this device
+      <input type="text" name="device_name" maxlength="120" required
+             value="{{ device.display_name or '' }}"
+             placeholder="e.g. Living-room modem">
+    </label>
+  </section>
+
+  <section class="v3-card">
+    <h2>2 · What is this device for?</h2>
+    {% for m in picker_modes %}
+    <div class="mode-card">
+      <label class="mode-card-label">
+        <input type="radio" name="mode" value="{{ m.value }}" required
+               {% if current_mode == m.value %}checked{% endif %}>
+        <span class="mode-card-body">
+          <span class="mode-card-title">{{ m.label }}</span>
+          <span class="mode-card-blurb">{{ m.blurb }}</span>
+          <span class="mode-card-help muted">{{ m.help }}</span>
+        </span>
+      </label>
+
+      <div class="mode-card-questions" data-mode="{{ m.value }}">
+        {% if m.value == 'smart_plug' %}
+          <label>After a power outage, the switch should
+            <select name="relay_restore_behavior">
+              <option value="restore_previous">go back to how it was before</option>
+              <option value="always_on">always turn on</option>
+              <option value="always_off">always stay off</option>
+            </select>
+          </label>
+
+        {% elif m.value == 'internet_watchdog' %}
+          <label>Internet addresses to check (one per line)
+            <textarea name="internet_targets" rows="2"
+                      placeholder="{{ defaults.internet_targets }}">{{ defaults.internet_targets }}</textarea>
+          </label>
+          <p class="muted" style="font-size:.85rem">
+            Leave the defaults unless you have a reason to change them — these
+            are well-known public addresses that are almost always reachable.
+          </p>
+          <label>How long should the internet be down before we restart?
+            <input type="number" name="offline_tolerance_seconds" min="30" max="3600"
+                   value="{{ defaults.offline_tolerance_seconds }}">
+            <span class="muted" style="font-size:.8rem">seconds</span>
+          </label>
+
+        {% elif m.value == 'device_watchdog' %}
+          <label>The address of the device to watch
+            <input type="text" name="watch_address"
+                   placeholder="e.g. 192.168.1.50, camera.local, or https://192.168.1.50">
+          </label>
+          <p class="muted" style="font-size:.85rem">
+            An IP address or hostname checks whether the device answers a ping;
+            add <code>:port</code> to check a specific service; a full web
+            address checks that a page loads.
+          </p>
+          <label>How long should it be unresponsive before we restart it?
+            <input type="number" name="offline_tolerance_seconds" min="30" max="3600"
+                   value="{{ defaults.offline_tolerance_seconds }}">
+            <span class="muted" style="font-size:.8rem">seconds</span>
+          </label>
+        {% endif %}
+
+        {% if m.value in ('internet_watchdog', 'device_watchdog') %}
+        <details class="mode-finetune">
+          <summary>Fine-tune (optional — sensible defaults are already set)</summary>
+          <label>How long to cut the power for, each restart
+            <input type="number" name="power_off_seconds" min="1" max="600"
+                   value="{{ defaults.power_off_seconds }}">
+            <span class="muted" style="font-size:.8rem">seconds</span>
+          </label>
+          <label>Wait this long after a restart before checking again
+            <input type="number" name="post_reboot_holdoff_seconds" min="0" max="3600"
+                   value="{{ defaults.post_reboot_holdoff_seconds }}">
+            <span class="muted" style="font-size:.8rem">seconds</span>
+          </label>
+          <label>Wait this long between restart attempts
+            <input type="number" name="cooldown_seconds" min="0" max="86400"
+                   value="{{ defaults.cooldown_seconds }}">
+            <span class="muted" style="font-size:.8rem">seconds</span>
+          </label>
+          <label>Never restart more than this many times per hour
+            <input type="number" name="max_cycles_per_hour" min="1" max="60"
+                   value="{{ defaults.max_cycles_per_hour }}">
+          </label>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="v3-card">
+    <p class="muted" style="font-size:.85rem">
+      We'll send these settings to the device. The hub-side watchdog works
+      no matter what firmware the device runs; some older firmware may
+      ignore the device-side copy of these settings.
+    </p>
+    <div class="actions">
+      <button type="submit">Apply setup</button>
+      {% if not in_wizard %}
+        <a class="btn btn-secondary" href="{{ url_for('admin_ui.device_detail_page', device_id=device.id) }}">Cancel</a>
+      {% endif %}
+    </div>
+  </section>
+</form>

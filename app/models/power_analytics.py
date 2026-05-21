@@ -53,6 +53,14 @@ class DevicePowerSample(Base):
     i_ma_estimated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     i_ma_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
     p_w: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    # Heartbeat-folded power summary (firmware retires the dedicated
+    # /device/power-samples endpoint and folds a compact `power` object
+    # into the heartbeat). A `source="heartbeat"` row carries the
+    # interval's min/avg/max watts: `p_w` holds the average, `min_w` /
+    # `max_w` the extremes. Both nullable — a per-sample upload from the
+    # dedicated endpoint leaves them NULL (one sample has no min/max).
+    min_w: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    max_w: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     s_va: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     pf: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
     hz: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
