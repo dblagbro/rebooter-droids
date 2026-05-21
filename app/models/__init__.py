@@ -60,3 +60,4 @@ from app.models.notifications import (  # noqa: E402,F401
     WebhookChannel,
     WebhookDelivery,
 )
+from app.models.api_tokens import ApiToken  # noqa: E402,F401
