@@ -43,6 +43,8 @@ phase 3 — see `tenant_rls_todo()` below for the rationale.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import Iterator, Optional
@@ -150,6 +152,65 @@ ENFORCE_MODE_ENFORCE = "enforce"
 ORG_ENFORCE_MODE_KEY = "org_isolation.enforce"
 ORG_ENFORCE_MODE_ENV = "REBOOTER_ORG_ISOLATION_ENFORCE"
 
+
+# ── enforce-mode cache ─────────────────────────────────────────────────
+#
+# load-degradation fix (2026-05-21): pre-fix, every ORM SELECT under an
+# org scope read `org_isolation.enforce` from the DB via a nested SELECT
+# inside `do_orm_execute` — a ~164x SQL amplification on the read-hot
+# path. The enforce toggle is flipped by a human operator at most a
+# handful of times in the lifetime of a deployment, so a tiny TTL cache
+# with explicit invalidate-on-write is correct and removes the per-query
+# DB read entirely. The cache is process-wide (guarded by a lock); the
+# TTL is a backstop so a multi-process deployment (gunicorn workers)
+# converges on a toggle within the TTL even though `invalidate_enforce_mode_cache()`
+# only fires in the writing process.
+_ENFORCE_CACHE_TTL = 5.0  # seconds — backstop for cross-process convergence
+_enforce_cache_lock = threading.Lock()
+_enforce_cache_value: Optional[str] = None
+_enforce_cache_expires_at: float = 0.0
+
+
+_enforce_cache_callback_registered = False
+
+
+def invalidate_enforce_mode_cache() -> None:
+    """Drop the cached `org_isolation.enforce` value so the next
+    `enforce_mode()` call re-reads it. Called by `runtime_settings`
+    whenever `org_isolation.enforce` is written or deleted, so an
+    operator toggle takes effect immediately in the writing process
+    (other processes converge within `_ENFORCE_CACHE_TTL`)."""
+    global _enforce_cache_value, _enforce_cache_expires_at
+    with _enforce_cache_lock:
+        _enforce_cache_value = None
+        _enforce_cache_expires_at = 0.0
+
+
+def _ensure_enforce_cache_invalidation_registered() -> None:
+    """Register invalidate-on-write with `runtime_settings` so an
+    operator flipping `org_isolation.enforce` from the System tab takes
+    effect immediately in this process.
+
+    Registered LAZILY (on the first `enforce_mode()` call) rather than at
+    import time: `app.models` imports `tenant_scope` for the
+    `TenantScoped` mixin while `runtime_settings` itself imports
+    `app.models` — registering at import time races that cycle and can
+    silently no-op. By the first `enforce_mode()` call every module is
+    fully loaded, so the import here always succeeds. Idempotent."""
+    global _enforce_cache_callback_registered
+    if _enforce_cache_callback_registered:
+        return
+    try:
+        from app.services import runtime_settings
+
+        runtime_settings.register_change_callback(
+            ORG_ENFORCE_MODE_KEY, invalidate_enforce_mode_cache
+        )
+        _enforce_cache_callback_registered = True
+    except Exception:  # noqa: BLE001 — never break a query on a wiring hiccup
+        log.debug("could not register enforce-mode cache invalidation",
+                  exc_info=True)
+
 # Audit actions emitted by this module (search-greppable).
 AUDIT_SHADOW_FILTER = "tenant.shadow_filter"   # read filter would have hidden rows
 AUDIT_ENFORCE_FILTER = "tenant.enforce_filter"  # read filter actively hid rows
@@ -158,7 +219,7 @@ AUDIT_ENFORCE_WRITE = "tenant.enforce_write"   # write actively rejected
 AUDIT_UNSCOPED = "tenant.unscoped_access"      # Tier-A touched with no org + no bypass
 
 
-def enforce_mode(session=None) -> str:
+def enforce_mode(session=None, *, cacheable: bool = True) -> str:
     """Current org-isolation enforcement mode — ``shadow`` (default) or
     ``enforce``. Runtime-toggleable via the ``org_isolation.enforce``
     setting; takes effect immediately with no container restart.
@@ -176,7 +237,34 @@ def enforce_mode(session=None) -> str:
     To revert:
         runtime_settings.set_("org_isolation.enforce", "shadow")
         (or runtime_settings.delete("org_isolation.enforce"))
+
+    The resolved mode is cached for a few seconds (see
+    `invalidate_enforce_mode_cache`) — the toggle changes at most a
+    handful of times in a deployment's life, so a per-query DB read is
+    pure overhead. A `runtime_settings.set_`/`delete` of the key
+    invalidates the cache immediately in the writing process.
+
+    ``cacheable`` — whether the resolved value may populate the shared
+    cache. The `do_orm_execute` read path passes True: a SELECT hook
+    fires at the start of the SELECT and sees a committed view, so the
+    value is trustworthy. The `before_flush` write path passes False:
+    it can run mid-`set_` (the very flush that changes this key), where
+    the session sees its own UNcommitted write — caching that would
+    poison the cache until the TTL or the next invalidation. The
+    no-`session` path is always cacheable (a fresh committed read).
     """
+    global _enforce_cache_value, _enforce_cache_expires_at
+
+    # Lazily wire invalidate-on-write the first time the mode is read —
+    # see `_ensure_enforce_cache_invalidation_registered` for why this is
+    # not done at import time.
+    _ensure_enforce_cache_invalidation_registered()
+
+    now = time.monotonic()
+    cached = _enforce_cache_value
+    if cached is not None and now < _enforce_cache_expires_at:
+        return cached
+
     try:
         from app.services import runtime_settings
 
@@ -195,17 +283,26 @@ def enforce_mode(session=None) -> str:
             )
     except Exception:
         # Never let a settings hiccup turn enforcement ON. Fail SAFE for
-        # availability — a missing setting means shadow (log-only).
+        # availability — a missing setting means shadow (log-only). Do
+        # NOT cache a failure — retry the read on the next call.
         return ENFORCE_MODE_SHADOW
-    return (
+
+    mode = (
         ENFORCE_MODE_ENFORCE
         if str(raw).strip().lower() == ENFORCE_MODE_ENFORCE
         else ENFORCE_MODE_SHADOW
     )
+    # Cache unless the caller flagged the read as untrustworthy (a
+    # mid-flush `before_flush` read — see the `cacheable` docstring).
+    if cacheable:
+        with _enforce_cache_lock:
+            _enforce_cache_value = mode
+            _enforce_cache_expires_at = now + _ENFORCE_CACHE_TTL
+    return mode
 
 
-def is_enforcing(session=None) -> bool:
-    return enforce_mode(session) == ENFORCE_MODE_ENFORCE
+def is_enforcing(session=None, *, cacheable: bool = True) -> bool:
+    return enforce_mode(session, cacheable=cacheable) == ENFORCE_MODE_ENFORCE
 
 
 # ── Scope accessors / mutators ─────────────────────────────────────────
@@ -407,6 +504,24 @@ def _tenant_scoped_tablenames() -> frozenset:
     return _SCOPED_TABLENAMES
 
 
+# ── do_orm_execute re-entrancy guard ───────────────────────────────────
+#
+# load-degradation fix (2026-05-21): `_add_tenant_filter` itself issues
+# DB reads — `is_enforcing()` (on a cache miss) reads `org_isolation.enforce`
+# and `_unscoped_violation()` writes an audit row. Those inner statements
+# re-fire `do_orm_execute`, re-entering this very hook. With an org scope
+# bound none of the early short-circuits caught the re-entry, so the hook
+# recursed ~150 deep per query (and amplified SQL ~164x); under
+# concurrency the `RecursionError` landed in the connection-pool
+# machinery and orphaned checked-out connections until the pool
+# exhausted. This ContextVar is a hard re-entrancy guard: while the hook
+# is running on this context it is a strict no-op for any nested ORM
+# SELECT it triggers. Belt-and-suspenders alongside the top-of-function
+# `_statement_touches_tenant_scoped` short-circuit below — either alone
+# stops the recursion; together they make this bug class unable to recur.
+_in_filter: ContextVar[bool] = ContextVar("tenant_scope_in_filter", default=False)
+
+
 @event.listens_for(orm.Session, "do_orm_execute")
 def _add_tenant_filter(execute_state) -> None:
     """Inject `WHERE organization_id = :current_org` into every ORM
@@ -433,6 +548,30 @@ def _add_tenant_filter(execute_state) -> None:
     if not execute_state.is_select:
         return
 
+    # Re-entrancy guard (load-degradation fix 2026-05-21). If this hook
+    # is already running on the current context, any ORM SELECT it
+    # triggers (the `org_isolation.enforce` lookup, an audit-row read)
+    # MUST be a hard no-op — never recurse into the filter. Those inner
+    # statements never touch a TenantScoped entity, so skipping them
+    # changes no filtering behaviour.
+    if _in_filter.get():
+        return
+
+    # Short-circuit non-tenant statements BEFORE any `is_enforcing()`
+    # call (load-degradation fix 2026-05-21). `with_loader_criteria` is a
+    # no-op on a statement that touches no TenantScoped entity, so for
+    # such a statement there is nothing to do — and crucially, doing it
+    # here, ahead of `is_enforcing()`, means the non-tenant
+    # `runtime_settings`/audit reads issued from inside this hook return
+    # immediately instead of dragging `is_enforcing()` through another
+    # ~150 levels of recursion. Tenant-scoped statements fall through and
+    # are filtered EXACTLY as before — filtering behaviour is unchanged.
+    touches_tenant_scoped = _statement_touches_tenant_scoped(
+        execute_state.statement
+    )
+    if not touches_tenant_scoped:
+        return
+
     # Explicit system bypass — design §3.4.
     if _bypass.get():
         return
@@ -440,9 +579,15 @@ def _add_tenant_filter(execute_state) -> None:
     org_id = _current_org.get()
 
     # The dangerous case: a Tier-A SELECT with no org and no bypass.
+    # Hold the re-entrancy guard across `_unscoped_violation` — it emits
+    # an audit row, whose flush + any enforce-mode read must not re-enter
+    # this hook.
     if org_id is None:
-        if _statement_touches_tenant_scoped(execute_state.statement):
+        token = _in_filter.set(True)
+        try:
             _unscoped_violation(execute_state)
+        finally:
+            _in_filter.reset(token)
         return
 
     criteria = with_loader_criteria(
@@ -453,26 +598,32 @@ def _add_tenant_filter(execute_state) -> None:
 
     # Read the enforce-mode setting on the CURRENT session — never a
     # nested `session_scope()` (a second SQLite connection deadlocking
-    # on this transaction's write lock).
-    if is_enforcing(execute_state.session):
+    # on this transaction's write lock). The `_in_filter` guard is held
+    # for the duration so the (cache-miss) enforce-mode lookup cannot
+    # re-enter this hook.
+    token = _in_filter.set(True)
+    try:
+        enforcing = is_enforcing(execute_state.session)
+    finally:
+        _in_filter.reset(token)
+
+    if enforcing:
         # Hard enforcement — the filter is applied for real.
         execute_state.statement = execute_state.statement.options(criteria)
         return
 
     # SHADOW MODE (default): do NOT change what the query returns. We
-    # still want to *know* the filter would have mattered, so we run a
-    # cheap structural check: only statements that touch a TenantScoped
-    # entity could be affected. Counting actual hidden rows would mean
-    # executing the query twice on the write-hot path — too expensive
-    # for a default-on mechanism — so shadow mode logs that a Tier-A
-    # query ran under an org scope and records the org, leaving the
-    # row-level diff to the targeted shadow tests (design §3.5.2).
-    if _statement_touches_tenant_scoped(execute_state.statement):
-        log.debug(
-            "tenant_scope SHADOW: Tier-A SELECT under org=%s "
-            "(filter NOT applied — shadow mode)",
-            org_id,
-        )
+    # already know this statement touches a TenantScoped entity (it
+    # passed the top-of-function check), so log that a Tier-A query ran
+    # under an org scope and record the org, leaving the row-level diff
+    # to the targeted shadow tests (design §3.5.2). Counting actual
+    # hidden rows would mean executing the query twice on the read-hot
+    # path — too expensive for a default-on mechanism.
+    log.debug(
+        "tenant_scope SHADOW: Tier-A SELECT under org=%s "
+        "(filter NOT applied — shadow mode)",
+        org_id,
+    )
     # In shadow mode the statement is left untouched — no `.options()`.
 
 
@@ -562,8 +713,17 @@ def _stamp_and_guard_tenant_writes(session, flush_context, instances) -> None:
     active_org = _current_org.get()
     # Read the enforce-mode setting on the CURRENT session — never a
     # nested `session_scope()` (a second SQLite connection deadlocking
-    # on this flush's write lock).
-    enforcing = is_enforcing(session)
+    # on this flush's write lock). The `_in_filter` guard is held across
+    # the read so a cache-miss enforce-mode SELECT cannot re-enter the
+    # `do_orm_execute` filter (load-degradation fix 2026-05-21).
+    # `cacheable=False`: this fires mid-flush and may see uncommitted
+    # state (the `set_` of `org_isolation.enforce` itself), so its result
+    # must not populate the shared cache.
+    token = _in_filter.set(True)
+    try:
+        enforcing = is_enforcing(session, cacheable=False)
+    finally:
+        _in_filter.reset(token)
 
     # `AuditEvent` rows are exempt from the write guard. They are an
     # append-only platform record whose `organization_id` is permanently
