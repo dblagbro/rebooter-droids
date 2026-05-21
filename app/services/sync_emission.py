@@ -70,6 +70,39 @@ _NON_EMITTING_COLUMNS: dict[str, set[str]] = {
 }
 
 
+def _scope_claims_for(connection, entity_type, payload):
+    """Build the `scope_claims` for an outbox event — org-boundary
+    design §3.7.
+
+    `scope_claims` carries `organization_id` so the peer applier can
+    verify the event's tenant and apply the row under the right scope.
+
+      * `site`  — Tier-A: the org is on the payload itself.
+      * `device` / `group` — Tier-B: derive the org through `site_id`
+        (`device|group -> site -> organization`). The lookup runs on
+        the mutation's own connection so it sees the just-written row.
+      * `user`  — M:N to orgs, no single owning org → no claim.
+
+    Returns a dict or None (no claim).
+    """
+    org_id = None
+    if entity_type == "site":
+        org_id = payload.get("organization_id")
+    elif entity_type in ("device", "group"):
+        site_id = payload.get("site_id")
+        if site_id:
+            row = connection.execute(
+                Site.__table__.select()
+                .with_only_columns(Site.__table__.c.organization_id)
+                .where(Site.__table__.c.id == site_id)
+            ).first()
+            if row is not None:
+                org_id = row[0]
+    if org_id:
+        return {"organization_id": org_id}
+    return None
+
+
 def _emit(connection, entity_type, entity_id, verb, payload, *, tombstone_for=None):
     """Insert one outbox event on the mutation's own connection."""
     connection.execute(
@@ -80,7 +113,7 @@ def _emit(connection, entity_type, entity_id, verb, payload, *, tombstone_for=No
             entity_id=entity_id,
             payload=payload,
             tombstone_for=tombstone_for,
-            scope_claims=None,
+            scope_claims=_scope_claims_for(connection, entity_type, payload),
         )
     )
     log.debug("Sync emit: %s.%s %s", entity_type, verb, entity_id)
