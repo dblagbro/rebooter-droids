@@ -1,7 +1,7 @@
 """org boundary phase 3 — constraint hardening
 
-Revision ID: 0005_org_constraint_hardening
-Revises: 0004_org_id_announcements
+Revision ID: 0007_org_constraint_hardening
+Revises: 0006_api_tokens
 Create Date: 2026-05-20
 
 Phase 3 of the multi-tenant organization boundary (see
@@ -49,8 +49,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0005_org_constraint_hardening"
-down_revision: Union[str, None] = "0004_org_id_announcements"
+revision: str = "0007_org_constraint_hardening"
+down_revision: Union[str, None] = "0006_api_tokens"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
