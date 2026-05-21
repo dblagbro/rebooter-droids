@@ -17,7 +17,7 @@ SHADOW MODE IS THE DEFAULT. Tests that exercise hard enforcement
 explicitly flip `org_isolation.enforce` to "enforce"; tests that assert
 the default behaviour leave it untouched (or set "shadow").
 
-All cases use the `hub_db` isolated-SQLite fixture.
+All cases use the `hub_db_unscoped` isolated-SQLite fixture.
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ _TIER_A_QUERY_MODELS = (
 
 
 @pytest.mark.parametrize("model", _TIER_A_QUERY_MODELS, ids=lambda m: m.__name__)
-def test_enforce_mode_hides_other_orgs_rows(hub_db, model):
+def test_enforce_mode_hides_other_orgs_rows(hub_db_unscoped, model):
     """ENFORCE: with org-A context active, a SELECT of a Tier-A entity
     returns ONLY org-A rows — org-B's rows are structurally invisible."""
     org_a, org_b = _seed_two_orgs()
@@ -126,7 +126,7 @@ def test_enforce_mode_hides_other_orgs_rows(hub_db, model):
             assert rows[0].organization_id == org_b
 
 
-def test_enforce_mode_get_by_id_cannot_cross_org(hub_db):
+def test_enforce_mode_get_by_id_cannot_cross_org(hub_db_unscoped):
     """ENFORCE: fetching org-B's Site row by its primary key from inside
     org-A context returns None — a direct-id probe cannot cross orgs."""
     org_a, org_b = _seed_two_orgs()
@@ -146,7 +146,7 @@ def test_enforce_mode_get_by_id_cannot_cross_org(hub_db):
             )
 
 
-def test_enforce_mode_count_is_org_scoped(hub_db):
+def test_enforce_mode_count_is_org_scoped(hub_db_unscoped):
     """ENFORCE: an aggregate COUNT is filtered too — org A sees count 1,
     not 2, even though two sites exist."""
     org_a, _ = _seed_two_orgs()
@@ -156,7 +156,7 @@ def test_enforce_mode_count_is_org_scoped(hub_db):
             assert s.scalar(select(func.count()).select_from(Site)) == 1
 
 
-def test_shadow_mode_does_not_filter(hub_db):
+def test_shadow_mode_does_not_filter(hub_db_unscoped):
     """SHADOW (the default): the read filter is count-and-log only — org
     A still sees org B's rows. This proves the safe default does NOT
     silently change behaviour before the enforce flip."""
@@ -167,7 +167,7 @@ def test_shadow_mode_does_not_filter(hub_db):
             assert s.scalar(select(func.count()).select_from(Site)) == 2
 
 
-def test_default_mode_is_shadow(hub_db):
+def test_default_mode_is_shadow(hub_db_unscoped):
     """With NO runtime setting written at all, the mode is shadow — hard
     enforcement is never on by default."""
     assert tenant_scope.enforce_mode() == tenant_scope.ENFORCE_MODE_SHADOW
@@ -179,7 +179,7 @@ def test_default_mode_is_shadow(hub_db):
             assert s.scalar(select(func.count()).select_from(Site)) == 2
 
 
-def test_non_tier_a_query_is_never_filtered(hub_db):
+def test_non_tier_a_query_is_never_filtered(hub_db_unscoped):
     """A query against a non-TenantScoped model (User) is untouched by
     the filter even under an active org scope and enforce mode."""
     with tenant_scope.system():
@@ -200,7 +200,7 @@ def test_non_tier_a_query_is_never_filtered(hub_db):
 # ── system() bypass ────────────────────────────────────────────────────
 
 
-def test_system_bypass_sees_all_orgs(hub_db):
+def test_system_bypass_sees_all_orgs(hub_db_unscoped):
     """tenant_scope.system() — the device-API / background-job path —
     sees every org's rows even in enforce mode."""
     _seed_two_orgs()
@@ -210,7 +210,7 @@ def test_system_bypass_sees_all_orgs(hub_db):
             assert s.scalar(select(func.count()).select_from(Site)) == 2
 
 
-def test_system_bypass_clears_inherited_org(hub_db):
+def test_system_bypass_clears_inherited_org(hub_db_unscoped):
     """A system() block opened INSIDE an org context is genuinely
     unscoped — the inherited org is cleared, not silently still applied."""
     org_a, _ = _seed_two_orgs()
@@ -227,7 +227,7 @@ def test_system_bypass_clears_inherited_org(hub_db):
         assert tenant_scope.in_system_context() is False
 
 
-def test_org_context_nested_restores_previous(hub_db):
+def test_org_context_nested_restores_previous(hub_db_unscoped):
     """org_context() restores the previous scope on exit — used by jobs
     that iterate orgs."""
     org_a, org_b = _seed_two_orgs()
@@ -242,7 +242,7 @@ def test_org_context_nested_restores_previous(hub_db):
 # ── before_flush write-stamping & cross-org write guard ────────────────
 
 
-def test_insert_is_stamped_with_active_org(hub_db):
+def test_insert_is_stamped_with_active_org(hub_db_unscoped):
     """A new Tier-A row created with no organization_id set is stamped
     from the active org by before_flush — 'service code forgot to set the
     org' becomes a guaranteed-correct default."""
@@ -255,7 +255,7 @@ def test_insert_is_stamped_with_active_org(hub_db):
             assert site.organization_id == org_a
 
 
-def test_cross_org_insert_rejected_in_enforce_mode(hub_db):
+def test_cross_org_insert_rejected_in_enforce_mode(hub_db_unscoped):
     """ENFORCE: inserting a Tier-A row carrying a DIFFERENT org than the
     active scope raises CrossOrgWriteError and aborts the flush."""
     org_a, org_b = _seed_two_orgs()
@@ -275,7 +275,7 @@ def test_cross_org_insert_rejected_in_enforce_mode(hub_db):
             ) == 0
 
 
-def test_cross_org_insert_allowed_but_logged_in_shadow_mode(hub_db):
+def test_cross_org_insert_allowed_but_logged_in_shadow_mode(hub_db_unscoped):
     """SHADOW (default): a cross-org write is NOT blocked — it proceeds
     (legacy behaviour) and is logged as a tenant.shadow_write audit row
     for the pre-enforce review."""
@@ -295,7 +295,7 @@ def test_cross_org_insert_allowed_but_logged_in_shadow_mode(hub_db):
     _assert_audit_action_present(tenant_scope.AUDIT_SHADOW_WRITE)
 
 
-def test_cross_org_update_rejected_in_enforce_mode(hub_db):
+def test_cross_org_update_rejected_in_enforce_mode(hub_db_unscoped):
     """ENFORCE: re-homing an existing Tier-A row to another org via an
     UPDATE is caught — a row cannot be moved across the tenant boundary."""
     org_a, org_b = _seed_two_orgs()
@@ -312,7 +312,7 @@ def test_cross_org_update_rejected_in_enforce_mode(hub_db):
                 s.flush()
 
 
-def test_system_context_write_keeps_explicit_org(hub_db):
+def test_system_context_write_keeps_explicit_org(hub_db_unscoped):
     """Inside system() the write-stamping is a no-op — system code is
     trusted to set whatever org it needs (e.g. the backfill)."""
     org_a, org_b = _seed_two_orgs()
@@ -330,7 +330,7 @@ def test_system_context_write_keeps_explicit_org(hub_db):
 # ── unscoped-access detection (the latent-bug control) ─────────────────
 
 
-def test_unscoped_tier_a_select_emits_audit(hub_db):
+def test_unscoped_tier_a_select_emits_audit(hub_db_unscoped):
     """A Tier-A SELECT with NO org bound and NO system bypass is a latent
     isolation bug — it emits a tenant.unscoped_access audit row. The
     query itself is NOT blocked (a None org with no bypass is a code bug,
@@ -362,7 +362,7 @@ def _assert_audit_action_present(action: str):
 # ── ContextVar reset / no pooled-worker leakage ────────────────────────
 
 
-def test_reset_clears_the_scope(hub_db):
+def test_reset_clears_the_scope(hub_db_unscoped):
     """tenant_scope.reset() returns the ContextVar to the unset state."""
     org_a, _ = _seed_two_orgs()
     tenant_scope.set_org(org_a)
@@ -371,7 +371,7 @@ def test_reset_clears_the_scope(hub_db):
     assert tenant_scope.current_org() is None
 
 
-def test_teardown_resets_even_after_exception(hub_db):
+def test_teardown_resets_even_after_exception(hub_db_unscoped):
     """The teardown_request hook must clear the scope even when the view
     raised — otherwise the next request on the pooled worker leaks the
     previous tenant. Simulate: bind an org, run a 'request' that raises,
@@ -401,7 +401,7 @@ def test_teardown_resets_even_after_exception(hub_db):
     assert tenant_scope.current_org() is None
 
 
-def test_request_does_not_leak_org_into_next_request(hub_db):
+def test_request_does_not_leak_org_into_next_request(hub_db_unscoped):
     """Two sequential 'requests': the first binds org A, the second binds
     nothing — the second must NOT see org A's scope."""
     import flask
@@ -452,7 +452,7 @@ def _seed_user_in_org(org_id: str, email: str, org_role: str = "member"):
             return u.id
 
 
-def test_resolve_active_org_defaults_to_sole_membership(hub_db):
+def test_resolve_active_org_defaults_to_sole_membership(hub_db_unscoped):
     org_a, _ = _seed_two_orgs()
     uid = _seed_user_in_org(org_a, "solo@example.com")
 
@@ -462,7 +462,7 @@ def test_resolve_active_org_defaults_to_sole_membership(hub_db):
     assert org_membership.resolve_active_org(_U()) == org_a
 
 
-def test_resolve_active_org_honours_valid_session_value(hub_db):
+def test_resolve_active_org_honours_valid_session_value(hub_db_unscoped):
     """A session active_org_id the user IS a member of is honoured."""
     org_a, org_b = _seed_two_orgs()
     uid = _seed_user_in_org(org_a, "msp@example.com")
@@ -485,7 +485,7 @@ def test_resolve_active_org_honours_valid_session_value(hub_db):
     )
 
 
-def test_resolve_active_org_rejects_foreign_session_value(hub_db):
+def test_resolve_active_org_rejects_foreign_session_value(hub_db_unscoped):
     """A session active_org_id pointing at an org the user is NOT a
     member of is rejected — it never widens access. Falls back to the
     user's real membership."""
@@ -500,7 +500,7 @@ def test_resolve_active_org_rejects_foreign_session_value(hub_db):
     assert resolved == org_a  # NOT org_b — the foreign value was ignored
 
 
-def test_resolve_active_org_none_when_no_membership(hub_db):
+def test_resolve_active_org_none_when_no_membership(hub_db_unscoped):
     """A user with no membership resolves to None — the request then runs
     unscoped and any Tier-A access is flagged, rather than silently
     granted ambient cross-org reach."""
@@ -518,7 +518,7 @@ def test_resolve_active_org_none_when_no_membership(hub_db):
     assert org_membership.resolve_active_org(_U()) is None
 
 
-def test_memberships_for_user_orders_owner_first(hub_db):
+def test_memberships_for_user_orders_owner_first(hub_db_unscoped):
     """memberships_for_user() puts owner memberships first so the
     primary-org default is deterministic for MSP users."""
     org_a, org_b = _seed_two_orgs()
@@ -551,7 +551,7 @@ def test_memberships_for_user_orders_owner_first(hub_db):
 # ── enforce_mode toggle ────────────────────────────────────────────────
 
 
-def test_enforce_mode_toggle_is_runtime(hub_db):
+def test_enforce_mode_toggle_is_runtime(hub_db_unscoped):
     """The shadow<->enforce switch is a single runtime setting — no
     redeploy. Flipping it changes enforce_mode() immediately."""
     assert tenant_scope.enforce_mode() == "shadow"
@@ -567,7 +567,7 @@ def test_enforce_mode_toggle_is_runtime(hub_db):
 # ── RBAC org-awareness (design section 4.2) ────────────────────────────
 
 
-def test_role_bindings_select_is_org_scoped_in_enforce_mode(hub_db):
+def test_role_bindings_select_is_org_scoped_in_enforce_mode(hub_db_unscoped):
     """ENFORCE: RoleBinding is TenantScoped — a select(RoleBinding) from
     org-A context returns only org-A bindings. This is what makes
     scope_type='global' mean 'global within this org'."""
@@ -594,7 +594,7 @@ def test_role_bindings_select_is_org_scoped_in_enforce_mode(hub_db):
             assert bindings[0].user_id == ua_id  # org A's binding only
 
 
-def test_binding_scope_belongs_to_org_rejects_foreign_site(hub_db):
+def test_binding_scope_belongs_to_org_rejects_foreign_site(hub_db_unscoped):
     """The design section 4.2 defense-in-depth check: a site binding whose
     scope_id points at another org's site does not 'belong'."""
     from app.services.role_bindings import binding_scope_belongs_to_org
