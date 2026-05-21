@@ -124,7 +124,73 @@ def _update_state_and_maybe_fire(
     rule.status = RULE_STATUS_FIRING
     rule.last_action_at = now
     record_event(session, rule, "action_fired", fired_details, now)
+
+    # v6 (notifications/webhooks): emit the watchdog event onto the
+    # outbound-notifications queue, and run the rule's `escalation`
+    # webhook — both via the SSRF-guarded paths. Best-effort; a notify
+    # failure must never abort the tick.
+    _run_escalation_and_emit(rule, fired_details)
     return True
+
+
+def _run_escalation_and_emit(rule: WatchdogRule, fired_details: dict) -> None:
+    """Fire the outbound-notifications hook + the rule's `escalation`
+    webhook after an action fires.
+
+    Per `docs/notes/2026-05-20-hub-tier2-design.md` Feature 6:
+
+      * `notifications.emit("watchdog.rule_fired", ...)` queues a
+        delivery for every subscribed channel.
+      * a rule `escalation` of `{kind:"webhook", url:...}` is sent
+        through the SSRF guard — the folded-in security fix that
+        re-points the previously-raw escalation URL field.
+
+    Both are best-effort and fully isolated from the tick: any failure
+    is logged, never raised.
+    """
+    try:
+        from app.services import notifications
+
+        notifications.emit(
+            "watchdog.rule_fired",
+            {
+                "rule_id": rule.id,
+                "rule_name": rule.name,
+                "outcome": "action_fired",
+                "details": fired_details,
+            },
+            site_id=getattr(rule, "site_id", None),
+        )
+    except Exception:  # pragma: no cover - belt and suspenders
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "notifications.emit failed for rule %s", rule.id
+        )
+
+    escalation = rule.escalation or {}
+    if escalation.get("kind") == "webhook" and escalation.get("url"):
+        try:
+            from app.services import notifications
+            from app.services.webhook_delivery import send_escalation_webhook
+
+            send_escalation_webhook(
+                rule.id,
+                escalation["url"],
+                {"rule_name": rule.name, "details": fired_details},
+            )
+            # An escalation is itself a notifiable event.
+            notifications.emit(
+                "watchdog.rule_escalated",
+                {"rule_id": rule.id, "rule_name": rule.name},
+                site_id=getattr(rule, "site_id", None),
+            )
+        except Exception:  # pragma: no cover
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "escalation webhook failed for rule %s", rule.id
+            )
 
 
 def _binding_tick(
