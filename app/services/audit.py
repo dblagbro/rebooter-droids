@@ -28,6 +28,44 @@ def _client_ip() -> str | None:
     return request.remote_addr
 
 
+def _active_org_id() -> str | None:
+    """The org scope currently bound (or None for a system/unscoped
+    context). `audit_events` is exempt from the `before_flush`
+    write-stamping (it is an append-only platform table whose org column
+    is permanently nullable — design §3.6), so an audit row stamps its
+    own org here: an audit row written under an org-scoped request keeps
+    that org, a system/unscoped audit row keeps NULL. Best-effort."""
+    try:
+        from app.services import tenant_scope
+
+        return tenant_scope.current_org()
+    except Exception:
+        return None
+
+
+def _build_event(
+    action: str,
+    *,
+    actor_user_id: str | None = None,
+    actor_email_snapshot: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    details: dict | None = None,
+    ip: str | None = None,
+) -> AuditEvent:
+    return AuditEvent(
+        at=datetime.now(timezone.utc),
+        organization_id=_active_org_id(),
+        actor_user_id=actor_user_id,
+        actor_email_snapshot=actor_email_snapshot,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        details=details or {},
+        ip=ip if ip is not None else _client_ip(),
+    )
+
+
 def record(
     action: str,
     *,
@@ -44,20 +82,60 @@ def record(
     see `app.services.sync_emission`.
     """
     try:
-        evt = AuditEvent(
-            at=datetime.now(timezone.utc),
+        evt = _build_event(
+            action,
             actor_user_id=actor_user_id,
             actor_email_snapshot=actor_email_snapshot,
-            action=action,
             target_type=target_type,
             target_id=target_id,
-            details=details or {},
-            ip=ip if ip is not None else _client_ip(),
+            details=details,
+            ip=ip,
         )
         with session_scope() as session:
             session.add(evt)
     except Exception:
         log.exception("audit emit failed for action=%s target=%s/%s", action, target_type, target_id)
+
+
+def record_on_session(
+    session,
+    action: str,
+    *,
+    actor_user_id: str | None = None,
+    actor_email_snapshot: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    details: dict | None = None,
+    ip: str | None = None,
+) -> None:
+    """Append an audit row to an ALREADY-OPEN session, instead of opening
+    a new `session_scope()`.
+
+    This is the path the tenant-scope `before_flush` / `do_orm_execute`
+    hooks must use: they run *inside* an outer write transaction, so
+    opening a second `session_scope()` here would deadlock a SQLite
+    database (a second connection blocking on the first's write lock).
+    Adding to the current session keeps the audit row in the same
+    transaction — it commits (or rolls back) atomically with the write
+    that triggered it.
+
+    Best-effort — never raises (mirrors `record`)."""
+    try:
+        evt = _build_event(
+            action,
+            actor_user_id=actor_user_id,
+            actor_email_snapshot=actor_email_snapshot,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+            ip=ip,
+        )
+        session.add(evt)
+    except Exception:
+        log.exception(
+            "audit emit (on-session) failed for action=%s target=%s/%s",
+            action, target_type, target_id,
+        )
 
 
 def record_scoped(
