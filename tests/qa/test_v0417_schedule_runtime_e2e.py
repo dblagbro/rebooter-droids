@@ -20,7 +20,8 @@ import requests
 
 from app.config import load_settings
 from app.db import get_engine, init_engine, session_scope
-from app.models import Base, Schedule
+from app.models import Base, Organization, Schedule
+from app.services.tenant_scope import org_context
 
 from .conftest import unique_suffix
 
@@ -33,7 +34,16 @@ T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 @pytest.fixture
 def hub_db(tmp_path):
     """Isolated SQLite hub DB + a bare Flask app context. Mirrors
-    test_v0514 / test_v0414."""
+    test_v0514 / test_v0414.
+
+    org-boundary phase 3 made `organization_id` NOT NULL on
+    `schedules`. A real `POST /admin/schedules` request runs with the
+    org scope bound by the admin-auth middleware, so the `before_flush`
+    hook stamps the column. This fixture seeds the default org and runs
+    the test body inside `org_context` so `schedules.create()` —
+    exercised here directly, without the HTTP middleware — gets the
+    same stamping.
+    """
     settings = replace(
         load_settings(),
         database_url=f"sqlite:///{tmp_path / 'rebooter-qa.sqlite'}",
@@ -42,7 +52,11 @@ def hub_db(tmp_path):
     engine = get_engine()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    with flask.Flask(__name__).app_context():
+    with session_scope() as s:
+        s.add(Organization(
+            id="org_test", name="Test Org", slug="default", plan="legacy"
+        ))
+    with flask.Flask(__name__).app_context(), org_context("org_test"):
         yield settings
 
 

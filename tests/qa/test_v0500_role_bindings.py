@@ -50,10 +50,16 @@ def test_role_bindings_table_exists_and_backfilled(base_url):
     assert r.status_code == 200, r.text
     me = r.json().get("data", {})
     assert me.get("email") == ADMIN_EMAIL
-    # Version sanity check — confirms the v0.5.0 image is actually
-    # what's serving this test.
+    # Version sanity check — confirms a real, parseable build is serving
+    # this test. role_bindings shipped in v0.5.0 and every release
+    # since carries it, so this no longer pins a specific minor (it
+    # used to hardcode "0.5." — stale once the tree moved to 0.6.x).
     ver = s.get(f"{base_url}/api/v1/version", timeout=10).json()["data"]
-    assert ver["version"].startswith("0.5."), ver
+    parts = ver["version"].split(".")
+    assert len(parts) >= 2 and all(p.isdigit() for p in parts[:2]), ver
+    assert (int(parts[0]), int(parts[1])) >= (0, 5), (
+        f"role_bindings shipped in 0.5.0; running version is older: {ver}"
+    )
 
 
 def test_legacy_auth_paths_still_work(base_url):

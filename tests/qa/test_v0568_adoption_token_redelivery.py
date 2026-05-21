@@ -30,6 +30,8 @@ import secrets
 import pytest
 import requests
 
+from app.services.announcements import _normalize_mac
+
 # Verified green against a fresh ephemeral instance — part of the
 # GitHub Actions CI gate. See docs/test-plan.md.
 pytestmark = pytest.mark.ci
@@ -68,8 +70,15 @@ def test_enrollment_token_redelivered_until_register(base_url, admin_headers):
             timeout=10,
         )
         listing.raise_for_status()
+        # S1-6 (`_normalize_mac`) stores — and serializes back —
+        # announcement MACs in canonical form (separators stripped),
+        # so compare normalized MACs, not the raw colon-form.
         match = next(
-            (a for a in listing.json()["data"] if a["mac_address"] == mac), None
+            (
+                a for a in listing.json()["data"]
+                if _normalize_mac(a["mac_address"]) == _normalize_mac(mac)
+            ),
+            None,
         )
         assert match, f"announcement for {mac} not in pending list"
         announcement_id = match["id"]  # noqa: F841 — used in the adopt URL below
