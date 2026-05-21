@@ -53,6 +53,16 @@ def resolve_default_site_id(session) -> str:
 
     Operates within the caller's session/transaction so the resolved
     (or created) site commits atomically with the device row.
+
+    load-degradation fix (2026-05-21): the device-register path
+    (`enrollment.consume_enrollment_token` → here) runs with NO bound
+    org scope, and the `before_flush` org-stamping in `tenant_scope`
+    only stamps `organization_id` when an org IS bound (it is also a
+    no-op under `tenant_scope.system()`). The org-boundary work made
+    `sites.organization_id` NOT NULL — so creating the `Default` site
+    with no org raised a `NotNullViolation` and `/register` 500'd. The
+    new `Site` therefore stamps `organization_id` EXPLICITLY here, from
+    the same default organization the bootstrap backfill creates/uses.
     """
     site = session.scalar(select(Site).where(Site.name == DEFAULT_SITE_NAME))
     if site is not None:
@@ -60,7 +70,22 @@ def resolve_default_site_id(session) -> str:
     sites = list(session.scalars(select(Site)))
     if len(sites) == 1:
         return sites[0].id
-    site = Site(name=DEFAULT_SITE_NAME)
+
+    # `before_flush` will not stamp organization_id here (no org scope is
+    # bound on the device-register path, and it is a no-op under
+    # system()), and the column is NOT NULL — so resolve and set it
+    # explicitly. `resolve_default_org_id` returns the same default org
+    # the startup backfill uses (slug "default", or the sole org).
+    from app.services.bootstrap import resolve_default_org_id
+
+    org_id = resolve_default_org_id(session)
+    if org_id is None:
+        raise RuntimeError(
+            "resolve_default_site_id: cannot create the Default site — no "
+            "organization exists to own it. The default-organization "
+            "backfill should have run at startup."
+        )
+    site = Site(name=DEFAULT_SITE_NAME, organization_id=org_id)
     session.add(site)
     session.flush()
     return site.id
