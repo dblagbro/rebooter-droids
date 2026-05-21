@@ -122,6 +122,24 @@ def _epg_refresh_job():
         log.info("epg refresh: %s", stats)
 
 
+def _webhook_delivery_job():
+    """Tier-2 Feature 6 (notifications/webhooks): drain the
+    `webhook_deliveries` queue. Picks up `pending`/`failed` rows whose
+    `next_attempt_at` is due, sends each through the SSRF-guarded
+    sender, and reschedules failures with exponential backoff. Runs
+    every 15s — outbound webhook latency is not heartbeat-critical, and
+    a 15s cadence keeps the per-tick HTTP fan-out modest."""
+    try:
+        from app.services.webhook_delivery import tick as webhook_delivery_tick
+
+        stats = webhook_delivery_tick()
+    except Exception:
+        log.exception("webhook delivery tick crashed")
+        return
+    if stats.get("sent") or stats.get("failed") or stats.get("dead"):
+        log.info("webhook delivery tick: %s", stats)
+
+
 def _sync_replicator_job():
     """v0.5.48 (B11 Phase 5): multi-hub sync replicator. Polls peer
     hubs' /api/v1/sync/since endpoints every 3s, fetches outbox events,
@@ -169,6 +187,13 @@ def start() -> None:
         "interval",
         seconds=3,
         id="sync_replicator",
+    )
+    # Tier-2 Feature 6: outbound webhook delivery queue worker every 15s.
+    sched.add_job(
+        _system_job(_webhook_delivery_job),
+        "interval",
+        seconds=15,
+        id="webhook_delivery",
     )
     # v0.5.29 (B16 Phase 1C): nightly daily rollups at 02:00 UTC.
     # Cron trigger so the run happens after the day boundary; aggregating
@@ -220,6 +245,7 @@ def start() -> None:
         "watchdog_tick every 10s, schedule_tick every 30s, "
         "external_sensors_tick every 30s, "
         "sync_replicator every 3s, "
+        "webhook_delivery every 15s, "
         "power_rollups_daily @ 02:00 UTC, "
         "audit_prune_daily @ 03:00 UTC, "
         "epg_refresh every 6h; "
