@@ -1,0 +1,19 @@
+{% extends "setup/_wizard_shell.html" %}
+{% block wizard_body %}
+<section class="v3-card">
+  <h2>Name your portal</h2>
+  <p class="muted" style="margin-top:0">
+    This name shows up in the browser tab and on emails the hub sends.
+    You can change it any time from Settings → System.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.setup_wizard_step_submit', step='branding') }}">
+    <label>Portal name
+      <input type="text" name="portal_name" maxlength="120"
+             value="{{ portal_name }}" placeholder="e.g. Acme Rebooter Hub" autofocus>
+    </label>
+    <div class="actions">
+      <button type="submit">Save and continue</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

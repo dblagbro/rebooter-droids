@@ -48,6 +48,11 @@ def index():
         ctx["stats"],
         unregistered_active=ctx.get("unregistered_active", 0),
     )
+    # Tier-2 Feature 1: first-run setup banner. Shown once when the hub
+    # has no devices / no rules and `system.setup_completed` is unset.
+    from app.blueprints.admin.setup import should_show_first_run
+
+    ctx["show_first_run"] = should_show_first_run()
     return render_template("status.html", **ctx)
 
 
