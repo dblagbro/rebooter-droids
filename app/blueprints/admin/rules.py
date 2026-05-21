@@ -34,6 +34,10 @@ from app.middleware.admin_auth import (
 from app.middleware.response import err, ok
 from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services import audit as audit_service
+from app.services.conflict_detection import (
+    detect_conflicts as svc_detect_conflicts,
+    has_blocking as svc_has_blocking,
+)
 from app.services.devices import list_devices as svc_list_devices
 from app.services.groups import list_groups as svc_list_groups
 from app.services.scenes import list_scenes as svc_list_scenes
@@ -142,6 +146,51 @@ def _render_rule_edit(rule: dict, *, rule_json: str, json_editor_error: str | No
     )
 
 
+# ── conflict-detection confirm step ────────────────────────────────────────
+#
+# v1.x: `detect_conflicts()` runs the cross-rule / cross-schedule
+# semantic checks on top of `create_rule()`'s structural validation.
+# `warn` / `info` findings are informational — the save proceeds. A
+# `block` finding requires the operator to explicitly acknowledge before
+# the rule is saved: the form re-renders with the conflicts shown and a
+# hidden `conflicts_acknowledged` field; re-submitting confirms. This
+# mirrors the codebase's existing confirm patterns (mass_action typed
+# confirmation, `data-confirm-message`) — it is a confirm step, NOT an
+# unbypassable hard block, because the findings are heuristics.
+
+CONFLICTS_ACK_FIELD = "conflicts_acknowledged"
+
+
+def _conflicts_acknowledged(form) -> bool:
+    return (form.get(CONFLICTS_ACK_FIELD) or "").lower() in ("1", "true", "on")
+
+
+def _render_rules_page_with_conflicts(conflicts, *, pending_form, edit_rule_id=None):
+    """Re-render the rules page showing `block`-severity conflicts and a
+    confirm form that carries the operator's original input plus a
+    `conflicts_acknowledged` flag so the resubmit goes through."""
+    rules = svc_list_rules()
+    rules_with_events = []
+    for r in rules:
+        r["recent_events"] = svc_list_events(r["id"], limit=10)
+        rules_with_events.append(r)
+    return render_template(
+        "rules/index.html",
+        **_ctx({
+            "active": "rules",
+            "rules": rules_with_events,
+            "devices": svc_list_devices(include_qa_fixtures=False),
+            "groups": svc_list_groups(),
+            "sources_by_kind": _sources_by_kind(),
+            "scenes": svc_list_scenes(),
+            # The conflict-confirm banner reads these.
+            "conflicts": [c.as_dict() for c in conflicts],
+            "conflicts_pending_form": pending_form,
+            "conflicts_edit_rule_id": edit_rule_id,
+        }),
+    )
+
+
 # ── UI ─────────────────────────────────────────────────────────────────────
 
 @admin_ui_bp.get("/rules")
@@ -191,6 +240,24 @@ def rules_create_submit():
         flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_page"))
 
+    # v1.x: cross-rule / cross-schedule conflict detection. `block`
+    # findings require an explicit acknowledgment; `warn` / `info` are
+    # surfaced as flash messages but do not stop the save.
+    proposed = {
+        "probe": probe, "target": target, "action": action,
+        "failure_threshold": failure_threshold,
+        "window_seconds": window_seconds,
+        "cooldown_seconds": cooldown_seconds,
+    }
+    conflicts = svc_detect_conflicts(proposed)
+    if (
+        svc_has_blocking(conflicts)
+        and not _conflicts_acknowledged(request.form)
+    ):
+        return _render_rules_page_with_conflicts(
+            conflicts, pending_form=request.form.to_dict(flat=False)
+        )
+
     try:
         rule = svc_create_rule(
             name=name,
@@ -207,6 +274,9 @@ def rules_create_submit():
     except WatchdogValidationError as e:
         flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_page"))
+
+    for c in conflicts:
+        flash(f"Conflict ({c.severity}): {c.message}", "warning")
 
     audit_service.record(
         "watchdog_rule.created",
@@ -420,6 +490,26 @@ def rules_edit_form_submit(rule_id: str):
         flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_edit_page", rule_id=rule_id))
 
+    # v1.x: conflict detection — exclude this rule's own id so an edit
+    # is never flagged as conflicting with itself. A `block` finding
+    # requires acknowledgment before the update is saved.
+    proposed = {
+        "probe": probe, "target": target, "action": action,
+        "failure_threshold": failure_threshold,
+        "window_seconds": window_seconds,
+        "cooldown_seconds": cooldown_seconds,
+    }
+    conflicts = svc_detect_conflicts(proposed, exclude_rule_id=rule_id)
+    if (
+        svc_has_blocking(conflicts)
+        and not _conflicts_acknowledged(request.form)
+    ):
+        return _render_rules_page_with_conflicts(
+            conflicts,
+            pending_form=request.form.to_dict(flat=False),
+            edit_rule_id=rule_id,
+        )
+
     try:
         rule = svc_update_rule(
             rule_id,
@@ -445,6 +535,9 @@ def rules_edit_form_submit(rule_id: str):
         return redirect(url_for("admin_ui.rules_edit_page", rule_id=rule_id))
     if rule is None:
         abort(404)
+
+    for c in conflicts:
+        flash(f"Conflict ({c.severity}): {c.message}", "warning")
 
     audit_service.record(
         "watchdog_rule.updated",

@@ -8,6 +8,56 @@
 
 {% set can_edit = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
 
+{# ── v1.x: conflict-detection confirm step ─────────────────────────────
+   When detect_conflicts() finds a `block`-severity conflict, the rule
+   save is paused and this banner is shown. The operator either goes
+   ahead (resubmits every original field plus conflicts_acknowledged=1)
+   or cancels. warn/info findings never reach here — they flash instead.
+   This is a confirm step, not a hard block (the findings are heuristics).
+#}
+{% if conflicts %}
+{% set blockers = conflicts | selectattr('severity', 'equalto', 'block') | list %}
+{% set warns = conflicts | rejectattr('severity', 'equalto', 'block') | list %}
+<section class="v3-card" style="border:2px solid rgba(220,40,40,.6); background:rgba(220,40,40,.06)">
+  <h2 style="margin-top:0; color:var(--accent-red, #d33)">⚠ Conflicts detected — confirm before saving</h2>
+  <p class="muted" style="font-size:.9rem">
+    This rule conflicts with rules or schedules already in your
+    organization. These checks are heuristics — review them, then either
+    save anyway or cancel and adjust the rule.
+  </p>
+  <ul style="margin:.5rem 0; padding-left:1.2rem">
+    {% for c in blockers %}
+    <li style="margin:.35rem 0">
+      <span class="badge red">block</span> {{ c.message }}
+    </li>
+    {% endfor %}
+    {% for c in warns %}
+    <li style="margin:.35rem 0">
+      <span class="badge amber">{{ c.severity }}</span> {{ c.message }}
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post"
+        action="{% if conflicts_edit_rule_id %}{{ url_for('admin_ui.rules_edit_form_submit', rule_id=conflicts_edit_rule_id) }}{% else %}{{ url_for('admin_ui.rules_create_submit') }}{% endif %}"
+        data-confirm-message="Save this rule despite the detected conflicts?">
+    {# Carry every field the operator originally submitted so the
+       resubmit reconstructs the exact same rule. #}
+    {% for field, values in (conflicts_pending_form or {}).items() %}
+      {% if field != 'conflicts_acknowledged' %}
+        {% for v in values %}
+    <input type="hidden" name="{{ field }}" value="{{ v }}">
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+    <input type="hidden" name="conflicts_acknowledged" value="1">
+    <div style="display:flex; gap:.5rem">
+      <button type="submit" class="btn-danger">Save anyway</button>
+      <a class="btn-secondary" href="{{ url_for('admin_ui.rules_page') }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endif %}
+
 {% if can_edit %}
 <section class="v3-card" id="create">
   <h2>Create a watchdog rule</h2>
