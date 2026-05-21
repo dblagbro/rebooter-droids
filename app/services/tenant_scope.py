@@ -158,10 +158,18 @@ AUDIT_ENFORCE_WRITE = "tenant.enforce_write"   # write actively rejected
 AUDIT_UNSCOPED = "tenant.unscoped_access"      # Tier-A touched with no org + no bypass
 
 
-def enforce_mode() -> str:
+def enforce_mode(session=None) -> str:
     """Current org-isolation enforcement mode — ``shadow`` (default) or
     ``enforce``. Runtime-toggleable via the ``org_isolation.enforce``
     setting; takes effect immediately with no container restart.
+
+    ``session`` — when this is called from inside the ``do_orm_execute``
+    or ``before_flush`` hooks, the hook's OWN session MUST be passed so
+    the `org_isolation.enforce` lookup reads on the current connection.
+    Opening a fresh `session_scope()` from inside a hook is a second
+    SQLite connection that deadlocks on the outer transaction's write
+    lock — the bug this parameter exists to avoid. Outside a hook
+    (no open session to reuse) leave it None and a scope is opened.
 
     To flip to hard enforcement (only after a clean shadow period):
         runtime_settings.set_("org_isolation.enforce", "enforce")
@@ -172,11 +180,19 @@ def enforce_mode() -> str:
     try:
         from app.services import runtime_settings
 
-        raw = runtime_settings.get(
-            ORG_ENFORCE_MODE_KEY,
-            env_var=ORG_ENFORCE_MODE_ENV,
-            default=ENFORCE_MODE_SHADOW,
-        )
+        if session is not None:
+            raw = runtime_settings.get_on_session(
+                session,
+                ORG_ENFORCE_MODE_KEY,
+                env_var=ORG_ENFORCE_MODE_ENV,
+                default=ENFORCE_MODE_SHADOW,
+            )
+        else:
+            raw = runtime_settings.get(
+                ORG_ENFORCE_MODE_KEY,
+                env_var=ORG_ENFORCE_MODE_ENV,
+                default=ENFORCE_MODE_SHADOW,
+            )
     except Exception:
         # Never let a settings hiccup turn enforcement ON. Fail SAFE for
         # availability — a missing setting means shadow (log-only).
@@ -188,8 +204,8 @@ def enforce_mode() -> str:
     )
 
 
-def is_enforcing() -> bool:
-    return enforce_mode() == ENFORCE_MODE_ENFORCE
+def is_enforcing(session=None) -> bool:
+    return enforce_mode(session) == ENFORCE_MODE_ENFORCE
 
 
 # ── Scope accessors / mutators ─────────────────────────────────────────
@@ -303,19 +319,27 @@ SYSTEM_BYPASS_SITES: tuple[tuple[str, str], ...] = (
 # ── The read filter — do_orm_execute ───────────────────────────────────
 
 
-def _emit_audit(action: str, details: dict) -> None:
+def _emit_audit(session, action: str, details: dict) -> None:
     """Best-effort audit emit that can never recurse into the filter.
 
     The audit write itself inserts an `AuditEvent` (a TenantScoped row),
     so it MUST run inside `system()` or the before_flush stamping would
     re-enter and the do_orm_execute filter would re-fire while we are
     mid-event. Best-effort — never raises.
+
+    The audit row is written onto the CURRENT session (the one already
+    in the open write transaction), never a new nested `session_scope()`:
+    a nested session is a second connection that deadlocks on the
+    outer transaction's write lock under SQLite. Persisting the
+    `AuditEvent` on the same session keeps it atomic with the write that
+    triggered it — the audit log is still written exactly as before,
+    only the HOW changed (same session, not a nested one).
     """
     try:
         from app.services import audit
 
         with system():
-            audit.record(action, details=details)
+            audit.record_on_session(session, action, details=details)
     except Exception:
         log.debug("tenant_scope audit emit failed for %s", action, exc_info=True)
 
@@ -427,7 +451,10 @@ def _add_tenant_filter(execute_state) -> None:
         include_aliases=True,
     )
 
-    if is_enforcing():
+    # Read the enforce-mode setting on the CURRENT session — never a
+    # nested `session_scope()` (a second SQLite connection deadlocking
+    # on this transaction's write lock).
+    if is_enforcing(execute_state.session):
         # Hard enforcement — the filter is applied for real.
         execute_state.statement = execute_state.statement.options(criteria)
         return
@@ -475,6 +502,7 @@ def _unscoped_violation(execute_state) -> None:
         tables,
     )
     _emit_audit(
+        execute_state.session,
         AUDIT_UNSCOPED,
         {
             "tables": tables,
@@ -532,24 +560,46 @@ def _stamp_and_guard_tenant_writes(session, flush_context, instances) -> None:
         return
 
     active_org = _current_org.get()
-    enforcing = is_enforcing()
+    # Read the enforce-mode setting on the CURRENT session — never a
+    # nested `session_scope()` (a second SQLite connection deadlocking
+    # on this flush's write lock).
+    enforcing = is_enforcing(session)
+
+    # `AuditEvent` rows are exempt from the write guard. They are an
+    # append-only platform record whose `organization_id` is permanently
+    # nullable (design §3.6) — a system/unscoped audit row legitimately
+    # has no org. They are ALSO the row this hook's own `_emit_audit`
+    # adds to the current session: SQLAlchemy re-scans `session.new`
+    # after `before_flush` and would re-fire the guard on that fresh
+    # audit row, which would emit yet another audit row and loop
+    # forever. Skipping `AuditEvent` here breaks that recursion. The
+    # `do_orm_execute` read filter still scopes audit *reads* by org, so
+    # isolation on the read path is unchanged; `audit._build_event`
+    # stamps the active org onto normal audit rows itself.
+    from app.models import AuditEvent
 
     # INSERTs — stamp the org on; guard against a foreign org.
     for obj in list(session.new):
         if not isinstance(obj, TenantScoped):
             continue
-        _guard_one(obj, active_org, enforcing, is_insert=True)
+        if isinstance(obj, AuditEvent):
+            continue
+        _guard_one(session, obj, active_org, enforcing, is_insert=True)
 
     # UPDATEs — a TenantScoped row must not be re-homed to another org.
     for obj in list(session.dirty):
         if not isinstance(obj, TenantScoped):
             continue
+        if isinstance(obj, AuditEvent):
+            continue
         if not session.is_modified(obj, include_collections=False):
             continue
-        _guard_one(obj, active_org, enforcing, is_insert=False)
+        _guard_one(session, obj, active_org, enforcing, is_insert=False)
 
 
-def _guard_one(obj, active_org: Optional[str], enforcing: bool, *, is_insert: bool) -> None:
+def _guard_one(
+    session, obj, active_org: Optional[str], enforcing: bool, *, is_insert: bool
+) -> None:
     entity = type(obj).__name__
     row_org = getattr(obj, "organization_id", None)
 
@@ -564,6 +614,7 @@ def _guard_one(obj, active_org: Optional[str], enforcing: bool, *, is_insert: bo
                 entity,
             )
             _emit_audit(
+                session,
                 AUDIT_UNSCOPED,
                 {
                     "entity": entity,
@@ -599,6 +650,7 @@ def _guard_one(obj, active_org: Optional[str], enforcing: bool, *, is_insert: bo
     )
     action = AUDIT_ENFORCE_WRITE if enforcing else AUDIT_SHADOW_WRITE
     _emit_audit(
+        session,
         action,
         {
             "entity": entity,
