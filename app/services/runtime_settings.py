@@ -30,6 +30,38 @@ from app.models import RuntimeSetting
 _SENTINEL = object()
 
 
+# ── change-callback registry ───────────────────────────────────────────
+#
+# A consumer that caches a setting (e.g. tenant_scope caches
+# `org_isolation.enforce` to keep it off the read-hot path) registers a
+# callback here so a `set_`/`delete` of that key invalidates the cache
+# immediately. Keeps `runtime_settings` decoupled — it never imports the
+# consumer; the consumer registers itself at import time. Best-effort: a
+# misbehaving callback can never break a settings write.
+_change_callbacks: dict[str, list] = {}
+
+
+def register_change_callback(name: str, callback) -> None:
+    """Register `callback` to be invoked (no args) whenever the runtime
+    setting `name` is written or deleted. Used by consumers that cache a
+    setting and need invalidate-on-write semantics."""
+    _change_callbacks.setdefault(name, []).append(callback)
+
+
+def _fire_change_callbacks(name: str) -> None:
+    for cb in _change_callbacks.get(name, ()):
+        try:
+            cb()
+        except Exception:  # noqa: BLE001 — a callback must never break a write
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "runtime_settings change callback for %s failed",
+                name,
+                exc_info=True,
+            )
+
+
 def _resolve(row, env_var: str | None, default: Any) -> Any:
     """Apply the DB → env-var → default resolution to an already-fetched
     `RuntimeSetting` row (or None)."""
@@ -100,6 +132,9 @@ def set_(name: str, value: Any, *, user_id: str | None = None) -> None:
         row.updated_by_user_id = user_id
         session.add(row)
         session.flush()
+    # Invalidate any consumer cache for this key (e.g. tenant_scope's
+    # `org_isolation.enforce` cache) — after the write commits.
+    _fire_change_callbacks(name)
 
 
 def delete(name: str) -> bool:
@@ -112,7 +147,8 @@ def delete(name: str) -> bool:
             return False
         session.delete(row)
         session.flush()
-        return True
+    _fire_change_callbacks(name)
+    return True
 
 
 def list_keys() -> list[dict]:

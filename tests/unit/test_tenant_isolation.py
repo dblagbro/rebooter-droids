@@ -609,3 +609,150 @@ def test_binding_scope_belongs_to_org_rejects_foreign_site(hub_db_unscoped):
     assert binding_scope_belongs_to_org("site", b_site, org_a) is False
     # a global binding has no scoped resource — always 'belongs'
     assert binding_scope_belongs_to_org("global", None, org_a) is True
+
+
+# ── load-degradation regression — do_orm_execute recursion (v0.6.x) ────
+#
+# The v0.6.x load-degradation incident: `_add_tenant_filter` (the
+# do_orm_execute listener) recursed unboundedly. With an org scope bound
+# it called `is_enforcing()` → a SELECT on `RuntimeSetting` → that inner
+# SELECT re-fired do_orm_execute → `_add_tenant_filter` again → another
+# `is_enforcing()` ... ~150 deep per query, ~164x SQL amplification.
+# Under concurrency the resulting RecursionError landed in SQLAlchemy's
+# pool machinery, orphaned checked-out connections, and exhausted the
+# 20-slot pool so every request/job blocked for `pool_timeout`.
+#
+# Introduced by 9c154bf (the nested-session deadlock-fix), which threaded
+# the hook's own session into `is_enforcing()` — making the inner
+# enforce-mode SELECT run on the SAME session and re-fire the hook.
+#
+# The fix: (1) the `_statement_touches_tenant_scoped` short-circuit moved
+# to the TOP of `_add_tenant_filter`, before any `is_enforcing()` call,
+# so the non-tenant `RuntimeSetting` SELECT returns immediately; (2) an
+# `_in_filter` ContextVar re-entrancy guard that makes the hook a hard
+# no-op while it is already running on this context.
+#
+# These tests measure the *recursion depth* of `_add_tenant_filter` for a
+# single top-level ORM SELECT. They FAIL on the pre-fix code (depth
+# ~150 / RecursionError) and PASS with the fix (depth 1).
+
+
+def _measure_filter_recursion(query):
+    """Run `query` under a fresh org scope with the enforce-mode cache
+    disabled, and return how deep `_add_tenant_filter`'s BODY recursed.
+
+    The recursion driver is `is_enforcing()`: pre-fix, `_add_tenant_filter`
+    called it on every tenant SELECT, the enforce-mode lookup re-fired
+    do_orm_execute → `_add_tenant_filter` again → `is_enforcing()` again …
+    ~150 deep. So the number of `is_enforcing()` calls servicing ONE
+    top-level user query is exactly the recursion depth of the hook's
+    body (and the SQL-amplification factor the diagnosis measured).
+
+    Pre-fix: ~150. With the fix: 1 — `_add_tenant_filter` reaches
+    `is_enforcing()` once for the top-level tenant SELECT; the nested
+    enforce-mode SELECT is a non-tenant statement, so the
+    top-of-function `_statement_touches_tenant_scoped` short-circuit (and
+    the `_in_filter` re-entrancy guard) make the hook a hard no-op for it
+    — it never calls `is_enforcing()` again.
+
+    The cache is disabled (TTL 0) so `is_enforcing()` performs a real DB
+    read every call — that DB read is what re-fires the hook. With the
+    cache warm a hit would mask the structural bug; disabling it proves
+    the *structural* fix (top-of-function short-circuit + re-entrancy
+    guard) independent of the optional cache."""
+    real_is_enforcing = tenant_scope.is_enforcing
+    state = {"depth": 0, "max_depth": 0}
+
+    def counting_is_enforcing(*args, **kwargs):
+        state["depth"] += 1
+        state["max_depth"] = max(state["max_depth"], state["depth"])
+        try:
+            return real_is_enforcing(*args, **kwargs)
+        finally:
+            state["depth"] -= 1
+
+    # The enforce-mode cache (the optional amplification fix) would mask
+    # the structural recursion on a warm hit — disable it for this
+    # measurement so `is_enforcing()` performs a real DB read every call.
+    # `getattr` so the test still runs against a pre-cache build (where
+    # the structural recursion is exactly what it must catch).
+    orig_ttl = getattr(tenant_scope, "_ENFORCE_CACHE_TTL", None)
+    invalidate = getattr(tenant_scope, "invalidate_enforce_mode_cache",
+                         lambda: None)
+    tenant_scope.is_enforcing = counting_is_enforcing
+    invalidate()
+    if orig_ttl is not None:
+        tenant_scope._ENFORCE_CACHE_TTL = 0.0  # force a real DB read
+    try:
+        with session_scope() as s:
+            list(s.scalars(query))
+    finally:
+        tenant_scope.is_enforcing = real_is_enforcing
+        if orig_ttl is not None:
+            tenant_scope._ENFORCE_CACHE_TTL = orig_ttl
+        invalidate()
+    return state["max_depth"]
+
+
+def test_tenant_filter_does_not_recurse_shadow_mode(hub_db_unscoped):
+    """REGRESSION (v0.6.x load-degradation): a single Tier-A SELECT under
+    a bound org scope must fire the do_orm_execute filter a BOUNDED
+    (depth-1) number of times — not ~150.
+
+    Pre-fix this recursed ~150 deep (or hit RecursionError); the fix
+    drops it to depth 1."""
+    org_a, _org_b = _seed_two_orgs()
+    _shadow()
+    with tenant_scope.org_context(org_a):
+        max_depth = _measure_filter_recursion(select(Site))
+    # Depth 1 = `_add_tenant_filter` reached `is_enforcing()` once, for
+    # the top-level tenant SELECT only. Any re-entry from the nested
+    # enforce-mode lookup is a hard no-op. A pre-fix run is ~150.
+    assert max_depth == 1, (
+        f"_add_tenant_filter recursed to depth {max_depth} for ONE "
+        f"SELECT — the tenant-scope hook is re-entering itself "
+        f"(expected depth 1)"
+    )
+
+
+def test_tenant_filter_does_not_recurse_enforce_mode(hub_db_unscoped):
+    """REGRESSION (v0.6.x load-degradation): the bound-depth property
+    must also hold in ENFORCE mode — the enforce-mode lookup itself was
+    the recursion driver, so enforce mode is the worse case."""
+    org_a, _org_b = _seed_two_orgs()
+    _enforce()
+    with tenant_scope.org_context(org_a):
+        max_depth = _measure_filter_recursion(select(Site))
+    assert max_depth == 1, (
+        f"_add_tenant_filter recursed to depth {max_depth} for ONE "
+        f"SELECT in enforce mode (expected depth 1)"
+    )
+
+
+def test_tenant_filter_still_filters_after_recursion_fix(hub_db_unscoped):
+    """The recursion fix must NOT weaken org isolation: in enforce mode a
+    Tier-A SELECT under org A's scope still returns ONLY org A's rows."""
+    org_a, org_b = _seed_two_orgs()
+    _enforce()
+    with tenant_scope.org_context(org_a):
+        with session_scope() as s:
+            sites = list(s.scalars(select(Site)))
+    assert len(sites) == 1
+    assert sites[0].organization_id == org_a
+    # org B's row is filtered out — isolation behaviour unchanged.
+    assert all(site.organization_id != org_b for site in sites)
+
+
+def test_enforce_mode_cache_invalidated_on_write(hub_db_unscoped):
+    """The enforce-mode cache must honour an operator toggle immediately:
+    a `runtime_settings.set_` of `org_isolation.enforce` invalidates the
+    cache so the next `enforce_mode()` reflects the new value."""
+    _shadow()
+    assert tenant_scope.enforce_mode() == tenant_scope.ENFORCE_MODE_SHADOW
+    # Warm the cache, then flip — the write must invalidate it.
+    tenant_scope.enforce_mode()
+    _enforce()
+    assert tenant_scope.enforce_mode() == tenant_scope.ENFORCE_MODE_ENFORCE
+    # And back.
+    _shadow()
+    assert tenant_scope.enforce_mode() == tenant_scope.ENFORCE_MODE_SHADOW
