@@ -173,6 +173,92 @@ def test_ingest_power_summary_explicit_i_ma_wins_over_amps(hub_db):
     assert _samples()[0].i_ma == 777
 
 
+# ── firmware actual key names (alias acceptance) ───────────────────────
+
+# The exact `power` object shape the firmware emits — verified against
+# rebooter-firmware/src/status_payload.cpp, fillHeartbeatPowerSummary().
+# The firmware uses `latest_v` / `latest_a` / `latest_pf` /
+# `invalid_frames` / `window_start_uptime_seconds`, NOT the hub's
+# original `v_v` / `i_a` / `pf` / `invalid_frame_count` /
+# `sampled_uptime_seconds` names.
+_FIRMWARE = {
+    "enabled": True,
+    "chip_seen": True,
+    "uart_contended": False,
+    "upload_mode": "heartbeat_piggyback",
+    "latest_v": 119.4,
+    "latest_a": 0.25,
+    "latest_pf": 0.91,
+    "energy_wh": 30211,
+    "valid_frames": 61,
+    "invalid_frames": 4,
+    "min_w": 0.8,
+    "max_w": 71.5,
+    "avg_w": 18.3,
+    "sample_count": 60,
+    "window_start_uptime_seconds": 123456,
+}
+
+
+def test_ingest_power_summary_accepts_firmware_key_names(hub_db):
+    """The firmware emits `latest_v` / `latest_a` / `latest_pf` /
+    `invalid_frames` / `window_start_uptime_seconds`. The hub must accept
+    those actual key names (as aliases) so none of the five fields is
+    silently dropped — every one must land in the DevicePowerSample row."""
+    with session_scope() as s:
+        _device(s)
+    now = datetime.now(timezone.utc)
+    with session_scope() as s:
+        wrote = ingest_power_summary(s, "dev-1", _FIRMWARE, now)
+    assert wrote is True
+    rows = _samples()
+    assert len(rows) == 1
+    row = rows[0]
+    # The five firmware-named fields all land.
+    assert float(row.v_v) == pytest.approx(119.4)        # latest_v
+    assert row.i_ma == 250                               # latest_a 0.25A → 250mA
+    assert float(row.pf) == pytest.approx(0.91)          # latest_pf
+    assert row.crc_fail_count == 4                       # invalid_frames
+    assert row.sampled_uptime_seconds == 123456          # window_start_uptime_seconds
+    # The same-named fields still land too.
+    assert float(row.p_w) == pytest.approx(18.3)
+    assert float(row.min_w) == pytest.approx(0.8)
+    assert float(row.max_w) == pytest.approx(71.5)
+    assert row.energy_wh == 30211
+
+
+def test_ingest_power_summary_hub_key_names_still_work(hub_db):
+    """The original hub key names must keep working alongside the new
+    firmware aliases — the hub's own tests and any other caller rely on
+    them. `_FULL` uses the original names."""
+    with session_scope() as s:
+        _device(s)
+    with session_scope() as s:
+        ingest_power_summary(s, "dev-1", _FULL, datetime.now(timezone.utc))
+    row = _samples()[0]
+    assert float(row.v_v) == pytest.approx(122.7)
+    assert row.i_ma == 100
+    assert float(row.pf) == pytest.approx(0.62)
+    assert row.crc_fail_count == 2
+    assert row.sampled_uptime_seconds == 87421
+
+
+def test_record_heartbeat_stores_firmware_keyed_power_summary(hub_db):
+    """End-to-end: a heartbeat carrying the firmware's actual `power`
+    key names stores a complete DevicePowerSample row."""
+    with session_scope() as s:
+        _device(s)
+    record_heartbeat("dev-1", {"mode": "smart_plug", "power": _FIRMWARE})
+    rows = _samples()
+    assert len(rows) == 1
+    row = rows[0]
+    assert float(row.v_v) == pytest.approx(119.4)
+    assert row.i_ma == 250
+    assert float(row.pf) == pytest.approx(0.91)
+    assert row.crc_fail_count == 4
+    assert row.sampled_uptime_seconds == 123456
+
+
 # ── record_heartbeat integration ───────────────────────────────────────
 
 def test_record_heartbeat_stores_power_summary(hub_db):
