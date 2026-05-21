@@ -22,13 +22,39 @@ from app.models import (
     Device,
     Site,
     Group,
+    Organization,
     User,
 )
 from app.models.sync import OutboxEvent, SyncCursor, Tombstone
 from app.models._helpers import utcnow
+from app.services import tenant_scope
 from app.services.sites import resolve_default_site_id
+from app.services.tenant_scope import TenantScoped
 
 log = logging.getLogger(__name__)
+
+
+class UnknownOrgError(Exception):
+    """Raised by the applier when an incoming sync event names an
+    `organization_id` that does not exist on this hub.
+
+    Multi-hub sync crosses a tenant trust boundary by design
+    (org-boundary design §3.7) — a buggy or hostile peer could send an
+    event for an org this hub has never heard of. Rather than silently
+    creating the org (which would let a peer mint tenants) or applying
+    the row ownerless (which would dump it into the unscoped void), the
+    applier refuses the event. The replicator catches this, logs it,
+    and advances the cursor — one bad event never wedges the batch.
+    """
+
+    def __init__(self, org_id: str, entity_type: str, entity_id: str):
+        self.org_id = org_id
+        self.entity_type = entity_type
+        self.entity_id = entity_id
+        super().__init__(
+            f"sync: refusing {entity_type}/{entity_id} — organization_id "
+            f"{org_id!r} does not exist locally"
+        )
 
 
 # ── Emission suppression ─────────────────────────────────────────────
@@ -58,6 +84,38 @@ def emission_suppressed() -> bool:
     return _emission_suppressed.get()
 
 
+def org_id_from_payload(
+    session: Session, entity_type: str, payload: dict[str, Any] | None
+) -> str | None:
+    """Resolve the owning `organization_id` for a syncable entity's
+    payload — org-boundary design §3.7.
+
+    The applier and the emission path both need to know which org an
+    outbox event belongs to so it can be stamped into `scope_claims`
+    and verified on apply:
+
+      * `site`  — Tier-A: the org is the payload's own `organization_id`.
+      * `device` / `group` — Tier-B: the org is derived through the
+        row's `site_id` (`device|group -> site -> organization`).
+      * `user`  — M:N to orgs, no single owning org → None.
+
+    Returns None when no org can be derived (an unscoped/global entity,
+    or a Tier-B row whose site is not resolvable).
+    """
+    if not payload:
+        return None
+    if entity_type == "site":
+        return payload.get("organization_id")
+    if entity_type in ("device", "group"):
+        site_id = payload.get("site_id")
+        if not site_id:
+            return None
+        site = session.get(Site, site_id)
+        return site.organization_id if site is not None else None
+    # `user` and anything else — no single owning org.
+    return None
+
+
 def emit_outbox_event(
     session: Session,
     event_type: str,
@@ -79,9 +137,19 @@ def emit_outbox_event(
         tombstone_for: For deletes, the entity_id being deleted
         scope_claims: Optional RBAC scope claims for peer enforcement
 
+    org-boundary phase 3 (design §3.7): `scope_claims` always carries an
+    `organization_id` key for an org-attributable entity so the peer
+    applier can verify and scope the write. If the caller did not supply
+    one, it is derived from the payload here.
+
     Returns:
         The created OutboxEvent
     """
+    claims = dict(scope_claims) if scope_claims else {}
+    if "organization_id" not in claims:
+        derived = org_id_from_payload(session, entity_type, payload)
+        if derived is not None:
+            claims["organization_id"] = derived
     event = OutboxEvent(
         at=utcnow(),
         event_type=event_type,
@@ -89,16 +157,17 @@ def emit_outbox_event(
         entity_id=entity_id,
         payload=payload,
         tombstone_for=tombstone_for,
-        scope_claims=scope_claims,
+        scope_claims=claims or None,
     )
     session.add(event)
     session.flush()  # Ensure seq is assigned
     log.debug(
-        "Emitted outbox event seq=%d type=%s entity=%s/%s",
+        "Emitted outbox event seq=%d type=%s entity=%s/%s org=%s",
         event.seq,
         event_type,
         entity_type,
         entity_id,
+        claims.get("organization_id"),
     )
     return event
 
@@ -238,6 +307,31 @@ def snapshot_entity(
     return entity_to_dict(entity) if entity is not None else None
 
 
+def event_org_id(event: OutboxEvent) -> str | None:
+    """The `organization_id` an incoming outbox event claims, or None.
+
+    Read from `scope_claims["organization_id"]` — stamped at emission by
+    `emit_outbox_event` (org-boundary design §3.7). A peer running an
+    older build may send an event with no org claim; that is handled as
+    an unscoped event (see `apply_outbox_event`)."""
+    claims = event.scope_claims or {}
+    org = claims.get("organization_id")
+    return org if isinstance(org, str) and org else None
+
+
+def _verify_org_exists(session: Session, org_id: str, event: OutboxEvent) -> None:
+    """Refuse the event if `org_id` is not a real local organization —
+    design §3.7. A hostile/buggy peer must not be able to inject rows
+    into an org this hub has never heard of."""
+    # The Organization table is not TenantScoped, so this lookup is not
+    # filtered — but be explicit and run it under system() so it is
+    # never accidentally org-scoped by a surrounding context.
+    with tenant_scope.system():
+        exists = session.get(Organization, org_id) is not None
+    if not exists:
+        raise UnknownOrgError(org_id, event.entity_type, event.entity_id)
+
+
 def apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
     """Apply a single outbox event from a peer hub.
 
@@ -257,27 +351,61 @@ def apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
     applier's own writes never trigger the emission hooks (no hub-to-hub
     re-emit loop).
 
-    TODO(org-phase3): multi-hub sync crosses a tenant trust boundary by
-    design (org-boundary design §3.7). The applier currently runs under
-    `tenant_scope.system()` (the scheduler wraps the replicator tick),
-    so the `before_flush` org-stamping is bypassed — meaning an applied
-    row keeps whatever `organization_id` the peer sent, UNVERIFIED. Phase
-    3 must, per §3.7: (a) extend `outbox_events.scope_claims` to carry
-    `organization_id`, (b) refuse to apply an event whose org does not
-    exist locally, and (c) run each apply inside
-    `tenant_scope.org_context(<event org>)` so a buggy/hostile peer
-    cannot inject a row into the wrong org. Until then the replicator is
-    a known unscoped path — see the phase-2 report.
+    org-boundary phase 3 — sync-applier org-scoping (design §3.7):
+    multi-hub sync crosses a tenant trust boundary by design, so the
+    applier no longer trusts whatever `organization_id` a peer sent.
+    Instead:
+
+      (a) the event's org is read from `scope_claims["organization_id"]`
+          (stamped at emission by `emit_outbox_event`);
+      (b) if the event names an org, that org MUST exist locally — an
+          unknown org raises `UnknownOrgError` and the event is refused
+          (a peer cannot mint tenants or smuggle rows into a void);
+      (c) the actual apply runs inside `tenant_scope.org_context(org)`
+          so the `before_flush` write-stamping verifies/stamps the row's
+          `organization_id` — a payload claiming a *different* org than
+          `scope_claims` is caught (CrossOrgWriteError in enforce mode);
+      (d) for a Tier-A `site` payload the applier additionally pins
+          `organization_id` to the verified scope-claim org so a peer
+          cannot disagree between the claim and the row body.
+
+    An event with no org claim (a `user`, or an older peer build) is
+    applied under `system()` exactly as before — there is nothing to
+    scope it to. This closes the hostile-peer unverified-org-injection
+    gap the phase-2 report flagged.
     """
+    org_id = event_org_id(event)
+
     with suppress_emission():
-        applied = _apply_outbox_event(session, event)
-        session.flush()
+        if org_id is None:
+            # No org to scope to — `user` events, or a pre-phase-3 peer.
+            # Apply under the system bypass, unchanged.
+            with tenant_scope.system():
+                applied = _apply_outbox_event(session, event)
+                session.flush()
+            return applied
+
+        # (b) refuse an event whose org does not exist locally.
+        _verify_org_exists(session, org_id, event)
+
+        # (c) apply under the verified org scope so before_flush
+        # verifies/stamps every written row's organization_id.
+        with tenant_scope.org_context(org_id):
+            applied = _apply_outbox_event(session, event, scoped_org=org_id)
+            session.flush()
         return applied
 
 
-def _apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
+def _apply_outbox_event(
+    session: Session, event: OutboxEvent, *, scoped_org: str | None = None
+) -> bool:
     """Core applier logic — see ``apply_outbox_event``. Always called
-    inside ``suppress_emission()``."""
+    inside ``suppress_emission()``.
+
+    `scoped_org` is the verified org of the event (from `scope_claims`),
+    or None for an unscoped event. When set, a Tier-A payload's
+    `organization_id` is pinned to it (design §3.7 (d)) so a peer cannot
+    disagree between the scope claim and the row body."""
     # A tombstoned entity must never be recreated or updated.
     if is_tombstoned(session, event.entity_id):
         log.warning(
@@ -324,11 +452,33 @@ def _apply_outbox_event(session: Session, event: OutboxEvent) -> bool:
         )
         return False
 
+    # org-boundary phase 3 (design §3.7 (d)): for a Tier-A entity, PIN
+    # `organization_id` to the verified scope-claim org. A peer could
+    # send a `site` payload whose body `organization_id` disagrees with
+    # the `scope_claims` org it was emitted under — the scope claim is
+    # the authority (it is what `_verify_org_exists` checked), so the
+    # row body never overrides it. The before_flush guard would also
+    # catch a divergence, but pinning makes the applied row correct
+    # rather than merely rejected.
+    if scoped_org is not None and issubclass(model, TenantScoped):
+        if incoming.get("organization_id") not in (None, scoped_org):
+            log.warning(
+                "Sync: seq=%s %s/%s payload organization_id=%r disagrees "
+                "with scope_claims org %r — pinning to the scope claim",
+                event.seq, event.entity_type, event.entity_id,
+                incoming.get("organization_id"), scoped_org,
+            )
+        incoming["organization_id"] = scoped_org
+
     # Remap an unknown site_id. Device and Group both FK `sites.id`;
     # the peer's row may reference a site that exists here under a
     # different id — most often the "Default" site, which each hub
     # bootstraps independently. Point it at the local Default so the
     # FK holds (applies to both the create and the update path).
+    #
+    # The Site lookup runs inside the event's org_context, so in
+    # enforce mode it only resolves a site in THIS event's org — a
+    # device/group can never be remapped onto another tenant's site.
     if event.entity_type in ("device", "group") and incoming.get("site_id"):
         if session.get(Site, incoming["site_id"]) is None:
             incoming["site_id"] = resolve_default_site_id(session)

@@ -27,7 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
-from app.services.tenant_scope import TenantScoped
+from app.services.tenant_scope import TenantScoped, tenant_scoped_org_column
 
 
 # Documented probe kinds. The advanced editor (P4 iteration 2)
@@ -175,10 +175,13 @@ KNOWN_ACTION_KINDS = LEAF_ACTION_KINDS + (ACTION_KIND_BINDING,)
 
 
 class WatchdogRule(TenantScoped, Base):
-    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK).
-    # See design §2. `WatchdogProbeEvent` stays Tier-B (org derived via
-    # the rule) — no column.
+    # org-boundary phase 3: `organization_id` is NOT NULL with an
+    # on-delete RESTRICT FK (migration 0005). See design §2.
+    # `WatchdogProbeEvent` stays Tier-B (org derived via the rule) —
+    # no column.
     __tablename__ = "watchdog_rules"
+
+    organization_id = tenant_scoped_org_column("RESTRICT")
 
     id: Mapped[str] = mapped_column(
         String(40), primary_key=True, default=partial(new_id, "wdr")
