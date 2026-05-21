@@ -149,7 +149,7 @@ def test_mixed_targets_one_succeeds_outcome_success(base_url, shell_session):
 
 @pytest.mark.parametrize("bad_probe,expected_fragment", [
     ({"kind": "internet", "targets": "not-a-list"}, "must be a list"),
-    ({"kind": "internet", "targets": [{} for _ in range(9)]}, "at most 8 entries"),
+    ({"kind": "internet", "targets": [{} for _ in range(11)]}, "at most 10 entries"),
     ({"kind": "internet", "targets": [{"port": 53}]}, "host is required"),
     ({"kind": "internet", "targets": [{"host": "1.1.1.1", "port": 0}]}, "must be between 1 and 65535"),
     ({"kind": "internet", "targets": [{"host": "1.1.1.1", "port": 70000}]}, "must be between 1 and 65535"),

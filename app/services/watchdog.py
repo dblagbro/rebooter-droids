@@ -256,9 +256,9 @@ def _validate_probe(probe: dict) -> None:
                 raise WatchdogValidationError(
                     "probe.targets must be a list of {host, port} objects"
                 )
-            if len(targets) > 8:
+            if len(targets) > 10:
                 raise WatchdogValidationError(
-                    "probe.targets accepts at most 8 entries"
+                    "probe.targets accepts at most 10 entries"
                 )
             for i, t in enumerate(targets):
                 if not isinstance(t, dict):
