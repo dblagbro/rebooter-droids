@@ -1,0 +1,110 @@
+{% extends "layout.html" %}
+{% block title %}API tokens - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>API tokens</h2>
+  <p class="muted" style="margin-top:0">
+    Scoped bearer tokens for programmatic access to the hub API. Use one
+    of these instead of a personal login token so automation is not tied
+    to a human account. Present a token as
+    <code>Authorization: Bearer rbt_&lt;token&gt;</code>.
+  </p>
+</div>
+
+{% if new_token %}
+<div class="v3-card" style="margin-top:1rem;border:1px solid var(--ok,#3a3)">
+  <h2>New token created</h2>
+  <p><strong>{{ new_token.name }}</strong></p>
+  <p class="muted">
+    Copy this token now — it is shown <strong>once</strong> and cannot be
+    retrieved again. If you lose it, revoke it and create a new one.
+  </p>
+  <p><code style="word-break:break-all;font-size:1rem">{{ new_token.plaintext }}</code></p>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="v3-card" style="margin-top:1rem;border:1px solid var(--err,#a33)">
+  <p style="margin:0;color:var(--err,#c55)">{{ error }}</p>
+</div>
+{% endif %}
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Create a token</h2>
+  <form method="post" action="{{ url_for('admin_ui.settings_api_tokens_create_submit') }}">
+    <label>Name
+      <input type="text" name="name" value="{{ form_name }}" maxlength="120"
+             placeholder="CI deploy bot" required>
+    </label>
+    <fieldset style="margin-top:.75rem">
+      <legend>Scopes</legend>
+      {% for scope in known_scopes %}
+      <label style="display:inline-flex;align-items:center;gap:.4rem;margin-right:1rem">
+        <input type="checkbox" name="scopes" value="{{ scope }}"
+               {% if scope in form_scopes %}checked{% endif %}>
+        {{ scope }}
+      </label>
+      {% endfor %}
+      <p class="muted" style="font-size:.8rem;margin:.3rem 0 0">
+        <code>read</code> covers every GET; <code>write</code> covers
+        mutations (and implies read). At least one scope is required.
+      </p>
+    </fieldset>
+    <label style="margin-top:.75rem">Expires in (days)
+      <input type="number" name="expires_in_days" value="{{ form_expires_in_days }}"
+             min="0" max="365" placeholder="{{ default_expiry_days }}">
+      <span class="muted" style="font-size:.75rem">
+        Default {{ default_expiry_days }} days. 0 = never expires.
+      </span>
+    </label>
+    <button type="submit" style="margin-top:.75rem">Create token</button>
+  </form>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Existing tokens</h2>
+  {% if tokens %}
+  <table class="v3-table">
+    <thead>
+      <tr>
+        <th>Name</th><th>Prefix</th><th>Scopes</th>
+        <th>Last used</th><th>Expires</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tokens %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td><code>{{ t.token_prefix }}…</code></td>
+        <td>{{ t.scopes | join(', ') }}</td>
+        <td>{{ t.last_used_at or '—' }}</td>
+        <td>{{ t.expires_at or 'never' }}</td>
+        <td>
+          {% if t.revoked %}<span class="badge red">revoked</span>
+          {% elif t.expired %}<span class="badge amber">expired</span>
+          {% else %}<span class="badge green">active</span>{% endif %}
+        </td>
+        <td>
+          {% if not t.revoked %}
+          <form method="post"
+                action="{{ url_for('admin_ui.settings_api_tokens_revoke_submit', token_id=t.id) }}"
+                data-confirm-message="Revoke token '{{ t.name }}'? Any automation using it will stop working.">
+            <button type="submit" class="btn-secondary">Revoke</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No API tokens yet.</p>
+  {% endif %}
+</div>
+<script src="{{ url_for('static', filename='js/confirm_handlers.js') }}" defer></script>
+{% endblock %}

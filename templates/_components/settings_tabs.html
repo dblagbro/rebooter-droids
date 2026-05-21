@@ -22,6 +22,12 @@
      {% if settings_tab == 'notifications' %}aria-current="page"{% endif %}>Notifications</a>
   <a href="{{ url_for('admin_ui.settings_webhooks_page') }}"
      {% if settings_tab == 'webhooks' %}aria-current="page"{% endif %}>Webhooks</a>
+  {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+  <a href="{{ url_for('admin_ui.settings_backup_page') }}"
+     {% if settings_tab == 'backup' %}aria-current="page"{% endif %}>Backup</a>
+  <a href="{{ url_for('admin_ui.settings_api_tokens_page') }}"
+     {% if settings_tab == 'api-tokens' %}aria-current="page"{% endif %}>API tokens</a>
+  {% endif %}
   <a href="{{ url_for('admin_ui.settings_integrations_page') }}"
      {% if settings_tab == 'integrations' %}aria-current="page"{% endif %}>Integrations</a>
   {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
@@ -52,6 +58,12 @@
           {% if settings_tab == 'notifications' %}selected{% endif %}>Notifications</option>
   <option value="{{ url_for('admin_ui.settings_webhooks_page') }}"
           {% if settings_tab == 'webhooks' %}selected{% endif %}>Webhooks</option>
+  {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+  <option value="{{ url_for('admin_ui.settings_backup_page') }}"
+          {% if settings_tab == 'backup' %}selected{% endif %}>Backup</option>
+  <option value="{{ url_for('admin_ui.settings_api_tokens_page') }}"
+          {% if settings_tab == 'api-tokens' %}selected{% endif %}>API tokens</option>
+  {% endif %}
   <option value="{{ url_for('admin_ui.settings_integrations_page') }}"
           {% if settings_tab == 'integrations' %}selected{% endif %}>Integrations</option>
   {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
