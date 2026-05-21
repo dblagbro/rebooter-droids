@@ -1,0 +1,173 @@
+{% extends "layout.html" %}
+{% block title %}Backup - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Settings</h1>
+</div>
+{% include "_components/settings_tabs.html" %}
+
+<div class="v3-card">
+  <h2>Backup &amp; restore configuration</h2>
+  <p class="muted" style="margin-top:0">
+    Export the hub's operator-managed configuration to a portable JSON
+    file — for migration, disaster recovery, or self-host setup — and
+    import it back. This is <strong>config portability, not a database
+    dump</strong>: it covers settings, watchdog rules, schedules, scenes,
+    sites/groups and per-device desired config (keyed by MAC).
+    It deliberately does <strong>not</strong> include devices, users,
+    credentials, heartbeats, power data or the audit log.
+  </p>
+</div>
+
+{% if error %}
+<div class="v3-card" style="margin-top:1rem;border:1px solid var(--err,#a33)">
+  <p style="margin:0;color:var(--err,#c55)">{{ error }}</p>
+</div>
+{% endif %}
+
+{# ── Export ───────────────────────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Export</h2>
+  <form method="post" action="{{ url_for('admin_ui.settings_backup_export_submit') }}">
+    <p class="muted" style="font-size:.85rem">
+      By default secrets (SMTP password, HMAC keys, API tokens, source
+      credentials) are <strong>redacted</strong> from the export. To
+      include them, the file is AES-GCM encrypted with a passphrase you
+      supply — keep that passphrase safe; it is never stored.
+    </p>
+    <label style="display:inline-flex;align-items:center;gap:.4rem">
+      <input type="checkbox" name="include_secrets">
+      Include secrets (file will be encrypted)
+    </label>
+    <label style="margin-top:.6rem">Encryption passphrase
+      <input type="password" name="passphrase" autocomplete="new-password"
+             placeholder="required only when including secrets">
+    </label>
+    <button type="submit" style="margin-top:.6rem">Download config backup</button>
+  </form>
+</div>
+
+{# ── Import — upload + preview ─────────────────────────────────────── #}
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Import</h2>
+  <p class="muted" style="font-size:.85rem">
+    Import is always a <strong>dry-run first</strong>: upload a file to
+    see exactly what would change, then confirm. Nothing is written
+    until you confirm. (Super-admin only.)
+  </p>
+  <form method="post" enctype="multipart/form-data"
+        action="{{ url_for('admin_ui.settings_backup_import_preview_submit') }}">
+    <label>Backup file (.json)
+      <input type="file" name="backup_file" accept="application/json,.json" required>
+    </label>
+    <label style="margin-top:.6rem">Passphrase (only if the file is encrypted)
+      <input type="password" name="passphrase" autocomplete="off">
+    </label>
+    <button type="submit" style="margin-top:.6rem">Preview import</button>
+  </form>
+</div>
+
+{# ── Import — dry-run plan ─────────────────────────────────────────── #}
+{% if preview %}
+<div class="v3-card" style="margin-top:1rem">
+  <h2>Import preview — dry run</h2>
+  {% if preview.warnings %}
+  <div style="border:1px solid var(--warn,#a83);padding:.6rem;border-radius:4px;margin-bottom:.8rem">
+    {% for w in preview.warnings %}
+    <p style="margin:.2rem 0;color:var(--warn,#c93)">⚠ {{ w }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <table class="v3-table">
+    <thead>
+      <tr><th>Section</th><th>Create</th><th>Update</th><th>Skip</th><th>Conflict</th></tr>
+    </thead>
+    <tbody>
+      {% for sp in preview.sections %}
+      <tr>
+        <td>{{ sp.section }}</td>
+        <td>{{ sp.counts.create }}</td>
+        <td>{{ sp.counts.update }}</td>
+        <td>{{ sp.counts.skip }}</td>
+        <td>{{ sp.counts.conflict }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% for sp in preview.sections %}
+    {% if sp.items %}
+    <details style="margin-top:.6rem">
+      <summary>{{ sp.section }} — {{ sp.items | length }} record(s)</summary>
+      <table class="v3-table" style="margin-top:.4rem">
+        <thead><tr><th>Key</th><th>Disposition</th><th>Note</th></tr></thead>
+        <tbody>
+          {% for it in sp.items %}
+          <tr>
+            <td><code>{{ it.key }}</code></td>
+            <td>{{ it.disposition }}</td>
+            <td class="muted">{{ it.note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endif %}
+  {% endfor %}
+
+  <hr style="margin:1rem 0;border:none;border-top:1px solid #3a3a4a">
+  <p>
+    This import will write <strong>{{ preview.total_writes }}</strong>
+    record(s) (creates + updates). Skipped and conflicting records are
+    left untouched.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.settings_backup_import_apply_submit') }}">
+    {% if preview.total_writes > 20 %}
+    <p class="muted" style="font-size:.85rem">
+      This is a large import. To confirm, type <code>import_config</code>
+      in the box below.
+    </p>
+    <input type="hidden" name="confirmation_level" value="typed">
+    <label>Confirm
+      <input type="text" name="confirmation_typed_value"
+             autocomplete="off" placeholder="import_config">
+    </label>
+    {% elif preview.total_writes > 5 %}
+    <input type="hidden" name="confirmation_level" value="simple">
+    {% endif %}
+    <button type="submit" style="margin-top:.5rem"
+            data-confirm-message="Apply this configuration import? {{ preview.total_writes }} record(s) will be written.">
+      Apply import
+    </button>
+  </form>
+</div>
+{% endif %}
+
+{# ── Import — applied result ───────────────────────────────────────── #}
+{% if result %}
+<div class="v3-card" style="margin-top:1rem;border:1px solid var(--ok,#3a3)">
+  <h2>Import complete</h2>
+  <p>
+    Created {{ result.total_created }}, updated {{ result.total_updated }},
+    skipped {{ result.total_skipped }}.
+  </p>
+  <table class="v3-table">
+    <thead><tr><th>Section</th><th>Created</th><th>Updated</th><th>Skipped</th></tr></thead>
+    <tbody>
+      {% set sections = result.created.keys() | list
+                        + result.updated.keys() | list
+                        + result.skipped.keys() | list %}
+      {% for section in sections | unique %}
+      <tr>
+        <td>{{ section }}</td>
+        <td>{{ result.created.get(section, 0) }}</td>
+        <td>{{ result.updated.get(section, 0) }}</td>
+        <td>{{ result.skipped.get(section, 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+<script src="{{ url_for('static', filename='js/confirm_handlers.js') }}" defer></script>
+{% endblock %}
