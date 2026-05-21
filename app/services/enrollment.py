@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.db import session_scope
-from app.models import Device, DeviceCredential, EnrollmentToken
+from app.models import Device, DeviceCredential, EnrollmentToken, Site
 from app.models._helpers import as_aware
 
 log = logging.getLogger(__name__)
@@ -45,10 +45,24 @@ def _mint_enrollment_token_in_session(
         ttl = min(int(ttl_seconds), 60 * 60 * 24 * 30)
 
     secret = "et_" + secrets.token_urlsafe(24)
+    # org-boundary: enrollment_tokens.organization_id is NOT NULL. The
+    # before_flush tenant-scope hook stamps it from the bound org scope on
+    # the normal admin mint path — but the auto-rebind path
+    # (announcements._maybe_prepare_auto_rebind, reached from the
+    # unauthenticated /device/announce) runs with no org scope bound, so
+    # stamp it here from the token's own site. An enrollment token always
+    # belongs to its site's org; resolving it explicitly holds that
+    # invariant whether or not a scope is bound.
+    organization_id = None
+    if site_id:
+        site = session.get(Site, site_id)
+        if site is not None:
+            organization_id = site.organization_id
     record = EnrollmentToken(
         token_hash=_hash(secret),
         issued_by_user_id=issued_by_user_id,
         site_id=site_id,
+        organization_id=organization_id,
         display_name_hint=display_name_hint,
         note=note,
         expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
