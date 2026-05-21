@@ -43,7 +43,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
-from app.services.tenant_scope import TenantScoped
+from app.services.tenant_scope import TenantScoped, tenant_scoped_org_column
 
 
 SCOPE_GLOBAL = "global"
@@ -62,11 +62,13 @@ class RoleBinding(TenantScoped, Base):
     # became org-aware with no code change. A user's global binding in
     # org A has zero reach into org B.
     #
-    # TODO(org-phase3): flip `organization_id` to NOT NULL (RESTRICT FK)
-    # and widen `uq_role_binding_scope` to include `organization_id`
-    # (design §4.3). Deferred to phase 3 with the other constraint
-    # hardening.
+    # org-boundary phase 3: `organization_id` is NOT NULL with an
+    # on-delete RESTRICT FK (migration 0005) and `uq_role_binding_scope`
+    # is widened to include `organization_id` (design §4.3) — a binding
+    # is unique *within* an org.
     __tablename__ = "role_bindings"
+
+    organization_id = tenant_scoped_org_column("RESTRICT")
 
     id: Mapped[str] = mapped_column(
         String(40), primary_key=True, default=partial(new_id, "rb")
@@ -92,12 +94,18 @@ class RoleBinding(TenantScoped, Base):
     )
 
     __table_args__ = (
-        # A user can have at most one binding per (scope_type, scope_id) pair.
-        # NULL scope_id is treated by Postgres as distinct from any other
-        # value including another NULL — so multiple global-scoped rows are
-        # technically allowed at the schema level; the service layer enforces
-        # at-most-one-global-per-user before insert.
-        UniqueConstraint("user_id", "scope_type", "scope_id", name="uq_role_binding_scope"),
+        # org-boundary phase 3 (§4.3): a user can have at most one
+        # binding per (org, scope_type, scope_id) — the constraint is
+        # widened with `organization_id` so the same (scope_type,
+        # scope_id) pair can recur across orgs. NULL scope_id is treated
+        # by Postgres as distinct from any other value including another
+        # NULL — so multiple global-scoped rows are technically allowed
+        # at the schema level; the service layer enforces
+        # at-most-one-global-per-user-per-org before insert.
+        UniqueConstraint(
+            "organization_id", "user_id", "scope_type", "scope_id",
+            name="uq_role_binding_scope",
+        ),
         Index("ix_role_bindings_user", "user_id"),
         Index("ix_role_bindings_scope", "scope_type", "scope_id"),
     )
