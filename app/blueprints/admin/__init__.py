@@ -48,4 +48,5 @@ from app.blueprints.admin import (  # noqa: E402,F401
     power_api,       # v0.5.54 (P1.1 — JSON power query API)
     signup_requests, # v0.5.39 (P4b — signup request system)
     scenes,          # v0.5.92 (Stage C — named device scenes)
+    webhooks,        # Tier-2 Feature 6 — outbound notifications/webhooks
 )
