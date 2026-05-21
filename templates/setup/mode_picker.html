@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% block title %}Set up {{ device.display_name or device.id }} - Rebooter-Droids{% endblock %}
+{% block content %}
+{# ── Reusable 3-mode device picker — Tier-2 Feature 1 ───────────────────
+   The standalone /app/devices/<id>/configure page. The form body itself
+   is the shared "setup/_mode_picker_form.html" partial (also embedded in
+   the first-run wizard's first-device step).
+#}
+<p><a href="{{ url_for('admin_ui.device_detail_page', device_id=device.id) }}">← {{ device.display_name or device.id }}</a></p>
+
+<div class="v3-page-header">
+  <h1>Set up this device</h1>
+  <p class="v3-page-sub">
+    Tell us what <strong>{{ device.display_name or device.id }}</strong> is for.
+    We'll translate your answer into the right settings — you don't need to
+    know any of the technical details.
+  </p>
+</div>
+
+{% if current_mode %}
+<div class="v3-card" style="border-color: var(--amber-fg)">
+  <p style="margin:0">
+    This device is already set up as
+    <strong>
+      {% if current_mode == 'smart_plug' %}a smart switch
+      {% elif current_mode == 'internet_watchdog' %}an internet restarter
+      {% elif current_mode == 'device_watchdog' %}a single-device restarter
+      {% else %}{{ current_mode }}{% endif %}
+    </strong>. Choosing a mode below will replace that setup.
+  </p>
+</div>
+{% endif %}
+
+{% include "setup/_mode_picker_form.html" %}
+{% endblock %}
