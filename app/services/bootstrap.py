@@ -673,7 +673,7 @@ def ensure_default_organization_backfill() -> None:
     log.info("default-organization backfill complete")
     # org-boundary phase 3: the NOT-NULL flip, per-org unique
     # constraints and FK on-delete swaps now ship as Alembic revision
-    # 0005_org_constraint_hardening (design §6.2, §6.3). That migration
+    # 0007_org_constraint_hardening (design §6.2, §6.3). That migration
     # runs once this backfill is confirmed on every database — it is
     # NOT slotted into _ensure_constraints (the `_PENDING_*` lists are
     # frozen as of the org release; new schema changes go through
