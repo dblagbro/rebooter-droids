@@ -20,6 +20,8 @@ import secrets
 import pytest
 import requests
 
+from app.services.announcements import _normalize_mac
+
 pytestmark = pytest.mark.ci
 
 
@@ -63,8 +65,15 @@ def test_full_adoption_flow_announce_to_online(base_url, admin_headers):
             headers=admin_headers, timeout=10,
         )
         assert listing.status_code == 200, listing.text
+        # S1-6 (`_normalize_mac`) stores — and serializes back —
+        # announcement MACs in canonical form (separators stripped),
+        # so compare normalized MACs, not the raw colon-form.
         match = next(
-            (a for a in listing.json()["data"] if a["mac_address"] == mac), None
+            (
+                a for a in listing.json()["data"]
+                if _normalize_mac(a["mac_address"]) == _normalize_mac(mac)
+            ),
+            None,
         )
         assert match is not None, "announced device missing from pending-adoption"
         assert match["state"] == "pending"

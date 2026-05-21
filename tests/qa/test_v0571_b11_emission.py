@@ -16,10 +16,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401 — registers every model on Base.metadata
-from app.models import Base, Device, Site
+from app.models import Base, Device, Organization, Site
 from app.models.sync import OutboxEvent
 from app.services.sync import suppress_emission
 from app.services.sync_emission import register_sync_emission
+from app.services.tenant_scope import org_context
 
 pytestmark = pytest.mark.ci
 
@@ -32,7 +33,20 @@ def session():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as s:
-        yield s
+        # org-boundary phase 3 made `organization_id` NOT NULL on the
+        # Tier-A tables (Site, Device, ...). Seed the default org and
+        # run the test body inside `org_context` — exactly how a real
+        # request runs, where the admin-auth middleware binds the scope
+        # so the `before_flush` hook stamps `organization_id` onto every
+        # new Tier-A row. Without it the direct `Site(...)` inserts below
+        # would hit the NOT NULL constraint.
+        org = Organization(
+            id="org_test", name="Test Org", slug="default", plan="legacy"
+        )
+        s.add(org)
+        s.flush()
+        with org_context(org.id):
+            yield s
 
 
 def _events(session, entity_type=None):

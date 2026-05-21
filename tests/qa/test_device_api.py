@@ -232,7 +232,19 @@ def test_firmware_assignment_initially_none(base_url, admin_headers):
     )
 
 
-def test_power_samples_batch_ingest(base_url, admin_headers):
+# v0.6.x (Tier-2): POST /device/power-samples is RETIRED. Firmware now
+# folds a compact `power` summary object into the /device/heartbeat
+# payload (one fewer TLS round-trip on heap-constrained ESP8266s). The
+# route is intentionally kept — rather than deleted — so pre-Tier-2
+# firmware gets an explicit `410 Gone` with migration guidance instead
+# of a 404 it can't distinguish from a routing fault. See
+# app/blueprints/device_api.py::upload_power_samples. These two tests
+# previously exercised the live ingest (200 + ingested count) and the
+# over-max-batch rejection (400); both behaviours moved with the
+# endpoint, so the tests now pin the retirement contract instead.
+
+
+def test_power_samples_endpoint_retired_returns_410(base_url, admin_headers):
     et = _mint_enrollment(base_url, admin_headers)["enrollment_token"]
     reg = _register(base_url, et).json()["data"]
     H = {"Authorization": f"Bearer {reg['device_token']}"}
@@ -260,11 +272,19 @@ def test_power_samples_batch_ingest(base_url, admin_headers):
         json={"device_id": reg["device_id"], "samples": samples},
         timeout=10,
     )
-    assert r.status_code == 200
-    assert r.json()["data"]["ingested"] == 2
+    # Explicit 410 Gone — never a 404 — so old firmware can tell a
+    # retired endpoint from a routing fault.
+    assert r.status_code == 410, r.text
+    assert r.json()["error"]["code"] == "endpoint_retired"
+    assert "heartbeat" in r.json()["error"]["message"].lower()
 
 
-def test_power_samples_over_max_batch_rejected(base_url, admin_headers):
+def test_power_samples_retired_410_takes_precedence_over_batch_size(
+    base_url, admin_headers
+):
+    """Even an over-max batch gets the 410 retirement response — the
+    old over-max `400 validation_failed` rejection retired with the
+    ingest path."""
     et = _mint_enrollment(base_url, admin_headers)["enrollment_token"]
     reg = _register(base_url, et).json()["data"]
     H = {"Authorization": f"Bearer {reg['device_token']}"}
@@ -275,5 +295,5 @@ def test_power_samples_over_max_batch_rejected(base_url, admin_headers):
         json={"device_id": reg["device_id"], "samples": samples},
         timeout=10,
     )
-    assert r.status_code == 400
-    assert r.json()["error"]["code"] == "validation_failed"
+    assert r.status_code == 410, r.text
+    assert r.json()["error"]["code"] == "endpoint_retired"
