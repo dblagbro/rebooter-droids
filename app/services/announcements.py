@@ -97,13 +97,26 @@ def _maybe_prepare_auto_rebind(*, session, row: DeviceAnnouncement, now: datetim
     if row.consumed_at is None or row.adoption_token_secret:
         return False
 
-    device = session.scalar(
+    # S1-6: the announcement row stores its MAC in canonical form
+    # (`_normalize_mac` — separators stripped, upper-cased), but a
+    # `Device` row stores the MAC exactly as the firmware sent it on
+    # /register (colon-form, hyphen-form, …). A plain
+    # `Device.mac_address == row.mac_address` SQL equality therefore
+    # never matches, so the auto-rebind self-heal silently never fired
+    # for any device whose MAC contained separators. Compare normalised
+    # MACs in Python — the same robust pattern `mark_consumed` and
+    # `force_adopt_reconcile` use for the announce↔register cross-link.
+    target_mac = _normalize_mac(row.mac_address)
+    device = None
+    for candidate in session.scalars(
         select(Device).where(
-            Device.mac_address == row.mac_address,
             Device.registration_state != "decommissioned",
             Device.central_management_enabled.is_(True),
         )
-    )
+    ):
+        if _normalize_mac(candidate.mac_address) == target_mac:
+            device = candidate
+            break
     if device is None:
         return False
 

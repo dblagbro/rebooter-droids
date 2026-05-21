@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 import requests
 
+from app.services.announcements import _normalize_mac
+
 from .conftest import unique_suffix
 
 # v0.5.83: in the `-m ci` gate (P-QA gate-3). The earlier "two tests
@@ -21,6 +23,22 @@ def _mac() -> str:
     import secrets
     h = secrets.token_hex(6).upper()
     return ":".join(h[i:i+2] for i in range(0, 12, 2))
+
+
+def _find_announcement(listing: list, mac: str) -> dict | None:
+    """Match an announcement row by MAC.
+
+    S1-6 (`_normalize_mac`) made announce rows store the MAC in
+    canonical form (separators stripped), so a row announced as
+    ``AA:BB:CC:11:22:33`` is stored — and serialized back — as
+    ``AABBCC112233``. The lookup must therefore compare *normalized*
+    MACs, not the raw colon-form the test synthesized. Mirrors the
+    helper in tests/unit/test_announce_state_machine.py.
+    """
+    want = _normalize_mac(mac)
+    return next(
+        (a for a in listing if _normalize_mac(a["mac_address"]) == want), None
+    )
 
 
 def test_announce_creates_pending_then_adopts(base_url, admin_headers):
@@ -51,7 +69,7 @@ def test_announce_creates_pending_then_adopts(base_url, admin_headers):
         f"{base_url}/api/v1/admin/pending-adoption",
         headers=admin_headers, timeout=10,
     ).json()["data"]
-    match = next((a for a in listing if a["mac_address"] == mac), None)
+    match = _find_announcement(listing, mac)
     assert match is not None
     assert match["state"] == "pending"
     aid = match["id"]
@@ -188,7 +206,7 @@ def test_repeat_announce_increments_count(base_url, admin_headers):
         f"{base_url}/api/v1/admin/pending-adoption",
         headers=admin_headers, timeout=10,
     ).json()["data"]
-    match = next((a for a in listing if a["mac_address"] == mac), None)
+    match = _find_announcement(listing, mac)
     assert match is not None
     assert match["announce_count"] == 3
     # Cleanup
@@ -208,7 +226,7 @@ def test_reject_returns_back_off(base_url, admin_headers):
         f"{base_url}/api/v1/admin/pending-adoption",
         headers=admin_headers, timeout=10,
     ).json()["data"]
-    aid = next(a["id"] for a in listing if a["mac_address"] == mac)
+    aid = _find_announcement(listing, mac)["id"]
     requests.post(
         f"{base_url}/api/v1/admin/pending-adoption/{aid}/reject",
         headers=admin_headers, timeout=10,
@@ -255,7 +273,7 @@ def test_known_device_missing_token_auto_rebinds(base_url, admin_headers):
             f"{base_url}/api/v1/admin/pending-adoption",
             headers=admin_headers, timeout=10,
         ).json()["data"]
-        match = next((a for a in listing if a["mac_address"] == mac), None)
+        match = _find_announcement(listing, mac)
         assert match is not None
         aid = match["id"]
 

@@ -20,9 +20,10 @@ import flask
 import pytest
 
 from app.config import load_settings
-from app.db import get_engine, init_engine
-from app.models import Base
+from app.db import get_engine, init_engine, session_scope
+from app.models import Base, Organization
 from app.services import watchdog_runtime
+from app.services.tenant_scope import org_context
 from app.services.watchdog import create_rule, get_rule, list_recent_events
 
 # v0.5.82: in the `-m ci` gate (P-QA gate-3 — timing e2e, now in-process).
@@ -34,7 +35,15 @@ T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 @pytest.fixture
 def hub_db(tmp_path):
     """Isolated SQLite hub DB + a bare Flask app context (the action
-    dispatch may reach for Flask `g`). Mirrors test_v0514."""
+    dispatch may reach for Flask `g`). Mirrors test_v0514.
+
+    org-boundary phase 3 made `organization_id` NOT NULL on
+    `watchdog_rules`. A real `POST /admin/rules` request runs with the
+    org scope bound by the admin-auth middleware, so the `before_flush`
+    hook stamps the column. This fixture seeds the default org and runs
+    the test body inside `org_context` so `create_rule()` — exercised
+    here directly, without the HTTP middleware — gets the same stamping.
+    """
     settings = replace(
         load_settings(),
         database_url=f"sqlite:///{tmp_path / 'rebooter-qa.sqlite'}",
@@ -43,7 +52,11 @@ def hub_db(tmp_path):
     engine = get_engine()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    with flask.Flask(__name__).app_context():
+    with session_scope() as s:
+        s.add(Organization(
+            id="org_test", name="Test Org", slug="default", plan="legacy"
+        ))
+    with flask.Flask(__name__).app_context(), org_context("org_test"):
         yield settings
 
 
