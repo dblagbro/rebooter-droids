@@ -61,14 +61,26 @@ _TIER_A_MODELS = (
 )
 
 
+# org-boundary phase 3 (design §2, §3.6): two Tier-A tables keep a
+# permanently NULLABLE organization_id — `audit_events` (platform/system
+# audit rows have no org) and `device_announcements` (an un-adopted
+# announcement legitimately has no org). Every other Tier-A table was
+# flipped to NOT NULL by migration 0005.
+_TIER_A_NULLABLE_ORG = {"audit_events", "device_announcements"}
+
+
 @pytest.mark.parametrize("model", _TIER_A_MODELS, ids=lambda m: m.__name__)
 def test_tier_a_model_is_tenant_scoped(model):
-    """Every Tier-A model mixes in TenantScoped and carries a nullable
-    organization_id column."""
+    """Every Tier-A model mixes in TenantScoped and carries an
+    organization_id column. Phase 3: the column is NOT NULL except on
+    the two tables that keep it nullable forever (design §2, §3.6)."""
     assert issubclass(model, TenantScoped)
     col = model.__table__.c.organization_id
     assert col is not None
-    assert col.nullable is True  # phase 1 — nullable only, no enforcement
+    if model.__table__.name in _TIER_A_NULLABLE_ORG:
+        assert col.nullable is True, model.__name__
+    else:
+        assert col.nullable is False, model.__name__
 
 
 def test_tenant_scoped_organization_id_is_fk_to_organizations():
@@ -192,7 +204,7 @@ def _seed_pre_org_world():
         return admin.id, member.id
 
 
-def test_backfill_creates_default_org_and_stamps_rows(hub_db):
+def test_backfill_creates_default_org_and_stamps_rows(hub_db_pre_org_constraints):
     admin_id, member_id = _seed_pre_org_world()
 
     ensure_default_organization_backfill()
@@ -224,7 +236,7 @@ def test_backfill_creates_default_org_and_stamps_rows(hub_db):
         assert memberships[member_id] == "member"
 
 
-def test_backfill_is_idempotent(hub_db):
+def test_backfill_is_idempotent(hub_db_pre_org_constraints):
     _seed_pre_org_world()
 
     ensure_default_organization_backfill()
@@ -241,7 +253,7 @@ def test_backfill_is_idempotent(hub_db):
         )
 
 
-def test_backfill_skips_when_an_org_already_exists(hub_db):
+def test_backfill_skips_when_an_org_already_exists(hub_db_pre_org_constraints):
     """If organizations is non-empty, the backfill must not create
     another org or stamp rows — it just marks itself complete."""
     with session_scope() as s:
@@ -265,7 +277,7 @@ def test_backfill_skips_when_an_org_already_exists(hub_db):
         )
 
 
-def test_backfill_marks_tracking_key(hub_db):
+def test_backfill_marks_tracking_key(hub_db_pre_org_constraints):
     from app.services import runtime_settings as rs
 
     _seed_pre_org_world()
@@ -274,7 +286,7 @@ def test_backfill_marks_tracking_key(hub_db):
     assert rs.has_db_value(_ORG_BACKFILL_KEY) is True
 
 
-def test_backfill_ownerless_when_no_super_admin(hub_db):
+def test_backfill_ownerless_when_no_super_admin(hub_db_pre_org_constraints):
     """An install with no super-admin gets an ownerless default org —
     acceptable, the FK is nullable."""
     with session_scope() as s:
