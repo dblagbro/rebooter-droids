@@ -261,9 +261,24 @@ def ensure_role_bindings_backfill() -> None:
         sites = list(session.scalars(select(Site)))
         site_ids = [s.id for s in sites]
 
+        # org-boundary phase 3: `role_bindings.organization_id` is NOT
+        # NULL. This backfill runs inside `tenant_scope.system()` (the
+        # before_flush stamping is a no-op there), so the org must be
+        # set explicitly. The default-organization backfill runs first
+        # (see `_run_startup_bootstrap_inner`), so it is resolvable.
+        org_id = resolve_default_org_id(session)
+        if org_id is None:
+            log.warning(
+                "RBAC role-bindings backfill: no organization resolvable "
+                "— role_bindings rows cannot be created. Skipping; the "
+                "default-organization backfill should have run first."
+            )
+            return
+
         for u in users:
             if u.is_super_admin:
                 session.add(RoleBinding(
+                    organization_id=org_id,
                     user_id=u.id,
                     scope_type=SCOPE_GLOBAL,
                     scope_id=None,
@@ -281,6 +296,7 @@ def ensure_role_bindings_backfill() -> None:
                 if site_ids:
                     for sid in site_ids:
                         session.add(RoleBinding(
+                            organization_id=org_id,
                             user_id=u.id,
                             scope_type=SCOPE_SITE,
                             scope_id=sid,
@@ -296,6 +312,7 @@ def ensure_role_bindings_backfill() -> None:
                     # when sites get created and the operator manually
                     # re-scopes.
                     session.add(RoleBinding(
+                        organization_id=org_id,
                         user_id=u.id,
                         scope_type=SCOPE_GLOBAL,
                         scope_id=None,
@@ -366,10 +383,25 @@ def ensure_device_site_id_backfill() -> None:
             from functools import partial
             from app.models._helpers import new_id
 
+            # org-boundary phase 3: `sites.organization_id` is NOT NULL.
+            # This backfill runs inside `tenant_scope.system()` (no
+            # before_flush stamping), so the org is set explicitly. The
+            # default-organization backfill runs first, so it resolves.
+            site_org_id = resolve_default_org_id(session)
+            if site_org_id is None:
+                log.warning(
+                    "Device.site_id backfill: no organization resolvable "
+                    "— cannot create the Default site. Skipping; the "
+                    "default-organization backfill should have run first."
+                )
+                rs.set_(_DEVICE_SITE_ID_BACKFILL_KEY, now.isoformat())
+                return
+
             target_site_id = partial(new_id, "site")()
             default_site = Site(
                 id=target_site_id,
                 name="Default",
+                organization_id=site_org_id,
                 created_at=now,
                 updated_at=now,
             )
@@ -427,6 +459,37 @@ _ORG_TIER_A_TABLES: tuple[str, ...] = (
 )
 
 
+def resolve_default_org_id(session) -> str | None:
+    """Return an `organization_id` for a Tier-A row created during
+    startup bootstrap — org-boundary phase 3.
+
+    The other startup backfills (`ensure_role_bindings_backfill`,
+    `ensure_device_site_id_backfill`) create Tier-A rows
+    (`role_bindings`, the "Default" `Site`) inside `tenant_scope.
+    system()`, where the `before_flush` org-stamping is intentionally a
+    no-op. Phase 3 made `organization_id` NOT NULL on those tables, so
+    those rows must carry an org explicitly. This resolves it:
+
+      1. the org named/slugged "default" (the backfill's own org), else
+      2. the only org, if exactly one exists, else
+      3. None — the caller leaves the column unset (only possible on a
+         DB that genuinely has no org yet; the org backfill, which now
+         runs first, makes that case unreachable in normal startup).
+
+    Operates within the caller's session so the lookup sees rows the
+    same transaction created.
+    """
+    from app.models import Organization
+
+    org = session.scalar(
+        select(Organization).where(Organization.slug == "default")
+    )
+    if org is not None:
+        return org.id
+    orgs = list(session.scalars(select(Organization)))
+    return orgs[0].id if len(orgs) == 1 else None
+
+
 def ensure_default_organization_backfill() -> None:
     """Assign every existing row to one default organization.
 
@@ -447,13 +510,20 @@ def ensure_default_organization_backfill() -> None:
          for the org owner, admin/member mapped from `users.role`.
       5. Mark `organization.default_backfilled_at`.
 
-    This must run AFTER `ensure_device_site_id_backfill()` (so every
-    device has a site, hence a clear org path) and is wired into
-    `run_startup_bootstrap` accordingly.
+    org-boundary phase 3: this backfill now runs FIRST in the startup
+    sequence — before `ensure_role_bindings_backfill()` and
+    `ensure_device_site_id_backfill()`. Those two create Tier-A rows
+    (`role_bindings`, the "Default" `Site`) whose `organization_id`
+    became NOT NULL in phase 3, so the default org must already exist
+    for them to be stamped (via `resolve_default_org_id`). Step 3's
+    `UPDATE ... WHERE organization_id IS NULL` still stamps any
+    pre-existing rows on an upgraded database; on a fresh `create_all()`
+    database the Tier-A tables are empty at this point, so step 3 is a
+    no-op and the rows created by the later backfills are born stamped.
 
-    Phase 1 only — this stamps the (nullable) columns. The phase-2
-    migration flips them to NOT NULL once this backfill is confirmed on
-    every database.
+    The constraint-hardening migration (alembic 0005) flips those
+    columns to NOT NULL; it runs after this backfill is confirmed on
+    every database (design §8.1 steps 3–4).
     """
     from datetime import datetime, timezone
     from functools import partial
@@ -594,13 +664,13 @@ def ensure_default_organization_backfill() -> None:
     # Step 5: mark complete so this never runs again.
     rs.set_(_ORG_BACKFILL_KEY, now.isoformat())
     log.info("default-organization backfill complete")
-    # TODO(org-phase3): once this backfill is confirmed on every
-    # database, a phase-3 migration flips the Tier-A organization_id
-    # columns to NOT NULL and adds the per-org unique constraints
-    # (design sections 6.2, 6.3). Slot _ensure_constraints-style steps
-    # in after this call, mirroring the Device.site_id pattern. Phase 2
-    # is the runtime enforcement mechanism (see app/services/
-    # tenant_scope.py), not the constraint hardening.
+    # org-boundary phase 3: the NOT-NULL flip, per-org unique
+    # constraints and FK on-delete swaps now ship as Alembic revision
+    # 0005_org_constraint_hardening (design §6.2, §6.3). That migration
+    # runs once this backfill is confirmed on every database — it is
+    # NOT slotted into _ensure_constraints (the `_PENDING_*` lists are
+    # frozen as of the org release; new schema changes go through
+    # Alembic, design §6.2).
 
 
 def ensure_bootstrap_admin(settings: Settings) -> None:
@@ -671,6 +741,21 @@ def run_startup_bootstrap(settings: Settings) -> None:
 def _run_startup_bootstrap_inner(settings: Settings) -> None:
     ensure_schema()
     ensure_bootstrap_admin(settings)
+    # org-boundary phase 3: the default-organization backfill now runs
+    # FIRST — before the RBAC and Device.site_id backfills. Those two
+    # create Tier-A rows (`role_bindings`, the "Default" `Site`) whose
+    # `organization_id` became NOT NULL in phase 3 (migration 0005); the
+    # default org must therefore already exist so they can be stamped
+    # with it (see `resolve_default_org_id`). The backfill is idempotent
+    # and runtime_settings-tracked, so reordering it is safe on an
+    # already-bootstrapped DB. On a fresh `create_all()` DB this also
+    # means the new tables are never written ownerless.
+    try:
+        ensure_default_organization_backfill()
+    except Exception:
+        log.exception(
+            "Default-organization backfill failed; container will continue"
+        )
     # v0.5.0 (A1): one-shot RBAC backfill. Runs once per database;
     # idempotent (tracked via runtime_settings row).
     try:
@@ -687,17 +772,6 @@ def _run_startup_bootstrap_inner(settings: Settings) -> None:
         ensure_device_site_id_backfill()
     except Exception:
         log.exception("Device.site_id backfill failed; container will continue")
-    # org-boundary phase 1: assign every existing row to one default
-    # organization. Runs AFTER ensure_device_site_id_backfill (so every
-    # device has a site, hence a clear org path) and BEFORE the
-    # constraint step. Idempotent, runtime_settings-tracked. Phase 1
-    # stamps the nullable columns only; the NOT-NULL flip is phase 2.
-    try:
-        ensure_default_organization_backfill()
-    except Exception:
-        log.exception(
-            "Default-organization backfill failed; container will continue"
-        )
     # Apply constraints that depend on backfills (v0.5.36+)
     try:
         engine = get_engine()
