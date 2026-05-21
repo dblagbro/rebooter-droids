@@ -20,6 +20,8 @@
      {% if settings_tab == 'sync' %}aria-current="page"{% endif %}>Sync</a>
   <a href="{{ url_for('admin_ui.settings_notifications_page') }}"
      {% if settings_tab == 'notifications' %}aria-current="page"{% endif %}>Notifications</a>
+  <a href="{{ url_for('admin_ui.settings_webhooks_page') }}"
+     {% if settings_tab == 'webhooks' %}aria-current="page"{% endif %}>Webhooks</a>
   <a href="{{ url_for('admin_ui.settings_integrations_page') }}"
      {% if settings_tab == 'integrations' %}aria-current="page"{% endif %}>Integrations</a>
   {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
@@ -48,6 +50,8 @@
           {% if settings_tab == 'sync' %}selected{% endif %}>Sync</option>
   <option value="{{ url_for('admin_ui.settings_notifications_page') }}"
           {% if settings_tab == 'notifications' %}selected{% endif %}>Notifications</option>
+  <option value="{{ url_for('admin_ui.settings_webhooks_page') }}"
+          {% if settings_tab == 'webhooks' %}selected{% endif %}>Webhooks</option>
   <option value="{{ url_for('admin_ui.settings_integrations_page') }}"
           {% if settings_tab == 'integrations' %}selected{% endif %}>Integrations</option>
   {% if current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
