@@ -222,20 +222,33 @@ def ingest_power_summary(
 
     # Latest instantaneous V / A / PF. The firmware reports amps; the
     # column stores milliamps (matching the dedicated endpoint).
-    v_v = _as_float(summary.get("v_v"), "power.v_v")
-    i_a = _as_float(_first(summary, "i_a", "i_amps"), "power.i_a")
+    #
+    # Key aliases: the firmware (status_payload.cpp,
+    # fillHeartbeatPowerSummary) actually emits `latest_v` / `latest_a` /
+    # `latest_pf`. The original hub key names (`v_v` / `i_a` / `i_amps` /
+    # `pf`) are kept as accepted aliases so the hub's own tests and any
+    # other caller keep working — `_first` takes whichever key is present.
+    v_v = _as_float(_first(summary, "v_v", "latest_v"), "power.v_v")
+    i_a = _as_float(_first(summary, "i_a", "i_amps", "latest_a"), "power.i_a")
     i_ma = _as_int(summary.get("i_ma"), "power.i_ma")
     if i_ma is None and i_a is not None:
         i_ma = int(round(i_a * 1000))
-    pf = _as_float(summary.get("pf"), "power.pf")
+    pf = _as_float(_first(summary, "pf", "latest_pf"), "power.pf")
     hz = _as_float(summary.get("hz"), "power.hz")
     energy_wh = _as_int(summary.get("energy_wh"), "power.energy_wh")
 
     # CSE7766 frame counts — the invalid count is the existing
     # data-quality signal; map it onto `crc_fail_count` so the existing
-    # power-health surfaces pick it up with no new column.
+    # power-health surfaces pick it up with no new column. The firmware
+    # emits `invalid_frames`; `invalid_frame_count` /
+    # `power_invalid_frame_count` are kept as accepted aliases.
     invalid_frames = _as_int(
-        _first(summary, "invalid_frame_count", "power_invalid_frame_count"),
+        _first(
+            summary,
+            "invalid_frame_count",
+            "power_invalid_frame_count",
+            "invalid_frames",
+        ),
         "power.invalid_frame_count",
     )
 
@@ -248,8 +261,16 @@ def ingest_power_summary(
         "power.i_ma_estimate",
     )
 
+    # Provenance — the heartbeat uptime when the sampling window opened.
+    # The firmware emits `window_start_uptime_seconds`;
+    # `sampled_uptime_seconds` is kept as an accepted alias.
     sampled_uptime = _as_int(
-        summary.get("sampled_uptime_seconds"), "power.sampled_uptime_seconds"
+        _first(
+            summary,
+            "sampled_uptime_seconds",
+            "window_start_uptime_seconds",
+        ),
+        "power.sampled_uptime_seconds",
     )
 
     row = DevicePowerSample(
