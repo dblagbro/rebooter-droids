@@ -98,11 +98,21 @@ def test_internet_watchdog_accepts_comma_separated_targets():
 
 
 def test_internet_watchdog_rejects_too_many_targets():
-    many = "\n".join(f"10.0.0.{i}" for i in range(9))
+    # Cap is 10 (firmware supports 10) — 11 must be rejected.
+    many = "\n".join(f"10.0.0.{i}" for i in range(11))
     with pytest.raises(wiz.SetupWizardError):
         wiz.apply_internet_watchdog(
             "dev-1", {"device_name": "Modem", "internet_targets": many}
         )
+
+
+def test_internet_watchdog_accepts_ten_targets():
+    # Firmware supports 10 internet-mode targets — exactly 10 is allowed.
+    ten = "\n".join(f"10.0.0.{i}" for i in range(10))
+    result = wiz.apply_internet_watchdog(
+        "dev-1", {"device_name": "Modem", "internet_targets": ten}
+    )
+    assert len(result["desired_config"]["internet"]["targets"]) == 10
 
 
 def test_offline_tolerance_maps_to_failure_threshold():

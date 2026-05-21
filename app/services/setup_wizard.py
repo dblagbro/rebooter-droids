@@ -201,9 +201,9 @@ def apply_internet_watchdog(device_id: str, answers: dict) -> dict:
     targets = _parse_targets(answers.get("internet_targets"))
     if not targets:
         targets = list(DEFAULT_INTERNET_TARGETS)
-    if len(targets) > 8:
+    if len(targets) > 10:
         raise SetupWizardError(
-            "Please list at most 8 things to check for internet connectivity."
+            "Please list at most 10 things to check for internet connectivity."
         )
 
     tolerance = _coerce_int(
