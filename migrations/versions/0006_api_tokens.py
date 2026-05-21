@@ -1,7 +1,7 @@
 """hub tier-2 feature 4a — api_tokens table
 
-Revision ID: 0005_api_tokens
-Revises: 0004_org_id_announcements
+Revision ID: 0006_api_tokens
+Revises: 0005_notifications_webhooks
 Create Date: 2026-05-20
 
 Adds the `api_tokens` table — scoped bearer credentials for programmatic
@@ -17,9 +17,10 @@ NULLABLE with an ON DELETE SET NULL FK; the phase-3 NOT-NULL flip is
 deferred. `token_hash` carries a SHA-256 hex digest; the plaintext is
 never stored.
 
-Sibling Tier-2 branches add their own revisions off the same head
-(0004) — Alembic reconciles the multiple heads at merge time, which is
-expected and fine.
+Sibling Tier-2 branches each added a revision off 0004; the
+consolidation merge linearized them into a single chain
+(0004 -> 0005_notifications_webhooks -> 0006_api_tokens ->
+0007_org_constraint_hardening).
 """
 from __future__ import annotations
 
@@ -29,8 +30,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0005_api_tokens"
-down_revision: Union[str, None] = "0004_org_id_announcements"
+revision: str = "0006_api_tokens"
+down_revision: Union[str, None] = "0005_notifications_webhooks"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

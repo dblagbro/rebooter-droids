@@ -15,7 +15,7 @@ that minted it and the `do_orm_execute` read filter scopes the
 Settings list automatically.
 
 New table: `Base.metadata.create_all()` adds it at startup; the matching
-Alembic revision (`0005_api_tokens`) chains off the current head for
+Alembic revision (`0006_api_tokens`) chains off the current head for
 parity with a migrated deployment.
 """
 
