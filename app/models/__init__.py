@@ -55,3 +55,4 @@ from app.models.sync import (  # noqa: E402,F401
 )
 from app.models.external_epg import ExternalEpgCache  # noqa: E402,F401
 from app.models.scenes import Scene  # noqa: E402,F401
+from app.models.api_tokens import ApiToken  # noqa: E402,F401
