@@ -30,21 +30,46 @@ from app.models import RuntimeSetting
 _SENTINEL = object()
 
 
+def _resolve(row, env_var: str | None, default: Any) -> Any:
+    """Apply the DB → env-var → default resolution to an already-fetched
+    `RuntimeSetting` row (or None)."""
+    if row is not None:
+        v = (row.value or {}).get("v", _SENTINEL)
+        if v is not _SENTINEL:
+            return v
+    if env_var:
+        env = os.environ.get(env_var)
+        if env is not None:
+            return env
+    return default
+
+
 def get(name: str, *, env_var: str | None = None, default: Any = None) -> Any:
     """Look up a setting. DB → env-var → default."""
     with session_scope() as session:
         row = session.scalar(
             select(RuntimeSetting).where(RuntimeSetting.name == name)
         )
-        if row is not None:
-            v = (row.value or {}).get("v", _SENTINEL)
-            if v is not _SENTINEL:
-                return v
-    if env_var:
-        env = os.environ.get(env_var)
-        if env is not None:
-            return env
-    return default
+        return _resolve(row, env_var, default)
+
+
+def get_on_session(
+    session, name: str, *, env_var: str | None = None, default: Any = None
+) -> Any:
+    """Look up a setting using an ALREADY-OPEN session instead of
+    opening a new `session_scope()`.
+
+    This is the path the tenant-scope `do_orm_execute` / `before_flush`
+    hooks must use to read `org_isolation.enforce`: those hooks fire
+    *inside* an open transaction, so opening a second `session_scope()`
+    here would be a second SQLite connection deadlocking on the first's
+    write lock. Reading on the current session avoids the nested
+    connection entirely. `RuntimeSetting` is not a TenantScoped entity,
+    so this SELECT does not itself re-enter the tenant read filter."""
+    row = session.scalar(
+        select(RuntimeSetting).where(RuntimeSetting.name == name)
+    )
+    return _resolve(row, env_var, default)
 
 
 def has_db_value(name: str) -> bool:
