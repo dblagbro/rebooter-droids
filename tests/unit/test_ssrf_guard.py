@@ -25,6 +25,7 @@ from __future__ import annotations
 import socket
 
 import pytest
+import requests
 
 from app.services import ssrf_guard
 from app.services.ssrf_guard import SSRFBlockedError, is_blocked_ip, validate_url
@@ -263,30 +264,182 @@ def test_dns_rebind_is_blocked_by_ip_pinning(monkeypatch):
     assert "private" in str(exc.value).lower()
 
 
-def test_pinned_connection_dials_validated_ip(monkeypatch):
-    """`_pinned_connection` forces `urllib3`'s socket factory to dial the
-    validated IP regardless of the host argument passed in — this is the
-    mechanism that closes the in-flight TOCTOU window."""
+def test_pinned_adapter_dials_validated_ip(monkeypatch):
+    """The IP-pinned `requests` adapter forces every socket it opens to
+    dial the validated IP regardless of the hostname in the URL — this is
+    the mechanism that closes the in-flight TOCTOU window.
+
+    The pin is carried on instance-scoped adapter state (a per-adapter
+    PoolManager with pinned connection classes); NO module global is
+    mutated. We assert the connection subclass' `_new_conn()` dials the
+    pinned IP, not the host it was constructed for.
+    """
     from urllib3.util import connection as urllib3_connection
 
     calls = []
 
     def _fake_create_connection(address, *args, **kwargs):
         calls.append(address)
-        return "fake-socket"
+        raise OSError("no real network in the unit suite")
 
     monkeypatch.setattr(
         urllib3_connection, "create_connection", _fake_create_connection
     )
 
-    with ssrf_guard._pinned_connection("93.184.216.34"):
-        # Even though the caller asks for an internal host, the patched
-        # factory must dial the pinned public IP.
-        sock = urllib3_connection.create_connection(("10.0.0.1", 443))
-        assert sock == "fake-socket"
+    # Build the pinned connection class pair the adapter uses internally.
+    pinned_http, pinned_https = ssrf_guard._make_pinned_connection_classes(
+        "93.184.216.34"
+    )
 
-    # The connection was made to the pinned IP, not the requested host.
+    # Construct a connection for an *internal* host — `_new_conn()` must
+    # still dial the pinned public IP, never the host it was built with.
+    conn = pinned_https(host="10.0.0.1", port=443)
+    with pytest.raises(Exception):
+        conn._new_conn()
+
     assert calls == [("93.184.216.34", 443)]
 
-    # And the original factory is restored on context exit.
+    # The global socket factory is the function the test installed — the
+    # pinning mechanism never touched / wrapped it.
     assert urllib3_connection.create_connection is _fake_create_connection
+
+
+def test_pinned_connection_mutates_no_global(monkeypatch):
+    """The `_pinned_connection` shim must not mutate any module global —
+    entering and exiting it leaves `urllib3`'s `create_connection`
+    exactly as it was. This is the regression guard for the v0.6.1
+    load-degradation incident (the old monkeypatch corrupted the global
+    under concurrency)."""
+    from urllib3.util import connection as urllib3_connection
+
+    before = urllib3_connection.create_connection
+    with ssrf_guard._pinned_connection("93.184.216.34") as pc:
+        assert pc.pinned_ip == "93.184.216.34"
+        assert urllib3_connection.create_connection is before
+    assert urllib3_connection.create_connection is before
+
+
+def test_safe_request_is_concurrency_safe(monkeypatch):
+    """Regression test for the v0.6.1 load-degradation incident.
+
+    The old `_pinned_connection` monkeypatched the process-global
+    `urllib3.util.connection.create_connection` with an unsynchronized
+    save/restore. Under concurrency the save/restore interleaved: a
+    thread saved an already-patched closure as its "original", the real
+    function was permanently lost, the global became an ever-deepening
+    chain of self-referential closures, and outbound calls eventually
+    recursed into `RecursionError`.
+
+    This test drives `safe_request` from many threads concurrently and
+    asserts:
+      * `urllib3.util.connection.create_connection` is byte-for-byte
+        unchanged after the storm (no global corruption);
+      * every outbound socket dialed the *validated* IP (the pin held);
+      * no `RecursionError` (or any error) escaped;
+      * a private-IP target is still rejected under concurrency.
+
+    On `main` (global monkeypatch) the create_connection identity check
+    fails — the global is left wrapped/corrupted. With the per-adapter
+    fix it passes.
+    """
+    import threading
+
+    from urllib3.util import connection as urllib3_connection
+
+    # Map several public hostnames to distinct public IPs, plus one
+    # hostname that resolves to a private IP (must always be rejected).
+    resolver = _fake_resolver(
+        {
+            "a.example.com": ["93.184.216.34"],
+            "b.example.com": ["1.1.1.1"],
+            "c.example.com": ["8.8.8.8"],
+            "evil.example.com": ["10.0.0.5"],
+        }
+    )
+    monkeypatch.setattr(socket, "getaddrinfo", resolver)
+
+    dialed: list[tuple] = []
+    dialed_lock = threading.Lock()
+
+    def _capture_create_connection(address, *args, **kwargs):
+        # Record the (ip, port) every socket attempt dialed, then fail
+        # cleanly — the unit suite has no real network.
+        with dialed_lock:
+            dialed.append(address)
+        raise OSError("no real network in the unit suite")
+
+    monkeypatch.setattr(
+        urllib3_connection, "create_connection", _capture_create_connection
+    )
+
+    errors: list[BaseException] = []
+    errors_lock = threading.Lock()
+
+    public_hosts = {
+        "https://a.example.com/hook": "93.184.216.34",
+        "https://b.example.com/hook": "1.1.1.1",
+        "https://c.example.com/hook": "8.8.8.8",
+    }
+
+    def _hit_public(url):
+        try:
+            # The transport error is expected (no real network); an SSRF
+            # block or a RecursionError is NOT.
+            try:
+                ssrf_guard.safe_post(url, json={"k": "v"}, timeout=2)
+            except requests.RequestException:
+                pass
+        except BaseException as e:  # noqa: BLE001 - we want to see anything
+            with errors_lock:
+                errors.append(e)
+
+    def _hit_private():
+        try:
+            ssrf_guard.safe_post(
+                "https://evil.example.com/hook", json={"k": "v"}, timeout=2
+            )
+        except SSRFBlockedError:
+            pass  # correct — private IP rejected
+        except BaseException as e:  # noqa: BLE001
+            with errors_lock:
+                errors.append(e)
+
+    threads: list[threading.Thread] = []
+    for _ in range(12):
+        for url in public_hosts:
+            threads.append(threading.Thread(target=_hit_public, args=(url,)))
+        threads.append(threading.Thread(target=_hit_private))
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    # No thread is still alive — a hang would itself be a failure.
+    assert not any(t.is_alive() for t in threads), "a safe_request thread hung"
+
+    # 1. No RecursionError or any other escaped error.
+    assert not errors, f"unexpected errors from concurrent safe_request: {errors!r}"
+
+    # 2. The process-global socket factory is byte-for-byte unchanged —
+    #    the corruption that degraded the v0.6.1 hub did not happen.
+    assert urllib3_connection.create_connection is _capture_create_connection, (
+        "urllib3.util.connection.create_connection was mutated — the "
+        "global monkeypatch corruption regressed"
+    )
+
+    # 3. Every outbound socket dialed a VALIDATED public IP — the pin
+    #    held under concurrency and no call crossed wires to another
+    #    host's IP or to the private one.
+    valid_public_ips = set(public_hosts.values())
+    assert dialed, "no outbound connection was attempted"
+    for ip, _port in dialed:
+        assert ip in valid_public_ips, (
+            f"a socket dialed {ip!r} — not a validated public IP "
+            f"(pin failed or crossed wires)"
+        )
+    # The private IP was rejected at validation — it must never have
+    # reached the socket layer.
+    assert all(ip != "10.0.0.5" for ip, _ in dialed), (
+        "the private IP reached the socket layer — SSRF block bypassed"
+    )

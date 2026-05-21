@@ -45,6 +45,8 @@ from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection, HTTPSConnection
+from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.poolmanager import PoolManager
 from urllib3.util import connection as urllib3_connection
 
@@ -222,24 +224,112 @@ def validate_url(url: str, *, allow_internal: bool = False) -> tuple[str, str, i
     return hostname, pinned_ip, port
 
 
-# ── IP-pinned transport ────────────────────────────────────────────────
+# ── IP-pinned transport — thread-safe, no module-global mutation ───────
+#
+# DESIGN (load-degradation incident fix, 2026-05-21)
+#
+# The old implementation monkeypatched the PROCESS-GLOBAL
+# `urllib3.util.connection.create_connection` for the duration of every
+# request (`_pinned_connection`). Under concurrency — 8 gunicorn threads
+# plus the APScheduler webhook-delivery job — the unsynchronized
+# save/restore interleaved: a thread could save an already-*patched*
+# closure as its "original" and restore to that, permanently losing the
+# real function and turning the global into an ever-deepening chain of
+# self-referential closures until every outbound call hit `RecursionError`.
+# The corruption was cumulative and permanent for the process lifetime.
+#
+# This re-implementation eliminates the global monkeypatch entirely. The
+# IP pin is carried on PER-CALL connection subclasses whose `_new_conn`
+# substitutes the validated IP as the connect target. The pinned IP is
+# closed over per `safe_request()` call — nothing module-global is ever
+# mutated, so the mechanism is thread-safe by construction: concurrent
+# requests to different hosts each own their own adapter / pool manager /
+# connection classes and cannot cross wires.
+#
+# The SSRF protection is fully preserved:
+#   * the hostname is still resolved and every A/AAAA record validated
+#     in `validate_url()` (unchanged);
+#   * the connection is still PINNED to the validated IP — `_new_conn`
+#     dials the pinned literal address, so a DNS answer that changes
+#     between validation and connect (DNS rebinding / TOCTOU) cannot
+#     redirect the socket to an internal host;
+#   * `self.host` is left as the original hostname, so the TLS SNI /
+#     `server_hostname` and the `Host` request header still carry the
+#     real hostname — virtual-hosted and TLS-validated receivers work.
+
+
+def _make_pinned_connection_classes(pinned_ip: str):
+    """Build a `(HTTPConnection, HTTPSConnection)` subclass pair whose
+    `_new_conn()` dials `pinned_ip` instead of re-resolving the host.
+
+    The classes are created fresh per `safe_request()` call with
+    `pinned_ip` closed over — no shared mutable state, so this is safe to
+    call from any number of threads concurrently.
+
+    `_new_conn()` is urllib3's single socket-creation chokepoint for both
+    plain and TLS connections. We override only the connect *target*
+    (the IP), leaving `self.host` / `self.server_hostname` untouched so
+    TLS SNI and certificate validation still use the real hostname.
+    """
+
+    def _pinned_new_conn(self) -> socket.socket:
+        # Mirror urllib3.connection.HTTPConnection._new_conn, but dial
+        # the pre-validated IP. `self.host` (and therefore SNI / the Host
+        # header) is left exactly as the URL set it.
+        from urllib3.exceptions import (
+            ConnectTimeoutError,
+            NameResolutionError,
+            NewConnectionError,
+        )
+
+        try:
+            sock = urllib3_connection.create_connection(
+                (pinned_ip, self.port),
+                self.timeout,
+                source_address=self.source_address,
+                socket_options=self.socket_options,
+            )
+        except socket.gaierror as e:  # pragma: no cover - pinned IP is a literal
+            raise NameResolutionError(self.host, self, e) from e
+        except socket.timeout as e:
+            raise ConnectTimeoutError(
+                self,
+                f"Connection to {self.host} timed out. "
+                f"(connect timeout={self.timeout})",
+            ) from e
+        except OSError as e:
+            raise NewConnectionError(
+                self, f"Failed to establish a new connection: {e}"
+            ) from e
+        return sock
+
+    pinned_http = type(
+        "PinnedHTTPConnection",
+        (HTTPConnection,),
+        {"_new_conn": _pinned_new_conn},
+    )
+    pinned_https = type(
+        "PinnedHTTPSConnection",
+        (HTTPSConnection,),
+        {"_new_conn": _pinned_new_conn},
+    )
+    return pinned_http, pinned_https
 
 
 class _PinnedHTTPAdapter(HTTPAdapter):
-    """A `requests` transport adapter that forces every socket for this
-    session to connect to one pre-validated IP.
+    """A `requests` transport adapter that forces every socket opened
+    through it to connect to one pre-validated IP.
 
-    This is the DNS-rebinding (TOCTOU) close-out: validation resolved
-    the hostname and proved every record is public; without pinning,
-    `requests` would resolve the name *again* at connect time and an
-    attacker controlling the DNS could swap in an internal IP between
-    the two lookups. By overriding `urllib3`'s `create_connection` to
-    ignore the requested host and dial the pinned IP, the connect target
-    is the literal address we already validated.
+    The pin is carried entirely on instance-scoped state: a per-adapter
+    `PoolManager` whose `HTTPConnectionPool` / `HTTPSConnectionPool`
+    subclasses use connection classes that dial the pinned IP. No module
+    global is mutated, so any number of `_PinnedHTTPAdapter` instances —
+    each pinned to a different IP — can be in flight on different threads
+    at once without interfering.
 
     The `Host` header / TLS SNI still carry the original hostname (the
     URL is unchanged), so virtual-hosted and TLS-validated receivers
-    work normally.
+    work normally — only the TCP connect target is the validated IP.
     """
 
     def __init__(self, pinned_ip: str, *args, **kwargs):
@@ -247,20 +337,31 @@ class _PinnedHTTPAdapter(HTTPAdapter):
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
-        pinned_ip = self._pinned_ip
+        pinned_http_conn, pinned_https_conn = _make_pinned_connection_classes(
+            self._pinned_ip
+        )
+
+        # Per-adapter pool subclasses bound to the pinned connection
+        # classes. urllib3 keys pools by (scheme, host, port) — we leave
+        # the key as the real hostname so SNI / Host stay correct; only
+        # the connection's connect *target* is the pinned IP.
+        class _PinnedHTTPConnectionPool(HTTPConnectionPool):
+            ConnectionCls = pinned_http_conn
+
+        class _PinnedHTTPSConnectionPool(HTTPSConnectionPool):
+            ConnectionCls = pinned_https_conn
 
         class _PinnedPoolManager(PoolManager):
-            def _new_pool(self, scheme, host, port, request_context=None):
-                # urllib3 keys pools by (scheme, host, port). We leave
-                # the key as the hostname (so SNI/Host stay correct) and
-                # inject the pinned IP via the socket-options path below.
-                return super()._new_pool(scheme, host, port, request_context)
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                # Instance-level override of the scheme→pool-class map so
+                # this PoolManager — and only this one — builds pinned
+                # pools. The class-level `urllib3` default is untouched.
+                self.pool_classes_by_scheme = {
+                    "http": _PinnedHTTPConnectionPool,
+                    "https": _PinnedHTTPSConnectionPool,
+                }
 
-        # urllib3's connection factory honours a module-level
-        # `allowed_gai_family`; the clean, version-stable hook is to wrap
-        # `create_connection`. We do that per-request in `safe_request`
-        # via a context-managed monkeypatch rather than globally, so
-        # concurrent sends to different hosts never cross wires.
         self.poolmanager = _PinnedPoolManager(
             num_pools=connections,
             maxsize=maxsize,
@@ -270,37 +371,37 @@ class _PinnedHTTPAdapter(HTTPAdapter):
 
 
 class _pinned_connection:
-    """Context manager that pins `urllib3`'s `create_connection` to one
-    IP for the duration of a single request.
+    """Backward-compatible context manager that pins outbound sockets to
+    one validated IP for the duration of a `with` block.
 
-    `urllib3.util.connection.create_connection` is the one function
-    every HTTP/HTTPS connection in `requests` funnels through. Swapping
-    the destination host for the validated IP here — and only here, for
-    the lifetime of one `with` block — guarantees the socket dials the
-    address we vetted, with no global state and no concurrency hazard
-    beyond the patch window (which is held only across `session.request`).
+    Historically this monkeypatched the process-global
+    `urllib3.util.connection.create_connection`, which corrupted under
+    concurrency (see the module-level DESIGN note). It is retained ONLY
+    as a thin no-op-style shim so any caller / test still referencing it
+    keeps working — the real pinning is now done by `_PinnedHTTPAdapter`,
+    which `safe_request()` mounts on the per-call `requests.Session`.
+
+    Entering this context yields the pinned IP and mutates NO global
+    state, so it is fully thread-safe; the actual connection pinning
+    happens in the adapter regardless of whether this is used.
     """
 
     def __init__(self, pinned_ip: str):
         self._pinned_ip = pinned_ip
-        self._original = None
 
     def __enter__(self):
-        self._original = urllib3_connection.create_connection
-        pinned_ip = self._pinned_ip
-        original = self._original
-
-        def _patched(address, *args, **kwargs):
-            host, port = address
-            return original((pinned_ip, port), *args, **kwargs)
-
-        urllib3_connection.create_connection = _patched
         return self
 
     def __exit__(self, *exc):
-        if self._original is not None:
-            urllib3_connection.create_connection = self._original
         return False
+
+    @property
+    def pinned_ip(self) -> str:
+        return self._pinned_ip
+
+    def build_adapter(self) -> "_PinnedHTTPAdapter":
+        """Return an IP-pinned `requests` adapter for this IP."""
+        return _PinnedHTTPAdapter(self._pinned_ip)
 
 
 # ── The public sender ──────────────────────────────────────────────────
@@ -337,26 +438,34 @@ def safe_request(
     session = requests.Session()
     # Disable env-var proxies — a proxy would route around the IP pin.
     session.trust_env = False
+    # Mount an IP-pinned transport adapter for BOTH schemes. The adapter
+    # carries the pin entirely on instance state (a per-call PoolManager
+    # with pinned connection classes) — no module global is mutated, so
+    # concurrent `safe_request` calls on other threads are unaffected.
+    # This is the thread-safe replacement for the old context-managed
+    # monkeypatch of `urllib3.util.connection.create_connection`.
+    pinned_adapter = _PinnedHTTPAdapter(pinned_ip)
+    session.mount("http://", pinned_adapter)
+    session.mount("https://", pinned_adapter)
     try:
-        with _pinned_connection(pinned_ip):
-            resp = session.request(
-                method=method.upper(),
-                url=url,
-                headers=headers or {},
-                json=json,
-                data=data,
-                timeout=timeout,
-                allow_redirects=allow_redirects,
-                stream=True,  # stream so we can enforce the size cap.
-            )
-            # Read at most `max_response_bytes` so a malicious receiver
-            # cannot exhaust memory with a huge body.
-            body = resp.raw.read(max_response_bytes + 1, decode_content=True)
-            if len(body) > max_response_bytes:
-                body = body[:max_response_bytes]
-            # Re-attach the (capped) body so callers can read `.text`.
-            resp._content = body
-            resp._content_consumed = True
+        resp = session.request(
+            method=method.upper(),
+            url=url,
+            headers=headers or {},
+            json=json,
+            data=data,
+            timeout=timeout,
+            allow_redirects=allow_redirects,
+            stream=True,  # stream so we can enforce the size cap.
+        )
+        # Read at most `max_response_bytes` so a malicious receiver
+        # cannot exhaust memory with a huge body.
+        body = resp.raw.read(max_response_bytes + 1, decode_content=True)
+        if len(body) > max_response_bytes:
+            body = body[:max_response_bytes]
+        # Re-attach the (capped) body so callers can read `.text`.
+        resp._content = body
+        resp._content_consumed = True
         return resp
     finally:
         session.close()
