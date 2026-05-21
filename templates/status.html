@@ -2,6 +2,23 @@
 {% block title %}Status - Rebooter-Droids{% endblock %}
 {% block content %}
 
+{# ── Tier-2 Feature 1: first-run setup banner ─────────────────────── #}
+{% if show_first_run %}
+<section class="v3-card" style="border-color: var(--green-fg); margin-bottom:1rem">
+  <h2 style="margin-top:0">Welcome — your hub isn't set up yet</h2>
+  <p class="muted">
+    Take a couple of minutes to name your portal, confirm email, and set up
+    your first device with a plain-language walkthrough.
+  </p>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('admin_ui.setup_wizard_entry') }}">Start setup</a>
+    <form method="post" action="{{ url_for('admin_ui.setup_wizard_skip') }}" style="display:inline">
+      <button type="submit" class="btn btn-secondary">Dismiss</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
 {# ── v0.4.7 (B7) maintenance-mode banner ──────────────────────────── #}
 {% if maintenance and maintenance.on %}
 <section class="v3-card" style="border-color: var(--accent-amber); margin-bottom:1rem">
