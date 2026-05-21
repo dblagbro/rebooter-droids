@@ -40,12 +40,22 @@ def ensure_schema() -> bool:
     create_all() does NOT issue ALTER TABLE for new columns on tables that
     already exist — _ensure_columns() handles those one-by-one with
     ADD COLUMN IF NOT EXISTS.
+
+    The `pg_advisory_lock` serialises concurrent gunicorn workers racing
+    this path on the production Postgres database. It is a Postgres-only
+    function, so it is skipped on any other dialect — the SQLite
+    unit-test backend is a single in-process connection with no worker
+    race to guard against.
     """
     engine = get_engine()
     with engine.begin() as conn:
         from sqlalchemy import text
 
-        conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _SCHEMA_LOCK_KEY})
+        use_advisory_lock = conn.dialect.name == "postgresql"
+        if use_advisory_lock:
+            conn.execute(
+                text("SELECT pg_advisory_lock(:k)"), {"k": _SCHEMA_LOCK_KEY}
+            )
         try:
             inspector = inspect(conn)
             fresh = not inspector.has_table("users")
@@ -53,9 +63,23 @@ def ensure_schema() -> bool:
                 log.info("Bootstrapping schema — running Base.metadata.create_all()")
             Base.metadata.create_all(bind=conn)
             _ensure_columns(conn)
+            # org-boundary bootstrap fix (2026-05-21): add the
+            # `organization_id` column to every PRE-EXISTING table that
+            # gained it with the org work. `create_all()` above creates
+            # the `organizations` table and any wholly-new org-era table,
+            # but it does NOT add the new column to tables that predate
+            # the org release — only this ALTER does. This MUST run
+            # before `ensure_default_organization_backfill()`, whose
+            # `UPDATE ... SET organization_id` would otherwise crash on
+            # an upgraded production database.
+            _ensure_org_id_columns(conn)
             return fresh
         finally:
-            conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _SCHEMA_LOCK_KEY})
+            if use_advisory_lock:
+                conn.execute(
+                    text("SELECT pg_advisory_unlock(:k)"),
+                    {"k": _SCHEMA_LOCK_KEY},
+                )
 
 
 # Idempotent ADD COLUMN steps for columns added after a table's first ship.
@@ -136,11 +160,123 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
 
 
 def _ensure_columns(conn) -> None:
+    """Idempotently add every `_PENDING_COLUMNS` entry.
+
+    Production is Postgres, where `ALTER TABLE ADD COLUMN IF NOT EXISTS`
+    is the proven, atomic idempotent form — kept exactly as before. The
+    unit-test suite runs on SQLite, whose `ALTER TABLE` has no
+    `IF NOT EXISTS` clause; there the column's presence is checked via
+    the inspector first and a plain `ADD COLUMN` is issued for the
+    missing ones. The Postgres path is byte-for-byte unchanged.
+    """
     from sqlalchemy import text
 
+    is_postgres = conn.dialect.name == "postgresql"
+    inspector = None if is_postgres else inspect(conn)
+    existing_tables = None if is_postgres else set(inspector.get_table_names())
     for table, column, ddl in _PENDING_COLUMNS:
+        if is_postgres:
+            conn.execute(
+                text(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
+                    f"{column} {ddl}"
+                )
+            )
+            continue
+        # Non-Postgres (SQLite test path): no IF NOT EXISTS — inspect.
+        if table not in existing_tables:
+            continue
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        if column in columns:
+            continue
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+
+
+# org-boundary bootstrap fix (2026-05-21): the pre-existing tables that
+# gained an `organization_id` column with the org-boundary work. These
+# tables existed in the baseline schema (migration 0001) BEFORE the org
+# release, so on an upgraded production database `create_all()` does NOT
+# add the new column to them — only `ALTER TABLE ADD COLUMN` does. New
+# org-era tables (organizations, organization_memberships, api_tokens,
+# webhook_channels, notification_subscriptions, webhook_deliveries) are
+# created whole by `create_all()` and need no entry here.
+#
+# This list is the union of:
+#   * the 10 Tier-A tables of Alembic 0003 (`_TIER_A_TABLES`),
+#   * `device_announcements` from Alembic 0004, and
+#   * `audit_events_archive` (the un-FK'd mirror column, also 0003).
+# It must stay in sync with `_ORG_TIER_A_TABLES` below (plus the archive
+# table, which the data backfill does not touch but whose column the
+# models still expect — see `AuditEventArchive.organization_id`).
+#
+# The column type is `VARCHAR(40)` — matching `String(40)` in the
+# `TenantScoped` mixin / `tenant_scoped_org_column()` and `sa.String(40)`
+# in Alembic 0003/0004. It is added NULLABLE here; the NOT-NULL flip is
+# Alembic 0007's job and is intentionally not part of the bootstrap (the
+# `_PENDING_*` lists are frozen as of the org release — design §6.2).
+# No FK is added — `ADD COLUMN` cannot portably add an inline FK on
+# SQLite, the live production DB is Postgres where the FK is carried by
+# Alembic 0003/0004, and a missing FK never breaks the backfill or the
+# `do_orm_execute` / `before_flush` org filter (which key off the column
+# value, not the constraint).
+_ORG_ID_PREEXISTING_TABLES: tuple[str, ...] = (
+    "sites",
+    "groups",
+    "watchdog_rules",
+    "schedules",
+    "scenes",
+    "enrollment_tokens",
+    "external_sensor_sources",
+    "role_bindings",
+    "invitations",
+    "audit_events",
+    "device_announcements",
+    "audit_events_archive",
+)
+
+
+def _ensure_org_id_columns(conn) -> None:
+    """Add the `organization_id` column to every pre-existing table that
+    gained it with the org-boundary work — org-boundary bootstrap fix.
+
+    The org release added `organization_id` to the SQLAlchemy models, to
+    `ensure_default_organization_backfill()` and to the Alembic
+    migrations (0003/0004) — but the column-CREATION on existing tables
+    was never wired into the startup bootstrap. The hub does not run
+    Alembic at runtime; production schema is managed entirely by
+    `ensure_schema()` (`create_all` + `_ensure_columns`). `create_all`
+    only creates missing TABLES, never columns on existing ones, so on an
+    upgraded production database `organization_id` was created on ZERO
+    pre-existing tenant tables and `ensure_default_organization_backfill`
+    crashed on `UPDATE ... SET organization_id`.
+
+    This closes that gap. It mirrors `_ensure_columns()` — an idempotent
+    `ADD COLUMN` per table — but is dialect-portable: SQLite's
+    `ALTER TABLE` has no `ADD COLUMN IF NOT EXISTS`, so the column's
+    presence is checked via the inspector first (a fresh `create_all()`
+    database already has it from the model definition; a re-run of
+    bootstrap on an already-upgraded database also has it).
+    """
+    from sqlalchemy import text
+
+    inspector = inspect(conn)
+    existing_tables = set(inspector.get_table_names())
+    for table in _ORG_ID_PREEXISTING_TABLES:
+        if table not in existing_tables:
+            # The table itself does not exist yet — `create_all()` has
+            # just created it whole (with `organization_id` already in
+            # it) or it is genuinely absent. Either way, nothing to ALTER.
+            continue
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        if "organization_id" in columns:
+            continue
+        log.info(
+            "org-boundary bootstrap: adding organization_id column to "
+            "pre-existing table %s",
+            table,
+        )
         conn.execute(
-            text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
+            text(f"ALTER TABLE {table} ADD COLUMN organization_id VARCHAR(40)")
         )
 
 
@@ -160,8 +296,21 @@ _PENDING_CONSTRAINTS: tuple[tuple[str, str, str], ...] = (
 
 def _ensure_constraints(conn) -> None:
     """Apply pending constraints that depend on backfills having run.
-    Called from run_startup_bootstrap() AFTER the backfills."""
+    Called from run_startup_bootstrap() AFTER the backfills.
+
+    The `_PENDING_CONSTRAINTS` entries are Postgres-specific — both the
+    `information_schema.columns` check query and the `ALTER COLUMN ...
+    SET NOT NULL` statement are Postgres-only DDL. Production is
+    Postgres, so this is correct there. On any other dialect (the SQLite
+    unit-test path) this is a no-op: the test schema is built directly
+    by `create_all()`, which already declares each column's final
+    nullability from the model definition, so there is no post-backfill
+    constraint to apply.
+    """
     from sqlalchemy import text
+
+    if conn.dialect.name != "postgresql":
+        return
 
     for table, check_query, alter_ddl in _PENDING_CONSTRAINTS:
         already_applied = conn.execute(text(check_query)).scalar()
