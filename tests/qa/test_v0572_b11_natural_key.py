@@ -12,6 +12,12 @@ unique natural key matches an existing row reconciles into an update
 this hub lacks is remapped to the local Default site (no FK error).
 
 In-process SQLite — runs in the `-m ci` gate.
+
+org-boundary phase 3: `sites.organization_id` is NOT NULL and the
+applier verifies/scopes the event's org (design §3.7). The fixture
+seeds one `Organization` (`ORG_ID`); `site` and `device` events carry
+it in `scope_claims` so the applier can verify + scope them. `user`
+events carry no org claim (a user is M:N to orgs).
 """
 
 from __future__ import annotations
@@ -23,13 +29,14 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401 — registers every model on Base.metadata
-from app.models import Base, Device, Site, User
+from app.models import Base, Device, Organization, Site, User
 from app.models.sync import OutboxEvent
 from app.services import sync as sync_svc
 
 pytestmark = pytest.mark.ci
 
 T0 = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+ORG_ID = "org_testnatkey0001"
 
 
 @pytest.fixture
@@ -37,25 +44,40 @@ def session():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as s:
+        # org-boundary phase 3: the applier verifies the event's org —
+        # seed it once for the whole test.
+        s.add(Organization(
+            id=ORG_ID, name="Nat-Key Test Org", slug="natkey-test",
+            status="active", plan="legacy", is_self_hosted_default=False,
+        ))
+        s.flush()
         yield s
 
 
 def _event(entity_type, entity_id, payload, at):
+    # org-boundary phase 3: `site` and `device` events carry the org in
+    # `scope_claims`; a `user` is M:N to orgs and carries no claim.
+    scope_claims = (
+        {"organization_id": ORG_ID}
+        if entity_type in ("site", "device", "group")
+        else None
+    )
     return OutboxEvent(
         seq=1, at=at.isoformat(), event_type=f"{entity_type}.updated",
         entity_type=entity_type, entity_id=entity_id, payload=payload,
-        tombstone_for=None,
+        tombstone_for=None, scope_claims=scope_claims,
     )
 
 
 def test_site_create_reconciles_on_name_not_collides(session):
     # Local "Default" under one id; peer sends "Default" under another.
     session.add(Site(id="site_local", name="Default", description="local",
-                      created_at=T0, updated_at=T0))
+                      organization_id=ORG_ID, created_at=T0, updated_at=T0))
     session.flush()
     newer = T0 + timedelta(minutes=5)
     ev = _event("site", "site_peer", {
         "id": "site_peer", "name": "Default", "description": "from peer",
+        "organization_id": ORG_ID,
         "created_at": newer.isoformat(), "updated_at": newer.isoformat(),
     }, newer)
     assert sync_svc.apply_outbox_event(session, ev) is True
@@ -85,10 +107,11 @@ def test_natural_key_reconcile_still_respects_lww(session):
     # Local row is NEWER — a stale peer event must not overwrite it.
     newer = T0 + timedelta(minutes=5)
     session.add(Site(id="site_local", name="Default", description="current",
-                     created_at=T0, updated_at=newer))
+                     organization_id=ORG_ID, created_at=T0, updated_at=newer))
     session.flush()
     ev = _event("site", "site_peer", {
         "id": "site_peer", "name": "Default", "description": "stale",
+        "organization_id": ORG_ID,
         "created_at": T0.isoformat(), "updated_at": T0.isoformat(),
     }, T0)
     assert sync_svc.apply_outbox_event(session, ev) is False
@@ -98,7 +121,7 @@ def test_natural_key_reconcile_still_respects_lww(session):
 
 def test_device_with_unknown_site_id_is_remapped_to_default(session):
     session.add(Site(id="site_default", name="Default",
-                     created_at=T0, updated_at=T0))
+                     organization_id=ORG_ID, created_at=T0, updated_at=T0))
     session.flush()
     ev = _event("device", "dev_x", {
         "id": "dev_x", "display_name": "Plug", "site_id": "site_ghost",
@@ -111,8 +134,8 @@ def test_device_with_unknown_site_id_is_remapped_to_default(session):
 
 
 def test_device_known_site_id_is_left_alone(session):
-    session.add(Site(id="site_default", name="Default", created_at=T0, updated_at=T0))
-    session.add(Site(id="site_garage", name="Garage", created_at=T0, updated_at=T0))
+    session.add(Site(id="site_default", name="Default", organization_id=ORG_ID, created_at=T0, updated_at=T0))
+    session.add(Site(id="site_garage", name="Garage", organization_id=ORG_ID, created_at=T0, updated_at=T0))
     session.flush()
     ev = _event("device", "dev_y", {
         "id": "dev_y", "display_name": "Plug", "site_id": "site_garage",
