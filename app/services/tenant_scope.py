@@ -27,9 +27,17 @@ shadow→enforce pattern the team already trusts for RBAC. There is no
 code branch to flip: the cut-over is a single runtime-setting toggle
 with no redeploy.
 
-TODO(org-phase3): NOT-NULL flip on `organization_id`, per-org unique
-constraints, FK on-delete swaps, and Postgres RLS are deferred to
-phase 3 — see the design doc §8.1 step 9 and §6.3.
+Phase 3 (constraint hardening) shipped the NOT-NULL flip on
+`organization_id`, the per-org unique constraints and the FK on-delete
+swaps via Alembic revision 0005. The `TenantScoped` mixin still
+declares the column as NULLABLE / SET NULL — that is the correct shape
+for the two Tier-A tables whose column stays nullable forever
+(`audit_events`, `device_announcements`, design §3.6 / §2). Every
+other Tier-A model OVERRIDES `organization_id` locally to NOT NULL with
+its per-table on-delete behaviour; the override matches migration 0005.
+
+Postgres RLS (design §3.1 / §8.1 step 9) is deliberately NOT in
+phase 3 — see `tenant_rls_todo()` below for the rationale.
 """
 
 from __future__ import annotations
@@ -58,25 +66,60 @@ class TenantScoped:
     `with_loader_criteria(TenantScoped, ...)` filters all of them at once.
 
     The column is declared here (rather than per-model) via
-    `declared_attr` so every Tier-A table gets an identical definition.
-    The column is NULLABLE in phase 1/2 — see the module docstring.
+    `declared_attr` so every Tier-A table gets a default definition:
+    NULLABLE with an on-delete SET NULL FK.
 
-    TODO(org-phase3): make `organization_id` NOT NULL via a migration
-    once `ensure_default_organization_backfill()` is confirmed on every
-    DB, and swap the per-table on-delete behaviour.
+    Phase 3 (constraint hardening) flipped most Tier-A columns to NOT
+    NULL with a per-table on-delete behaviour (RESTRICT / CASCADE) —
+    Alembic revision 0005. SQLAlchemy `declared_attr` cannot express
+    per-table differences, so the mixin keeps the *nullable / SET NULL*
+    shape — which is exactly correct for the two Tier-A tables whose
+    column stays nullable forever: `audit_events` (platform/system
+    audit rows have no org, §3.6) and `device_announcements` (an
+    un-adopted announcement legitimately has no org, §2). Those two use
+    the mixin column unchanged. Every other Tier-A model OVERRIDES
+    `organization_id` with `tenant_scoped_org_column(...)` below to get
+    NOT NULL + its target on-delete behaviour, matching migration 0005.
+
+    `with_loader_criteria(TenantScoped, ...)` still filters on the
+    `organization_id` attribute regardless of which definition a model
+    used, so the read filter is unaffected by the override.
     """
 
     @declared_attr
     def organization_id(cls) -> Mapped[Optional[str]]:
         return mapped_column(
             String(40),
-            # SET NULL on-delete so a stray org delete can never block.
-            # TODO(org-phase3): swap the per-table on-delete behaviour
-            # (RESTRICT for sites/groups/rules) alongside the NOT-NULL
-            # flip — see design §2 Tier-A table.
+            # SET NULL on-delete — the default for the nullable Tier-A
+            # tables. NOT-NULL Tier-A models override this; see
+            # tenant_scoped_org_column().
             ForeignKey("organizations.id", ondelete="SET NULL"),
             nullable=True,
         )
+
+
+def tenant_scoped_org_column(ondelete: str = "RESTRICT"):
+    """A NOT-NULL `organization_id` column for a Tier-A model.
+
+    Phase 3: most Tier-A tables require `organization_id` (NOT NULL) and
+    use a per-table on-delete behaviour — `RESTRICT` for the org-owned
+    config entities (sites, groups, rules, schedules, scenes, tokens,
+    sensor sources, role bindings) so an accidental org delete fails
+    loudly, `CASCADE` for `invitations` (an invite is meaningless once
+    its org is gone). A model overrides the mixin's nullable column by
+    re-declaring `organization_id` with this helper:
+
+        class Site(TenantScoped, Base):
+            organization_id = tenant_scoped_org_column("RESTRICT")
+
+    The column name and FK target match the mixin and migration 0005 so
+    `with_loader_criteria(TenantScoped, ...)` still filters it.
+    """
+    return mapped_column(
+        String(40),
+        ForeignKey("organizations.id", ondelete=ondelete),
+        nullable=False,
+    )
 
 
 # ── The active-tenant ContextVars ──────────────────────────────────────
@@ -570,3 +613,47 @@ def _guard_one(obj, active_org: Optional[str], enforcing: bool, *, is_insert: bo
     # SHADOW MODE: do not block. The flush proceeds with the row's
     # original (foreign) org — legacy behaviour — and the audit row
     # above records the divergence for the ≥7-day shadow review.
+
+
+# ── Postgres RLS — deferred (design §3.1 / §8.1 step 9) ────────────────
+
+
+def tenant_rls_todo() -> str:
+    """Why Postgres Row-Level Security is NOT shipped in phase 3.
+
+    The design (§3.1, §8.1 step 9) places RLS in the *phase-2 hardening*
+    band — "defense-in-depth", to be "added underneath later without app
+    changes" — explicitly AFTER the application-level filter, the
+    constraint hardening and the shadow→enforce cut-over.
+
+    Phase 3's scope is constraint hardening (NOT NULL, per-org uniques,
+    FK on-delete) plus the sync-applier isolation fix. RLS is not cleanly
+    doable inside that scope because, per the design's own §3.1 / §8.2
+    analysis, it requires:
+
+      * every pooled connection to `SET app.org_id` per request and
+        RESET it on release — new connection-lifecycle plumbing that
+        interacts with `pool_pre_ping` (app/db.py);
+      * the bootstrap / `pg_advisory_lock` / Alembic paths to run as a
+        role that BYPASSRLS (they legitimately touch every org), which
+        is a role/grants change outside a schema migration;
+      * a Postgres-only feature — the unit-test suite runs on SQLite,
+        which has no RLS, so it cannot be exercised by tests/unit/.
+
+    Shipping a half-wired RLS layer would be worse than none. RLS
+    therefore remains a clean, separate follow-up: a dedicated revision
+    that `ENABLE ROW LEVEL SECURITY` + `CREATE POLICY USING
+    (organization_id = current_setting('app.org_id')::text)` on each
+    Tier-A table, paired with the connection-lifecycle `SET`/`RESET`
+    plumbing and a BYPASSRLS role for system contexts. The
+    application-level `do_orm_execute` filter shipped in phase 2 is the
+    primary control and is fully in force; RLS is the belt to that
+    suspenders.
+
+    This function exists so the deferral is greppable and intentional,
+    not an omission.
+    """
+    return (
+        "Postgres RLS deferred to a post-phase-3 follow-up — see "
+        "tenant_scope.tenant_rls_todo() and design §3.1 / §8.1 step 9."
+    )

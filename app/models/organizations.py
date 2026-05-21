@@ -9,15 +9,17 @@ belong to more than one org, so `users` itself does NOT carry an
 `organization_id` column).
 
 Phase 1 shipped the additive foundation (these tables + nullable
-`organization_id` on the Tier-A tables). Phase 2 ships the runtime
+`organization_id` on the Tier-A tables). Phase 2 shipped the runtime
 enforcement on top: the `do_orm_execute` tenant read filter, the
 `before_flush` write-stamping, the org ContextVar plumbing and RBAC
 re-scoping — all in `app/services/tenant_scope.py` and wired from the
-auth middleware.
+auth middleware. Phase 3 shipped the constraint hardening — the
+NOT-NULL flip on `organization_id`, the per-org unique constraints and
+the FK on-delete swaps (Alembic revision 0005), plus the sync-applier
+org-scoping fix (`app/services/sync.py`, design §3.7).
 
-TODO(org-phase3): NOT-NULL flip on `organization_id`, per-org unique
-constraints, FK on-delete swaps and Postgres RLS are deferred to
-phase 3 — see the design doc §6.3, §8.1 step 9.
+Postgres RLS (design §3.1 / §8.1 step 9) remains a clean follow-up —
+see `tenant_scope.tenant_rls_todo()` for the deferral rationale.
 """
 
 from __future__ import annotations
