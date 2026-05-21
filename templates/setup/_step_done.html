@@ -1,0 +1,15 @@
+{% extends "setup/_wizard_shell.html" %}
+{% block wizard_body %}
+<section class="v3-card" style="border-color: var(--green-fg)">
+  <h2>You're all set</h2>
+  <p>
+    Your hub is configured. From here you can enrol more devices, set up
+    watchdog rules, and keep an eye on everything from the Status page.
+  </p>
+  <form method="post" action="{{ url_for('admin_ui.setup_wizard_step_submit', step='done') }}">
+    <div class="actions">
+      <button type="submit">Finish — go to Status</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -125,6 +125,13 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # and `i_ma_estimate` carries the firmware standby estimate.
     ("device_power_samples", "i_ma_estimated", "BOOLEAN"),
     ("device_power_samples", "i_ma_estimate", "INTEGER"),
+    # Tier-2: heartbeat-folded power summary. The firmware retires the
+    # dedicated /device/power-samples endpoint and folds a compact `power`
+    # object into the heartbeat carrying the interval's min/avg/max watts.
+    # A `source="heartbeat"` DevicePowerSample row stores avg in `p_w` and
+    # the extremes here. Both additive nullable.
+    ("device_power_samples", "min_w", "NUMERIC(8,2)"),
+    ("device_power_samples", "max_w", "NUMERIC(8,2)"),
 )
 
 

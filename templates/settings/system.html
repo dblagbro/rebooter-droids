@@ -59,6 +59,24 @@
 </div>
 
 <div class="v3-card" style="margin-top:1rem">
+  <h2>First-run setup</h2>
+  <p class="muted" style="margin-top:0">
+    The setup wizard walks a new operator through naming the portal,
+    confirming email, and configuring the first device.
+  </p>
+  {% if setup.completed %}
+    <p><span class="badge green">completed</span>
+      {% if setup.completed_at %}<span class="muted" style="font-size:.85rem">on <code>{{ setup.completed_at }}</code></span>{% endif %}
+    </p>
+  {% else %}
+    <p><span class="badge amber">not completed</span></p>
+  {% endif %}
+  <div class="actions">
+    <a class="btn btn-secondary" href="{{ url_for('admin_ui.setup_wizard_entry') }}">Run setup wizard</a>
+  </div>
+</div>
+
+<div class="v3-card" style="margin-top:1rem">
   <h2>Already live elsewhere</h2>
   <ul class="muted">
     <li><strong>Portal-wide watchdog maintenance toggle</strong> — on the

@@ -1151,3 +1151,93 @@ tr:hover td { background: var(--bg-elev-2); }
   border-radius: var(--radius-sm);
 }
 .v3-jumpto-list a:hover { background: var(--bg-elev-2); text-decoration: none; }
+
+/* ── Tier-2 Feature 1: setup wizard + 3-mode picker ─────────────────────
+   No inline JS — per-mode question blocks are revealed by the CSS
+   `:checked` sibling selector so the page works under the tight CSP. */
+.wizard-progress {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+.wizard-progress li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.wizard-progress .wizard-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  font-size: 0.8rem;
+}
+.wizard-progress li.done .wizard-dot {
+  background: var(--green-bg);
+  border-color: var(--green-fg);
+  color: var(--green-fg);
+}
+.wizard-progress li.current .wizard-dot {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.wizard-progress li.current { color: var(--text-strong); font-weight: 600; }
+
+/* mode picker cards */
+.mode-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: var(--space-2) 0;
+  overflow: hidden;
+}
+.mode-card-label {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  cursor: pointer;
+  align-items: flex-start;
+}
+.mode-card-label input[type="radio"] {
+  margin-top: 0.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+}
+.mode-card-body { display: flex; flex-direction: column; gap: 0.2rem; }
+.mode-card-title { font-weight: 600; font-size: 1.05rem; }
+.mode-card-blurb { font-size: 0.95rem; }
+.mode-card-help { font-size: 0.85rem; }
+
+/* the per-mode question block is hidden until its radio is checked */
+.mode-card-questions {
+  display: none;
+  padding: 0 var(--space-3) var(--space-3);
+  border-top: 1px solid var(--border-soft);
+}
+.mode-card:has(input[type="radio"]:checked) {
+  border-color: var(--primary);
+}
+.mode-card:has(input[type="radio"]:checked) .mode-card-questions {
+  display: block;
+  padding-top: var(--space-3);
+}
+.mode-finetune {
+  margin-top: var(--space-2);
+  border-top: 1px dashed var(--border-soft);
+  padding-top: var(--space-2);
+}
+.mode-finetune summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}

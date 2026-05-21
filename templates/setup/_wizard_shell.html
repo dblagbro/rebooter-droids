@@ -1,0 +1,41 @@
+{# ── First-run wizard shell — Tier-2 Feature 1 ─────────────────────────
+   Shared chrome for every wizard step: the page header + the progress
+   dots. A step template does:
+
+     {% extends "setup/_wizard_shell.html" %}
+     {% block wizard_body %} ...step content... {% endblock %}
+
+   Expected context: step, step_index, steps (the WIZARD_STEPS tuple).
+   No inline JS — progress dots are pure CSS-styled markup.
+#}
+{% extends "layout.html" %}
+{% block title %}Setup wizard - Rebooter-Droids{% endblock %}
+{% block content %}
+<div class="v3-page-header">
+  <h1>Welcome — let's set up your hub</h1>
+  <p class="v3-page-sub">A few quick steps. You can skip this and do it later from Settings.</p>
+</div>
+
+{% set step_labels = {
+  'welcome': 'Welcome',
+  'branding': 'Name your portal',
+  'smtp': 'Email',
+  'first-device': 'First device',
+  'done': 'Done'
+} %}
+<ol class="wizard-progress" aria-label="Setup progress">
+  {% for s in steps %}
+  <li class="{% if loop.index0 < step_index %}done{% elif loop.index0 == step_index %}current{% endif %}"
+      {% if loop.index0 == step_index %}aria-current="step"{% endif %}>
+    <span class="wizard-dot" aria-hidden="true">{{ loop.index }}</span>
+    <span class="wizard-step-label">{{ step_labels.get(s, s) }}</span>
+  </li>
+  {% endfor %}
+</ol>
+
+{% block wizard_body %}{% endblock %}
+
+<form method="post" action="{{ url_for('admin_ui.setup_wizard_skip') }}" style="margin-top:1rem">
+  <button type="submit" class="btn btn-secondary">Skip setup — I'll do this later</button>
+</form>
+{% endblock %}

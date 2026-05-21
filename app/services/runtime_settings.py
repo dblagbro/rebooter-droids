@@ -138,6 +138,12 @@ SYSTEM_KEYS = (
     # v0.5.36 (B1 RBAC P2): audit retention in days; events older than this
     # are soft-pruned into audit_events_archive by the nightly job. Default 90.
     ("system.audit_retention_days",       "REBOOTER_AUDIT_RETENTION_DAYS"),
+    # Tier-2 Feature 1: first-run setup-wizard completion flag. Once the
+    # operator finishes (or dismisses) the wizard this is set truthy so
+    # the first-run banner / redirect stops firing. `system.setup_completed_at`
+    # records when. No env-var fallback — this is a pure runtime flag.
+    ("system.setup_completed",            "REBOOTER_SETUP_COMPLETED"),
+    ("system.setup_completed_at",         None),
 )
 
 # v0.5.35 (B1 RBAC Phase 1): RBAC keys. `rbac.enforce_mode` is one of
