@@ -24,6 +24,54 @@
   </p>
 </div>
 
+{# ── v0.6.5: fleet-status hero — Emporia "answer-on-open" pattern.
+   Before this section, the operator had to scan the per-device
+   table to learn whether the fleet was healthy; the page led with
+   filter chips and a dense list. This block surfaces the headline
+   counts at the top of the page so the question "is everything
+   up?" is answered before the operator reads a single row. Stats
+   are computed in the template (no route-handler change): online /
+   offline / never-heartbeated derive from devices[].heartbeat_state
+   (already used by the per-row Online badge), and pending /
+   firmware-versions reuse the values the route already passes.
+   Hidden entirely when the fleet is empty — the empty-state below
+   already handles that case. ──────────────────────────────────── #}
+{% set _online = devices|selectattr('heartbeat_state', 'equalto', 'online')|list|length %}
+{% set _offline = devices|selectattr('heartbeat_state', 'equalto', 'offline')|list|length %}
+{% set _never = devices|selectattr('heartbeat_state', 'equalto', 'never')|list|length %}
+{% set _total = devices|length %}
+{% set _pct = (_online * 100 // _total) if _total else 0 %}
+{% set _fw_count = (fw_breakdown|length) if fw_breakdown else 0 %}
+{% if _total > 0 %}
+<section class="v3-fleet-status" aria-label="Fleet status summary">
+  <div class="v3-fleet-stat v3-fleet-stat-primary
+              {% if _pct == 100 %}v3-fleet-stat-good
+              {% elif _pct >= 50 %}v3-fleet-stat-warn
+              {% else %}v3-fleet-stat-bad{% endif %}">
+    <div class="v3-fleet-stat-num">{{ _online }}<span class="v3-fleet-stat-total"> / {{ _total }}</span></div>
+    <div class="v3-fleet-stat-label">{% if _pct == 100 %}all devices online{% else %}online{% endif %}</div>
+  </div>
+  <div class="v3-fleet-stat {% if _offline > 0 %}v3-fleet-stat-bad{% endif %}">
+    <div class="v3-fleet-stat-num">{{ _offline }}</div>
+    <div class="v3-fleet-stat-label">offline</div>
+  </div>
+  {% if _never > 0 %}
+  <div class="v3-fleet-stat v3-fleet-stat-muted">
+    <div class="v3-fleet-stat-num">{{ _never }}</div>
+    <div class="v3-fleet-stat-label">never heartbeated</div>
+  </div>
+  {% endif %}
+  <div class="v3-fleet-stat {% if pending_adoption_count and pending_adoption_count > 0 %}v3-fleet-stat-warn{% endif %}">
+    <div class="v3-fleet-stat-num">{{ pending_adoption_count or 0 }}</div>
+    <div class="v3-fleet-stat-label">pending adoption</div>
+  </div>
+  <div class="v3-fleet-stat {% if _fw_count > 1 %}v3-fleet-stat-warn{% endif %}">
+    <div class="v3-fleet-stat-num">{{ _fw_count }}</div>
+    <div class="v3-fleet-stat-label">firmware version{{ '' if _fw_count == 1 else 's' }}</div>
+  </div>
+</section>
+{% endif %}
+
 {# ── v0.4.19 (Tier-1 A): firmware-version breakdown ────────────────── #}
 {% if fw_breakdown %}
 <details class="v3-card" {% if fw_breakdown|length > 1 %}open{% endif %} style="margin-bottom:1rem">
