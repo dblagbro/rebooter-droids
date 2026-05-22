@@ -36,10 +36,13 @@ This test catches exactly that. It:
      `ADD COLUMN IF NOT EXISTS`, `information_schema` constraint checks
      — that an in-process SQLite test can never exercise).
   2. Builds a *pre-existing / older* database: `create_all()` the full
-     current schema, then DROPs a representative set of model columns —
-     every droppable column the bootstrap's own upgrade lists
-     (`_PENDING_COLUMNS` + the `organization_id` columns) claim to
-     manage. A column dropped here that the bootstrap does not re-add is
+     current schema, then strips it back to an aged production shape —
+     every POST-BASELINE model column on a baseline table dropped, and
+     every org-era new whole table dropped. The drop-set is derived
+     from the models-vs-Alembic-0001 diff, NOT from the bootstrap's own
+     upgrade lists — gutting a bootstrap list must NOT shrink the
+     drop-set, or the guard could never catch the v0.6.0 bug (an
+     incomplete upgrade list). A column the bootstrap does not re-add is
      exactly a v0.6.0-class gap.
   3. Runs the FULL production `run_startup_bootstrap()` against it.
   4. Reflects the resulting LIVE Postgres schema and asserts it matches
@@ -47,16 +50,18 @@ This test catches exactly that. It:
      present.
 
 It deliberately accounts for the bootstrap's add-nullable-then-backfill-
-then-constrain approach (`_PENDING_CONSTRAINTS`) so that is not falsely
-flagged as drift: a column the bootstrap legitimately adds nullable and
-later hardens is checked for PRESENCE, and its final nullability is
-checked against the post-backfill expectation, not the raw model flag.
+then-constrain approach: nullability is compared against what the
+bootstrap is DESIGNED to leave a column at, not the raw model flag, so
+the deliberate add-nullable-then-defer-NOT-NULL path (`organization_id`,
+whose NOT NULL flip is Alembic 0007's job, not the bootstrap's) is not
+falsely flagged as drift. A column is always checked for PRESENCE.
 
 It generalises `tests/unit/test_bootstrap_org_schema_upgrade.py`, which
 proved the pattern for `organization_id` only, on SQLite. This guard
-covers EVERY managed column and runs on real Postgres inside the CI
-gate, so the next time a model gains a column without a matching
-bootstrap upgrade entry, CI goes red here instead of production.
+covers every post-baseline column and every org-era table and runs on
+real Postgres inside the CI gate, so the next time a model gains a
+column without a matching bootstrap upgrade entry, CI goes red here
+instead of production.
 
 WHERE IT RUNS
 =============
