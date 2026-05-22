@@ -214,6 +214,14 @@ def test_stale_device_with_active_assignment_surfaces_transport_stale(isolated_h
         assert device is not None
         assert hb is not None
         device.last_heartbeat_at = stale_at
+        # v0.6.3: online/offline is measured against the most-recent of
+        # `last_heartbeat_at` and `last_seen_at` (the latter moves on
+        # every authenticated device request, incl. the heartbeat above).
+        # A GENUINELY stale device has gone silent on every contact path,
+        # so the simulation must backdate both timestamps — staling only
+        # `last_heartbeat_at` would leave a fresh `last_seen_at` and the
+        # device would (correctly) still read 'online'.
+        device.last_seen_at = stale_at
         hb.received_at = stale_at
         session.add(device)
         session.add(hb)
