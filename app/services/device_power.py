@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
-from sqlalchemy import case, func, select, text
+from sqlalchemy import and_, case, func, select, text
 
 from app.db import session_scope
 from app.models import Device, DevicePowerRollup, DevicePowerSample
@@ -189,21 +189,40 @@ def latest_samples_by_device(
     now = datetime.now(timezone.utc)
     out: dict[str, dict] = {}
     with session_scope() as session:
-        # Single ordered scan + first-wins per device. For larger fleets
-        # this could move to a window-function or distinct-on, but with
-        # the current fleet size (~7) it's a non-issue.
-        rows = session.scalars(
-            select(DevicePowerSample)
+        # Fetch ONLY the latest sample per device — never the whole
+        # history. Pre-fix this ran a single UNBOUNDED select over the
+        # entire device_power_samples table (one row per sample ever —
+        # 300k+ rows) and reduced to one-per-device in Python: ~10s of
+        # ORM materialisation on the /app/devices hot path. The bug was
+        # never fleet size — it is per-device history depth. A grouped-
+        # MAX subquery + join rides the
+        # (device_id, channel_id, sampled_at) index and returns just the
+        # N latest rows. Portable — plain GROUP BY / MAX / JOIN, both
+        # Postgres and the SQLite test backend.
+        latest = (
+            select(
+                DevicePowerSample.device_id.label("device_id"),
+                func.max(DevicePowerSample.sampled_at).label("mx"),
+            )
             .where(
                 DevicePowerSample.device_id.in_(ids),
                 DevicePowerSample.channel_id == channel_id,
             )
-            .order_by(
-                DevicePowerSample.device_id.asc(),
-                DevicePowerSample.sampled_at.desc(),
+            .group_by(DevicePowerSample.device_id)
+            .subquery()
+        )
+        rows = session.scalars(
+            select(DevicePowerSample).join(
+                latest,
+                and_(
+                    DevicePowerSample.device_id == latest.c.device_id,
+                    DevicePowerSample.sampled_at == latest.c.mx,
+                    DevicePowerSample.channel_id == channel_id,
+                ),
             )
         )
         for row in rows:
+            # first-wins guards the rare exact-timestamp tie per device
             if row.device_id in out:
                 continue
             out[row.device_id] = _serialize_sample(row, now=now)

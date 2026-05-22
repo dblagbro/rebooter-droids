@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 
 from app.db import session_scope
 from app.models import (
@@ -43,19 +43,32 @@ def _latest_heartbeat_by_device(
     ids = [d for d in device_ids if d]
     if not ids:
         return {}
-    rows = list(
-        session.scalars(
-            select(DeviceHeartbeat)
-            .where(DeviceHeartbeat.device_id.in_(ids))
-            .order_by(
-                DeviceHeartbeat.device_id.asc(),
-                DeviceHeartbeat.received_at.desc(),
-            )
+    # Fetch ONLY the latest heartbeat per device — never the whole
+    # history. Pre-fix this select was UNBOUNDED: it pulled every
+    # heartbeat row for the fleet (50k+ rows) and reduced to one-per-
+    # device in Python. A grouped-MAX subquery + join rides the
+    # (device_id, received_at) index and returns just the N latest rows.
+    newest = (
+        select(
+            DeviceHeartbeat.device_id.label("device_id"),
+            func.max(DeviceHeartbeat.received_at).label("mx"),
+        )
+        .where(DeviceHeartbeat.device_id.in_(ids))
+        .group_by(DeviceHeartbeat.device_id)
+        .subquery()
+    )
+    rows = session.scalars(
+        select(DeviceHeartbeat).join(
+            newest,
+            and_(
+                DeviceHeartbeat.device_id == newest.c.device_id,
+                DeviceHeartbeat.received_at == newest.c.mx,
+            ),
         )
     )
     latest: dict[str, DeviceHeartbeat] = {}
     for row in rows:
-        # Order-by puts newest first per device_id; setdefault wins.
+        # first-wins guards the rare exact-timestamp tie per device
         latest.setdefault(row.device_id, row)
     return latest
 
