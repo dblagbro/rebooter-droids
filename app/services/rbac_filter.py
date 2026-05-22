@@ -82,13 +82,12 @@ def filter_devices_with_shadow_logging(
 ) -> list:
     """Execute device query with RBAC filtering and shadow-mode diff logging.
 
-    In shadow mode: runs both unfiltered and filtered queries, logs diff,
-    returns unfiltered results.
+    In shadow mode: runs the page query once and computes the
+    would-be-hidden diff cheaply (no second full query), logs the diff,
+    returns the unfiltered results.
 
     In enforce mode: runs filtered query, returns filtered results.
     """
-    from app.models import Device
-
     # Get filtered statement and metadata
     filtered_stmt, meta = apply_device_scope_filter(
         base_stmt, session, user_id=user_id, role_needed=role_needed
@@ -104,39 +103,55 @@ def filter_devices_with_shadow_logging(
         # Enforce mode: return filtered results only
         return list(session.scalars(filtered_stmt))
 
-    # Shadow mode: double-query and log diff
+    # Shadow mode: run the page's main query exactly ONCE, then compute
+    # the would-be-hidden diff CHEAPLY.
+    #
+    # v0.6.3 (devices-page perf): pre-0.6.3 shadow mode ran the FULL
+    # device query TWICE per page load — `base_stmt` for the returned
+    # rows AND `base_stmt` again (plus `filtered_stmt`) to diff. On the
+    # devices list, `base_stmt` is the heavy query (joins, ordering,
+    # whole-fleet scan), so shadow logging silently doubled the page's
+    # DB cost. The diff does not need the full ORM rows — only the set
+    # of device IDs the scope would hide. That is the unfiltered ID set
+    # MINUS the in-scope IDs; the unfiltered IDs come for free from the
+    # rows we already fetched, and the in-scope set is just `meta["scope"]`
+    # (already resolved by `apply_device_scope_filter`). No second
+    # execution of the page query.
     unfiltered_rows = list(session.scalars(base_stmt))
-    filtered_rows = list(session.scalars(filtered_stmt))
 
-    unfiltered_ids = {d.id for d in unfiltered_rows}
-    filtered_ids = {d.id for d in filtered_rows}
-    hidden_ids = unfiltered_ids - filtered_ids
+    scope = meta.get("scope")
+    if isinstance(scope, set):
+        unfiltered_ids = {d.id for d in unfiltered_rows}
+        # A device is "hidden" if it is in the page result but NOT in
+        # the user's effective scope — pure set arithmetic, no query.
+        hidden_ids = unfiltered_ids - scope
+        scoped_count = len(unfiltered_ids) - len(hidden_ids)
 
-    if hidden_ids:
-        # Log shadow diff
-        user = g.get("current_user")
-        audit_service.record(
-            "rbac.shadow_diff",
-            actor_user_id=user_id,
-            actor_email_snapshot=user.email if user else None,
-            target_type="device",
-            target_id=None,
-            details={
-                "resource_type": "device",
-                "role_needed": role_needed,
-                "total_count": len(unfiltered_ids),
-                "scoped_count": len(filtered_ids),
-                "hidden_count": len(hidden_ids),
-                "hidden_sample": sorted(hidden_ids)[:10],  # First 10 for inspection
-                "scope_size": meta.get("scope_size", 0),
-            },
-        )
-        log.info(
-            "RBAC shadow diff: device list for user %s would hide %d/%d devices",
-            user_id,
-            len(hidden_ids),
-            len(unfiltered_ids),
-        )
+        if hidden_ids:
+            # Log shadow diff
+            user = g.get("current_user")
+            audit_service.record(
+                "rbac.shadow_diff",
+                actor_user_id=user_id,
+                actor_email_snapshot=user.email if user else None,
+                target_type="device",
+                target_id=None,
+                details={
+                    "resource_type": "device",
+                    "role_needed": role_needed,
+                    "total_count": len(unfiltered_ids),
+                    "scoped_count": scoped_count,
+                    "hidden_count": len(hidden_ids),
+                    "hidden_sample": sorted(hidden_ids)[:10],  # First 10 for inspection
+                    "scope_size": meta.get("scope_size", 0),
+                },
+            )
+            log.info(
+                "RBAC shadow diff: device list for user %s would hide %d/%d devices",
+                user_id,
+                len(hidden_ids),
+                len(unfiltered_ids),
+            )
 
     # Shadow mode returns unfiltered results (legacy behavior preserved)
     return unfiltered_rows

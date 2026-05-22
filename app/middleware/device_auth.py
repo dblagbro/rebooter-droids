@@ -58,8 +58,20 @@ def _resolve_device():
             if device.site_id:
                 site = session.get(Site, device.site_id)
                 org_id = getattr(site, "organization_id", None) if site else None
-            cred.last_used_at = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            cred.last_used_at = now
             session.add(cred)
+            # v0.6.3 (devices-page correctness): stamp the device's real
+            # last-contact timestamp on EVERY authenticated device
+            # request — heartbeat, the /commands long-poll, command-result,
+            # events, firmware-check, failsafe. Pre-0.6.3 only a full
+            # /heartbeat moved a contact timestamp the devices list could
+            # see, so a device that was actively long-polling /commands
+            # but not yet due for a heartbeat rendered 'offline' while
+            # plainly reachable. `last_seen_at` lets the list reflect the
+            # device's REAL last contact by any device path.
+            device.last_seen_at = now
+            session.add(device)
             session.flush()
             session.expunge(device)
             return device, org_id

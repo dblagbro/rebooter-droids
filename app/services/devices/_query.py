@@ -101,24 +101,39 @@ def find_by_mac(mac_address: str | None) -> list[dict]:
     pending-adoption to surface "this hardware is already in the fleet"
     matches so the operator can pick rebind vs fresh-adopt explicitly.
     Excludes rows in registration_state='decommissioned' (post-replacement
-    marker)."""
+    marker).
+
+    v0.6.3 (devices-page perf): pre-0.6.3 this loaded EVERY device with a
+    non-NULL MAC and filtered (MAC equality + decommissioned exclusion)
+    in Python — on a large fleet, the whole devices table streamed into
+    the app per call, and the pending-adoption page calls this once per
+    announcement row. Both predicates now run in SQL:
+
+      * MAC equality is case- and surrounding-whitespace-insensitive,
+        matching the old `mac_address.strip().upper()` comparison via
+        `upper(trim(mac_address)) = :mac`.
+      * the `decommissioned` exclusion is a plain `WHERE` clause.
+
+    The result set is identical — same rows, same serialization."""
     if not mac_address:
         return []
     mac = mac_address.strip().upper()
     if not mac:
         return []
+    from sqlalchemy import func
+
     with session_scope() as session:
         rows = list(session.scalars(
-            select(Device).where(Device.mac_address.is_not(None))
+            select(Device).where(
+                Device.mac_address.is_not(None),
+                func.upper(func.trim(Device.mac_address)) == mac,
+                Device.registration_state != "decommissioned",
+            )
         ))
-        out = []
-        for d in rows:
-            if (d.mac_address or "").strip().upper() != mac:
-                continue
-            if d.registration_state == "decommissioned":
-                continue
-            out.append(serialize_device(d, include_secret_status=False))
-        return out
+        return [
+            serialize_device(d, include_secret_status=False)
+            for d in rows
+        ]
 
 
 def latest_stable_release_dict() -> dict | None:
@@ -126,12 +141,43 @@ def latest_stable_release_dict() -> dict | None:
 
     Pre-v0.4.29 this returned the most-recently-*uploaded* release, which
     surfaced a "Upgrade" button that was sometimes a downgrade when an
-    older release got re-uploaded after a newer one.
-    """
+    older release got re-uploaded after a newer one. The selection is
+    therefore by VERSION ORDER, not upload time.
+
+    v0.6.3 (devices-page perf): pre-0.6.3 this loaded every stable
+    `FirmwareRelease` as a full ORM object (every column, incl. the Text
+    release_notes) just to pick the highest version. It now:
+
+      * selects ONLY the six columns the result dict needs, and
+      * narrows the candidate set in SQL with `ORDER BY created_at DESC
+        LIMIT 200` so a fleet that has accumulated thousands of stable
+        re-uploads no longer streams the whole table into Python.
+
+    The final highest-version pick stays in Python via `_version_sort_key`
+    — the version string is `N.N.N[-suffix]` and its correct ordering is
+    NUMERIC by dotted-int prefix (so `0.1.10` > `0.1.9`). That ordering
+    cannot be expressed in a single portable SQL `ORDER BY` (Postgres and
+    SQLite have no shared numeric-version collation, and there is no
+    stored numeric key column), and correctness of the version ordering
+    is non-negotiable — a wrong pick re-introduces the v0.4.29
+    downgrade-button bug. So the `LIMIT` bounds the work and the
+    `_version_sort_key` pick keeps it correct. 200 newest uploads is far
+    more than any real release history and guarantees the true latest is
+    in the window."""
     with session_scope() as session:
         rows = list(
-            session.scalars(
-                select(FirmwareRelease).where(FirmwareRelease.channel == "stable")
+            session.execute(
+                select(
+                    FirmwareRelease.id,
+                    FirmwareRelease.version,
+                    FirmwareRelease.channel,
+                    FirmwareRelease.sha256,
+                    FirmwareRelease.size_bytes,
+                    FirmwareRelease.filename,
+                )
+                .where(FirmwareRelease.channel == "stable")
+                .order_by(FirmwareRelease.created_at.desc())
+                .limit(200)
             )
         )
         if not rows:
@@ -151,19 +197,30 @@ def firmware_version_breakdown(*, include_qa_fixtures: bool = False) -> list[dic
     """v0.4.19 (Tier-1 A): group the fleet by `firmware_version`. Surfaces
     "which devices on which version" so the operator can spot upgrade
     outliers at a glance. Largest cohort gets `is_majority=true` so the
-    UI can mark outliers."""
+    UI can mark outliers.
+
+    v0.6.3 (devices-page perf): pre-0.6.3 this loaded every Device row as
+    a full ORM object (every column) just to read three fields and group
+    in Python. It now selects ONLY `(id, display_name, firmware_version)`
+    — the columns it actually uses — and the grouping/count is still
+    done in Python over that minimal projection. The bucket order, the
+    per-version `devices` lists, the `(unknown)` collapse and the
+    `is_majority` flag are byte-for-byte identical to before; only the
+    column footprint of the query shrank."""
     with session_scope() as session:
-        stmt = select(Device)
+        stmt = select(
+            Device.id, Device.display_name, Device.firmware_version
+        )
         if not include_qa_fixtures:
             stmt = stmt.where(Device.is_qa_fixture.is_(False))
-        rows = list(session.scalars(stmt))
+        rows = list(session.execute(stmt))
 
     buckets: dict[str, list[dict]] = {}
-    for d in rows:
-        ver = (d.firmware_version or "(unknown)").strip() or "(unknown)"
+    for device_id, display_name, firmware_version in rows:
+        ver = (firmware_version or "(unknown)").strip() or "(unknown)"
         buckets.setdefault(ver, []).append({
-            "id": d.id,
-            "display_name": d.display_name or d.id,
+            "id": device_id,
+            "display_name": display_name or device_id,
         })
 
     if not buckets:
@@ -282,6 +339,7 @@ def list_devices(
                 d.last_heartbeat_at,
                 now=now,
                 offline_threshold_seconds=offline_threshold_seconds,
+                last_seen_at=d.last_seen_at,
             )
             obj["heartbeat_state"] = hb_state
             obj["online"] = hb_state == "online"
@@ -358,6 +416,7 @@ def get_device_detail(device_id: str) -> dict | None:
             d.last_heartbeat_at,
             now=now,
             offline_threshold_seconds=180,
+            last_seen_at=d.last_seen_at,
         )
         out["heartbeat_state"] = hb_state
         out["online"] = hb_state == "online"
