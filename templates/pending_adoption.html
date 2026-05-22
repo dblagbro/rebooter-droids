@@ -50,9 +50,13 @@
   </tr></thead>
   <tbody>
   {% for a in announcements %}
-    <tr>
+    {# v0.6.3 (devices-page UX): de-emphasise rows whose device has gone
+       silent for a long time — they are not the imminent-pickup work the
+       page implies. The row is dimmed and carries an explicit marker. #}
+    <tr{% if a.is_stale %} style="opacity:.55" title="No contact from this device for {{ a.last_seen_age }} — likely abandoned, not an imminent pickup"{% endif %}>
       <td data-label="Device">
         <strong>{{ a.claimed_display_name_hint or ('device-' + a.mac_address[-5:]|replace(':','')) }}</strong>
+        {% if a.is_stale %}<br><span class="badge red" style="font-size:.7rem" title="No device contact for {{ a.last_seen_age }}">⚠ stale — silent {{ a.last_seen_age }}</span>{% endif %}
         {% if a.claimed_local_ip %}<br><a href="http://{{ a.claimed_local_ip }}/" target="_blank" rel="noopener" class="muted" style="font-size:.85rem">{{ a.claimed_local_ip }}</a>{% endif %}
         <br><code style="font-size:.75rem">{{ a.mac_address }}</code>
       </td>
@@ -64,12 +68,23 @@
       <td data-label="State">
         {% if a.state == 'pending' %}
           <span class="badge amber">pending</span>
+          {% if a.is_stale %}
+            <br><span class="muted" style="font-size:.75rem">device has not polled for {{ a.last_seen_age }} — may be offline or abandoned</span>
+          {% endif %}
         {% elif a.state == 'awaiting_pickup' %}
           <span class="badge">awaiting pickup</span>
-          <br><span class="muted" style="font-size:.75rem">token will deliver on next /announce poll</span>
+          {% if a.is_stale %}
+            <br><span class="muted" style="font-size:.75rem">no /announce poll for {{ a.last_seen_age }} — token will deliver only if the device polls again</span>
+          {% else %}
+            <br><span class="muted" style="font-size:.75rem">token will deliver on next /announce poll</span>
+          {% endif %}
         {% elif a.state == 'awaiting_register' %}
           <span class="badge">awaiting register</span>
-          <br><span class="muted" style="font-size:.75rem">token delivered; device should register any moment</span>
+          {% if a.is_stale %}
+            <br><span class="muted" style="font-size:.75rem">token delivered but device silent for {{ a.last_seen_age }} — registration has stalled</span>
+          {% else %}
+            <br><span class="muted" style="font-size:.75rem">token delivered; device should register any moment</span>
+          {% endif %}
         {% elif a.state == 'registered' %}
           <span class="badge green">registered</span>
         {% elif a.state == 'rejected' %}
@@ -79,7 +94,8 @@
         {% endif %}
       </td>
       <td class="muted" style="font-size:.85rem" data-label="Seen">
-        last: {{ a.last_seen_at }}<br>
+        last: {{ a.last_seen_at }}
+        {% if a.last_seen_age %}<br><strong{% if a.is_stale %} class="error" style="color:var(--red-fg,#b91c1c)"{% endif %}>{{ a.last_seen_age }} ago</strong>{% endif %}<br>
         first: {{ a.first_seen_at }}<br>
         {{ a.announce_count }} poll{{ '' if a.announce_count == 1 else 's' }}
       </td>
@@ -171,7 +187,11 @@
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
         {% else %}
-          <span class="muted" style="font-size:.85rem">in-flight</span>
+          {% if a.is_stale %}
+            <span class="muted" style="font-size:.85rem">stalled — silent {{ a.last_seen_age }}</span>
+          {% else %}
+            <span class="muted" style="font-size:.85rem">in-flight</span>
+          {% endif %}
         {% endif %}
       </td>
       {% endif %}

@@ -324,6 +324,24 @@ def upsert_announcement(
 
         session.flush()
 
+        # v0.6.3 (devices-page correctness): an /announce poll is real
+        # device contact. If this MAC already maps to a registered
+        # Device row (a re-announcing device — e.g. one that lost its
+        # local token and is on the auto-rebind path), stamp that
+        # device's `last_seen_at` so the devices list reflects the
+        # contact instead of rendering the device 'offline'. MACs are
+        # compared in canonical form (the announce row stores a
+        # normalised MAC; a Device stores it as the firmware sent it).
+        for candidate in session.scalars(
+            select(Device).where(
+                Device.registration_state != "decommissioned",
+            )
+        ):
+            if _normalize_mac(candidate.mac_address) == mac:
+                candidate.last_seen_at = now
+                session.add(candidate)
+                break
+
         _maybe_prepare_auto_rebind(session=session, row=row, now=now)
         _maybe_recover_stranded_pickup(session=session, row=row, now=now)
 
@@ -394,8 +412,46 @@ def upsert_announcement(
 # ── operator-side: list, adopt, reject ───────────────────────────────
 
 
-def serialize(row: DeviceAnnouncement) -> dict:
-    """Operator-facing — never includes `adoption_token_secret`."""
+# v0.6.3 (devices-page UX): an adopted announcement whose device has
+# gone silent for longer than this is "stale" — the operator-facing
+# display de-emphasises it and stops claiming the token is about to be
+# picked up. 1 hour is comfortably longer than the ~5 s pending poll and
+# the 60 s awaiting-register retry, so a healthy in-flight adoption is
+# never flagged.
+ANNOUNCEMENT_STALE_AFTER_SECONDS = 3600
+
+
+def _humanize_age(seconds: float | None) -> str | None:
+    """Compact, honest 'time since' string — '4 m', '6 h', '6 d'. None
+    passes through. Used so the pending-adoption page can show how long
+    a device has actually been silent instead of only an absolute
+    timestamp the operator has to mentally diff against now."""
+    if seconds is None:
+        return None
+    seconds = max(0, int(seconds))
+    if seconds < 90:
+        return f"{seconds} s"
+    minutes = seconds // 60
+    if minutes < 90:
+        return f"{minutes} m"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours} h"
+    return f"{hours // 24} d"
+
+
+def serialize(row: DeviceAnnouncement, *, now: datetime | None = None) -> dict:
+    """Operator-facing — never includes `adoption_token_secret`.
+
+    v0.6.3 (devices-page UX): also surfaces `seconds_since_last_seen`,
+    `last_seen_age` (a compact 'time since' string) and `is_stale` so the
+    pending-adoption page can render the device's real silence honestly.
+    Pre-0.6.3 an adopted-but-long-silent row (announce adopted days ago,
+    device's last poll days ago) was still shown as a live 'awaiting
+    pickup — token will deliver on next /announce poll' state, implying
+    imminent pickup that will never come. `is_stale` lets the template
+    de-emphasise such a row and tell the truth."""
+    now = now or datetime.now(timezone.utc)
     state = "pending"
     if row.rejected_at is not None:
         state = "rejected"
@@ -405,6 +461,21 @@ def serialize(row: DeviceAnnouncement) -> dict:
         state = "awaiting_register"
     elif row.adopted_at is not None:
         state = "awaiting_pickup"
+
+    last_seen = row.last_seen_at
+    seconds_since_last_seen: int | None = None
+    if last_seen is not None:
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        seconds_since_last_seen = max(0, int((now - last_seen).total_seconds()))
+    # "stale" only matters for rows still expecting device contact — a
+    # registered or rejected row has reached a terminal state and its age
+    # is just history, not a broken promise.
+    is_stale = (
+        state in ("pending", "awaiting_pickup", "awaiting_register")
+        and seconds_since_last_seen is not None
+        and seconds_since_last_seen >= ANNOUNCEMENT_STALE_AFTER_SECONDS
+    )
     return {
         "id": row.id,
         "mac_address": row.mac_address,
@@ -425,6 +496,10 @@ def serialize(row: DeviceAnnouncement) -> dict:
         "consumed_at": _iso(row.consumed_at),
         "rejected_at": _iso(row.rejected_at),
         "enrollment_token_id": row.enrollment_token_id,
+        # v0.6.3 (devices-page UX): honest staleness surface.
+        "seconds_since_last_seen": seconds_since_last_seen,
+        "last_seen_age": _humanize_age(seconds_since_last_seen),
+        "is_stale": is_stale,
     }
 
 

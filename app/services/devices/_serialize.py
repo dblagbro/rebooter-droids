@@ -35,6 +35,11 @@ def serialize_device(d: Device, include_secret_status: bool = True) -> dict:
         "capabilities": d.capabilities or {},
         "notes": d.notes,
         "last_heartbeat_at": _iso(d.last_heartbeat_at),
+        # v0.6.3 (devices-page correctness): real last-contact timestamp
+        # — bumped on heartbeat, the /commands long-poll, /announce, and
+        # every other authenticated device path. Online/offline is
+        # measured against this, not just full heartbeats.
+        "last_seen_at": _iso(d.last_seen_at),
         "is_qa_fixture": bool(d.is_qa_fixture),
         "is_protected": bool(d.is_protected),
         "is_held_off": bool(d.is_held_off),
@@ -57,20 +62,65 @@ def serialize_device(d: Device, include_secret_status: bool = True) -> dict:
     return result
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Coerce a possibly-naive datetime to UTC-aware (None passes
+    through). Postgres returns TIMESTAMPTZ columns aware; SQLite (the
+    in-process test backend) returns them naive — coerce before any
+    comparison against a tz-aware `now` so the subtraction never raises.
+    A no-op against a real Postgres deployment."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def effective_last_contact(
+    last_heartbeat_at: datetime | None,
+    last_seen_at: datetime | None,
+) -> datetime | None:
+    """v0.6.3 (devices-page correctness): the device's REAL last contact
+    by ANY authenticated device path.
+
+    `last_heartbeat_at` moves only on a full `/api/v1/device/heartbeat`.
+    `last_seen_at` moves on every authenticated device request — the
+    `/commands` long-poll, command-result, events, firmware-check,
+    failsafe — and on `/announce` for an already-registered device. The
+    most-recent of the two is the honest "when did we last hear from
+    this device". Either may be NULL (a pre-0.6.3 row never carried
+    `last_seen_at`; a never-heartbeated device has no
+    `last_heartbeat_at`) — `max` over the non-NULL values, or None when
+    both are absent."""
+    candidates = [
+        _as_utc(t) for t in (last_heartbeat_at, last_seen_at) if t is not None
+    ]
+    return max(candidates) if candidates else None
+
+
 def _heartbeat_state_for(
     last_heartbeat_at: datetime | None,
     *,
     now: datetime,
     offline_threshold_seconds: int,
+    last_seen_at: datetime | None = None,
 ) -> str:
-    if last_heartbeat_at is None:
+    """Online/offline/never for a device.
+
+    v0.6.3 (devices-page correctness): the freshness check is measured
+    against `effective_last_contact` — the most-recent of
+    `last_heartbeat_at` and `last_seen_at` — not `last_heartbeat_at`
+    alone. Pre-0.6.3 a device that was actively long-polling
+    `/api/v1/device/commands` (and so plainly reachable) but not yet due
+    for a full heartbeat was rendered 'offline'. `last_seen_at` moves on
+    every authenticated device request, so the state now reflects real
+    contact. `last_seen_at` defaults to None so the legacy
+    heartbeat-only behaviour is preserved for any caller that does not
+    pass it.
+
+    "never" still means the device has had NO contact at all — neither a
+    heartbeat nor any other authenticated request."""
+    last_contact = effective_last_contact(last_heartbeat_at, last_seen_at)
+    if last_contact is None:
         return "never"
-    # Postgres returns the TIMESTAMPTZ column tz-aware; SQLite (the
-    # in-process test backend) returns it naive. Treat naive as UTC so
-    # the subtraction never raises — a no-op against a real deployment.
-    if last_heartbeat_at.tzinfo is None:
-        last_heartbeat_at = last_heartbeat_at.replace(tzinfo=timezone.utc)
-    if (now - last_heartbeat_at).total_seconds() < offline_threshold_seconds:
+    if (now - last_contact).total_seconds() < offline_threshold_seconds:
         return "online"
     return "offline"
 

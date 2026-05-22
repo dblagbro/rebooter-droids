@@ -62,6 +62,14 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             raise LookupError(device_id)
 
         device.last_heartbeat_at = now
+        # v0.6.3 (devices-page correctness): a full heartbeat is also
+        # contact — keep `last_seen_at` (the real last-contact timestamp
+        # the devices list measures online/offline against) in step. The
+        # device-auth middleware already stamps it for every
+        # authenticated request, but `record_heartbeat` opens its own
+        # session, so set it here too rather than depending on write
+        # ordering between the two sessions.
+        device.last_seen_at = now
         if payload.get("firmware_version"):
             device.firmware_version = payload["firmware_version"]
         if payload.get("local_ip"):
