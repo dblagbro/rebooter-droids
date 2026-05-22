@@ -66,6 +66,24 @@ class Device(Base):
         default_now=False, nullable=True
     )
 
+    # v0.6.3 (devices-page correctness): real last-contact timestamp.
+    # `last_heartbeat_at` above is bumped ONLY by a full
+    # `/api/v1/device/heartbeat`. But a device also stays in contact via
+    # the `/api/v1/device/commands` long-poll, `/announce`, and every
+    # other authenticated device endpoint — none of which touched
+    # `last_heartbeat_at`. The devices list then rendered an actively
+    # long-polling device as 'offline' purely because it was not yet due
+    # for a full heartbeat. `last_seen_at` is refreshed on EVERY
+    # authenticated device request (`_resolve_device`) AND on `/announce`
+    # for an already-registered device — so online/offline can be
+    # measured against the device's REAL last contact by any device path,
+    # not just full heartbeats. Additive nullable — NULL = the device has
+    # not been seen since the column shipped (pre-0.6.3 rows); the
+    # online/offline computation falls back to `last_heartbeat_at` then.
+    last_seen_at: Mapped[datetime | None] = ts_column(
+        default_now=False, nullable=True
+    )
+
     is_qa_fixture: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
@@ -145,6 +163,7 @@ class Device(Base):
 
 
 Index("ix_devices_last_heartbeat_at", Device.last_heartbeat_at)
+Index("ix_devices_last_seen_at", Device.last_seen_at)
 Index("ix_devices_site_id", Device.site_id)
 Index("ix_devices_mac_address", Device.mac_address)
 

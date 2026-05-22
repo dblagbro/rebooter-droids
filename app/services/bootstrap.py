@@ -144,6 +144,12 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # v0.5.55 (P1.2): per-rollup synthetic-sample count for data-quality
     # surfacing. Nullable — pre-P1.2 rollups stay NULL.
     ("device_power_rollups", "synthetic_sample_count", "INTEGER"),
+    # v0.6.3 (devices-page correctness): real last-contact timestamp,
+    # refreshed on every authenticated device request + on /announce
+    # for an already-registered device. Additive nullable — NULL = not
+    # seen since the column shipped; online/offline falls back to
+    # last_heartbeat_at for those rows.
+    ("devices", "last_seen_at", "TIMESTAMPTZ"),
     # v0.5.66 (P1.3): firmware 0.1.27+ low-load current semantics — when
     # measured current is clamped below ~50 mA, `i_ma_estimated` is True
     # and `i_ma_estimate` carries the firmware standby estimate.
