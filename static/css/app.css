@@ -1241,3 +1241,60 @@ tr:hover td { background: var(--bg-elev-2); }
   font-size: 0.9rem;
   color: var(--text-muted);
 }
+
+/* ── v0.6.5: fleet-status hero on /app/devices.
+   The Emporia "answer-on-open" pattern: instead of asking the
+   operator to scan a dense table to learn whether everything is
+   healthy, the top of the page surfaces the answer in big numbers
+   with colour-coded severity. Sits above the firmware-breakdown
+   card and the device list, hidden when the fleet is empty.
+   - The headline "X / Y online" card spans two grid cells on wide
+     screens and falls back to one cell on narrow viewports.
+   - Severity is encoded via a 4px left-border colour and a tinted
+     numeric (green/amber/red), reusing the existing badge tokens
+     so the new section feels native to the v3 design language. ── */
+.v3-fleet-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5) 0;
+}
+.v3-fleet-stat {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  border-left: 4px solid var(--border);
+}
+.v3-fleet-stat-primary {
+  grid-column: span 2;
+}
+@media (max-width: 600px) {
+  .v3-fleet-stat-primary { grid-column: auto; }
+}
+.v3-fleet-stat-good { border-left-color: var(--green-fg); }
+.v3-fleet-stat-warn { border-left-color: var(--amber-fg); }
+.v3-fleet-stat-bad  { border-left-color: var(--red-fg); }
+.v3-fleet-stat-muted { opacity: 0.7; }
+.v3-fleet-stat-num {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+.v3-fleet-stat-total {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.v3-fleet-stat-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.v3-fleet-stat-good .v3-fleet-stat-num { color: var(--green-fg); }
+.v3-fleet-stat-warn .v3-fleet-stat-num { color: var(--amber-fg); }
+.v3-fleet-stat-bad  .v3-fleet-stat-num { color: var(--red-fg); }
