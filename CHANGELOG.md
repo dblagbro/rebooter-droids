@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-05-27
+
+### Added
+- **`device.rebooted` events** emitted automatically when a heartbeat's
+  `uptime_seconds` regresses below the prior heartbeat's value. Event
+  details capture `prior_uptime_seconds`, `new_uptime_seconds`,
+  `reset_reason`, and `last_planned_restart_reason` — operators can now
+  chart reboot cadence and cause directly from the events feed.
+
+### Changed
+- **`source_flags` decoder** now returns human-readable bit names
+  (`REAL`, `VOLTAGE_VALID`, `POWER_VALID`, `ENERGY_VALID`, …) in a new
+  `names` field alongside `bits_set`. Bit semantics mirror
+  `rebooter-firmware` `include/app_state.h`. Unmapped bits land in
+  `bits_set` but not `names` so a new firmware bit shows up rather
+  than being silently dropped.
+- **BACKLOG.md** Low-heap-power-upload row closed (resolved by
+  rebooter-firmware `0.2.3` BearSSL pool refactor, commit `092daac`;
+  full arc in `docs/notes/2026-05-26-low-heap-bench-validation.md`).
+  Firmware-team-asks header reframed — we own these.
+
 ## [0.6.5] - 2026-05-23
 
 ## [0.6.4] - 2026-05-22
