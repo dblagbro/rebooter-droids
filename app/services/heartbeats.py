@@ -61,6 +61,18 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
         if device is None:
             raise LookupError(device_id)
 
+        # Capture the prior heartbeat's uptime BEFORE we insert the new row, so
+        # we can detect uptime regression (= the device rebooted) and emit a
+        # `device.rebooted` event. Done here rather than after the insert so
+        # the query unambiguously returns the previous heartbeat, not the new
+        # one we're about to write.
+        prior_uptime = session.scalar(
+            select(DeviceHeartbeat.uptime_seconds)
+            .where(DeviceHeartbeat.device_id == device_id)
+            .order_by(DeviceHeartbeat.received_at.desc())
+            .limit(1)
+        )
+
         device.last_heartbeat_at = now
         # v0.6.3 (devices-page correctness): a full heartbeat is also
         # contact — keep `last_seen_at` (the real last-contact timestamp
@@ -98,6 +110,44 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             if field in payload:
                 setattr(hb, field, payload[field])
         session.add(hb)
+
+        # Reboot detection — if the new heartbeat's uptime regressed below the
+        # prior heartbeat's uptime, the device restarted in between. Emit a
+        # `device.rebooted` event so operators see the timeline + cause. The
+        # `reset_reason` / `last_planned_restart_reason` payload fields aren't
+        # otherwise persisted (not in the DeviceHeartbeat schema), so we
+        # capture them in the event details where they're queryable later.
+        new_uptime = payload.get("uptime_seconds")
+        if (
+            isinstance(prior_uptime, int)
+            and isinstance(new_uptime, int)
+            and new_uptime < prior_uptime
+        ):
+            from app.models import DeviceEvent
+
+            reset_reason = payload.get("reset_reason") or "unknown"
+            planned = payload.get("last_planned_restart_reason") or ""
+            msg = (
+                f"Device rebooted: prior uptime {prior_uptime}s, "
+                f"now {new_uptime}s, reset_reason={reset_reason!s}"
+            )
+            if planned:
+                msg += f", planned_reason={planned!s}"
+            session.add(
+                DeviceEvent(
+                    device_id=device_id,
+                    type="device.rebooted",
+                    timestamp=now,
+                    received_at=now,
+                    message=msg,
+                    details={
+                        "prior_uptime_seconds": prior_uptime,
+                        "new_uptime_seconds": new_uptime,
+                        "reset_reason": reset_reason,
+                        "last_planned_restart_reason": planned,
+                    },
+                )
+            )
 
         # v0.5.53 (P0.3 / Phase 4B): capture the pre-update recovery truth
         # so we can detect a transition once the hot columns are refreshed.
