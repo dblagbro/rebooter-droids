@@ -121,4 +121,20 @@ In the 15-min observation immediately after enabling `power=true` on .185 at upt
 - No scheduled-reboot policy exists; no `ESP.wdtFeed()` or `ESP.wdtDisable()` calls anywhere.
 - The 30-min soak that followed (1571 → 4421 s of monotonic uptime, no reboots) and the 4-hour soak in progress show the event didn't recur.
 
-Most plausible explanation: a one-off post-OTA + post-power-enable state-transition artifact, perhaps the framework finalizing the previous boot's commit. Not actively pursuing further; the 4-hour soak result is the test.
+## 2026-05-27 update: 0.2.3 isn't the full fix — 0.2.4 wdtFeed defense
+
+The 4-hour soak surfaced a second failure mode 0.2.3 did **not** address: periodic `Software/System restart` (code 4, **not** Exception, **not** preceded by a `prepareForPlannedRestart` breadcrumb) roughly every ~60–130 minutes on .185 with `central+power=true + live CSE7766 frames`. The full soak log shows 46 reboots across the day, mostly during the chaos period of multiple OTA experiments but several in steady-state too. The state immediately before each reboot was always healthy (cstate=idle, healthy=yes, heap in normal range).
+
+Because the reboots are code 4 with no breadcrumb, the most plausible cause is the soft-WDT (default ~3.5 s on Arduino-ESP8266) firing during a blocking BearSSL handshake. The 0.2.3 firmware has **zero** `ESP.wdtFeed()` calls anywhere — a slow handshake under low heap can starve the WDT enough to trip a reset.
+
+**0.2.4-dev-central-safe** adds one defensive change: an `ESP.wdtFeed()` immediately before every blocking `http.POST` / `http.GET` that runs over BearSSL — three sites in `central_client.cpp` (postWithFallback, postWithoutResponseWithFallback, getWithFallback) and one in `web_server_manager.cpp`'s central-diagnostic probe. No behavioural change in the healthy path; strictly defensive. Built sha256 `6e0c6807…`, source `rebooter-firmware` commit `822c7b5`.
+
+| | 0.2.3 wall+frames | 0.2.4 wall+frames (in flight) |
+|---|---|---|
+| BearSSL fragmentation exceptions | gone | gone (inherited) |
+| Soft-WDT reboots during slow handshake | every ~60–130 min | TBD — soak ongoing |
+| ESP.wdtFeed call sites | 0 | 4 |
+
+Currently soaking on .185 (wall + frames + central+power) since 23:35:36 UTC. The 0.2.3 pattern would have rebooted by ~00:35 UTC; if 0.2.4 carries past that the wdtFeed is doing its job and 0.2.4 ships to stable.
+
+Hub-side, the new `device.rebooted` event type (rebooter-droids `0.6.6`, commit `ff1d520`) now writes one event per detected uptime regression — operators can chart reboot cadence directly from `/app/events?type=device.rebooted` and compare 0.2.4 vs 0.2.3 across the fleet over time.
