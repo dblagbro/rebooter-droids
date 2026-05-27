@@ -215,3 +215,100 @@ def test_latest_heartbeat_returns_newest_by_received_at(hub_db):
                               firmware_version="mid"))
     with session_scope() as s:
         assert latest_heartbeat(s, "dev-1").firmware_version == "new"
+
+
+# ── reboot detection — device.rebooted event on uptime regression ──────
+
+from app.models import DeviceEvent  # noqa: E402
+from sqlalchemy import select  # noqa: E402
+
+
+def _device_events(s, device_id, type_=None):
+    q = select(DeviceEvent).where(DeviceEvent.device_id == device_id)
+    if type_ is not None:
+        q = q.where(DeviceEvent.type == type_)
+    return list(s.scalars(q.order_by(DeviceEvent.received_at)))
+
+
+def test_reboot_event_emitted_when_uptime_regresses(hub_db):
+    with session_scope() as s:
+        _device(s, "dev-1")
+    # First heartbeat — 5000s uptime.
+    record_heartbeat("dev-1", {"uptime_seconds": 5000, "health_state": "healthy"})
+    # Second heartbeat — uptime regressed to 30s = device rebooted between them.
+    record_heartbeat("dev-1", {
+        "uptime_seconds": 30,
+        "health_state": "healthy",
+        "reset_reason": "Software/System restart",
+    })
+    with session_scope() as s:
+        events = _device_events(s, "dev-1", type_="device.rebooted")
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.details["prior_uptime_seconds"] == 5000
+    assert ev.details["new_uptime_seconds"] == 30
+    assert ev.details["reset_reason"] == "Software/System restart"
+    assert "rebooted" in ev.message.lower()
+
+
+def test_no_reboot_event_on_monotonic_uptime(hub_db):
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"uptime_seconds": 100})
+    record_heartbeat("dev-1", {"uptime_seconds": 200})
+    record_heartbeat("dev-1", {"uptime_seconds": 260})
+    with session_scope() as s:
+        events = _device_events(s, "dev-1", type_="device.rebooted")
+    assert events == []
+
+
+def test_no_reboot_event_on_first_heartbeat(hub_db):
+    # No prior heartbeat → nothing to compare against → no event.
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"uptime_seconds": 30})
+    with session_scope() as s:
+        events = _device_events(s, "dev-1", type_="device.rebooted")
+    assert events == []
+
+
+def test_no_reboot_event_when_uptime_missing(hub_db):
+    # A payload that omits uptime_seconds entirely shouldn't crash or emit.
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"uptime_seconds": 1000})
+    record_heartbeat("dev-1", {"health_state": "healthy"})  # no uptime_seconds
+    with session_scope() as s:
+        events = _device_events(s, "dev-1", type_="device.rebooted")
+    assert events == []
+
+
+def test_reboot_event_captures_planned_restart_reason(hub_db):
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"uptime_seconds": 3000})
+    record_heartbeat("dev-1", {
+        "uptime_seconds": 5,
+        "reset_reason": "Software/System restart",
+        "last_planned_restart_reason": "button_reboot",
+    })
+    with session_scope() as s:
+        events = _device_events(s, "dev-1", type_="device.rebooted")
+    assert len(events) == 1
+    assert events[0].details["last_planned_restart_reason"] == "button_reboot"
+    assert "button_reboot" in events[0].message
+
+
+def test_multiple_reboots_each_emit_one_event(hub_db):
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"uptime_seconds": 100})
+    record_heartbeat("dev-1", {"uptime_seconds": 200})
+    record_heartbeat("dev-1", {"uptime_seconds": 30})  # reboot 1
+    record_heartbeat("dev-1", {"uptime_seconds": 90})
+    record_heartbeat("dev-1", {"uptime_seconds": 15})  # reboot 2
+    with session_scope() as s:
+        events = _device_events(s, "dev-1", type_="device.rebooted")
+    assert len(events) == 2
+    assert events[0].details["prior_uptime_seconds"] == 200
+    assert events[1].details["prior_uptime_seconds"] == 90
