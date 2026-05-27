@@ -22,11 +22,20 @@ captures recent ship history; this doc captures forward intent.
 
 ---
 
-## Current state (2026-05-19)
+## Current state (2026-05-27)
 
-**Live**: `0.5.100` on both hubs (www + www2). CI green; the `-m ci`
-gate is ~850 tests run behind nginx (~115 of those in the in-process
-`tests/unit/` tree after the v0.5.99/.100 service-layer slices).
+**Live**: hub `0.5.100` on both hubs (www + www2). CI green; the
+`-m ci` gate is ~850 tests run behind nginx (~115 of those in the
+in-process `tests/unit/` tree after the v0.5.99/.100 service-layer
+slices).
+
+**Firmware**: stable channel now serves `0.2.3-dev-central-safe`
+(promoted 2026-05-27, registry `fwr_01KSN0BS116DQCY62111142GV3`).
+0.2.3 closes the central+power+wall+frames exception-cycle that
+0.2.0/0.2.1/0.2.2 exhibited — see `docs/notes/2026-05-26-low-heap-bench-validation.md`
+and `rebooter-firmware` commit `092daac`. Bench (.188) at 90+ min
+clean uptime; wall (.185) at 30+ min clean under live CSE7766 frame
+load.
 
 The v0.5.61 → v0.5.100 arc shipped:
 
@@ -101,31 +110,50 @@ The v0.5.61 → v0.5.100 arc shipped:
 
 | Item | Size | Status |
 |---|---|---|
-| **Low-heap power-upload transport** | medium (design first) | Firmware-team memo `docs/notes/2026-05-17-low-heap-power-upload-memo.md`: ESP8266 wall units (`.225`, `.69`) can't run `central=true + power=true` — separate HTTPS round-trip exhausts heap. **HOLD — waiting on the firmware team's next memo** before engaging. Internal hub-side design analysis (3 options scored, prefer A — heartbeat-folded) parked at `docs/notes/2026-05-19-internal-low-heap-power-upload-analysis.md` for when the operator decides how / when to engage. **Do not share with the firmware team without operator sign-off.** |
+| **Low-heap power-upload transport** | — | ✅ **CLOSED 2026-05-27** by firmware `0.2.3-dev-central-safe`. Root cause turned out to be **BearSSL session fragmentation** (per-call `new`/`delete` of `WiFiClientSecure` under low free-heap), not the original "separate HTTPS round-trip exhausts heap" hypothesis from the 2026-05-17 memo. Fix is a one-line structural change: the BearSSL client is now a long-lived `CentralClient` member allocated once at boot. Validated on `.185` (wall + central+power + live CSE7766 frames, ~6/s) — 30-min soak with zero exceptions. See `rebooter-firmware` commit `092daac` + `docs/notes/2026-05-26-low-heap-bench-validation.md`. Heartbeat-piggyback power summary (Option A in the parked analysis) was already shipped in 0.2.0 Tier-2 commit `0c85a6e` — that was a precondition; the missing piece was the BearSSL-pool fix that 0.2.3 adds. |
 | **EPG show↔network mapping helper** | small | A discovery aid for the `epg_show_airing` probe — optional polish on the TV feature. Not requested. |
 | **P1.3 loaded-power validation** | small | **Firmware-blocked** — every real CSE7766 sample is no-load (0 W); cost/kWh analytics can't be validated until firmware delivers a known-load capture. |
 | **P3b** cross-modal query layer (`app/services/multimodal.py`) | medium | **Gated** — RFC-006 §9 schema review + operator confirming cross-modal analytics is a v1 goal. |
 | **Phase 6** — site/home profile + claim-assist groundwork | medium | Explicit low priority per the alignment plan. |
 
-### Firmware-team asks (open)
+### Firmware-side asks (we own these now — no external firmware team)
 
 - **`source_flags` bit dictionary** — so the hub can name power-sample
-  flag bits (P1.2 surfaces raw bits only).
-- **Frame counts in the heartbeat** — `power_valid/invalid_frame_count`
-  are on `/api/status` but not the heartbeat; the hub can't chart UART
-  health until they are.
+  flag bits (P1.2 surfaces raw bits only). Either expose the mapping
+  from the firmware via `/api/status`, or bake the mapping into the
+  hub when we lock the firmware-side bit definitions.
+- **Frame counts in the heartbeat** — ✅ Firmware-side already shipped:
+  the compact heartbeat carries `power.valid_frames` and
+  `power.invalid_frames` (`status_payload.cpp` lines 107-108); full
+  mode carries `power_valid_frame_count` / `power_invalid_frame_count`.
+  Hub already consumes `invalid_frames` (mapped to `crc_fail_count`,
+  `app/services/events.py` line 245).
+- **UART-health surface from frame-count deltas** — *follow-up feature*
+  (not a quick read). The hub consumes only `invalid_frames` and treats
+  it as the per-window CRC-fail count. To compute a useful failure
+  *rate* we need: (a) ingest the firmware's `valid_frames` lifetime
+  counter, (b) track per-device deltas across heartbeats, (c) a column
+  to store it on `DevicePowerSample` (migration), (d) a surface (chart
+  or event-log threshold). Medium-size feature, not in flight.
 - **G2 cross-device time-sync measurement** — gates RFC-006 Decision 6
   (tight-window multimodal analytics).
-- **`.69` device** — on firmware `0.1.17-dev-central` (pre-0.1.19);
-  needs updating before the hub can show its true central state.
+- **`.69` device** — was on `0.1.17-dev-central`; if it ever returns
+  on-LAN, OTA-push it to 0.2.3 to put it on the same firmware as
+  `.185` / `.188`.
 
 ### Ops items (no code work — operator-actionable any time)
 
-- **www2 firmware mirror sync** to `0.1.18-dev-central-safe` +
-  `0.1.19-dev-central-safe`. SSH access was unblocked earlier in
-  the session; can run any time (~10 min).
-- **`.225` / `.69` reflash** — held for firmware-team bench
-  testing. Resume when firmware team is done.
+- **www2 firmware mirror sync** to current stable (`0.2.3-dev-central-safe`).
+  Since `data/firmware/stable/` is on the shared mount and tmrwww01
+  already serves it, hub-side propagation is implicit; if www2 mirrors
+  to its own disk independently, push the new bin there. (~10 min;
+  hub-side, no firmware work needed.)
+- **`.225` / `.69` reflash to 0.2.3** — these wall-plugged production
+  units at Erica's house are on pre-0.2.3 firmware and are the *exact*
+  population that 0.2.3 fixes. They need either physical-LAN access
+  (someone on the 192.168.1.x net) or to be brought to the bench. Once
+  on 0.2.3, `central=true + power=true` should be sustainable for the
+  first time on those units.
 - **Enable SNMP on the UniFi gear** (operator action) — the v0.5.58
   SNMP integration (P2.2/P2.3) is shipped and ready, but UniFi serves
   SNMP only once it is turned on in the UniFi Network controller

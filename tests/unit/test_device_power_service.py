@@ -36,17 +36,45 @@ def _add_sample(session, device_id, *, sampled_at, source="steady", p_w=None,
 # ── pure: decode_source_flags / source_kind ────────────────────────────
 
 def test_decode_source_flags_none_and_zero():
-    assert device_power.decode_source_flags(None) == {"raw": 0, "bits_set": []}
-    assert device_power.decode_source_flags(0) == {"raw": 0, "bits_set": []}
+    assert device_power.decode_source_flags(None) == {"raw": 0, "bits_set": [], "names": []}
+    assert device_power.decode_source_flags(0) == {"raw": 0, "bits_set": [], "names": []}
 
 
 def test_decode_source_flags_decodes_set_bits():
-    assert device_power.decode_source_flags(5) == {"raw": 5, "bits_set": [0, 2]}
-    assert device_power.decode_source_flags(8) == {"raw": 8, "bits_set": [3]}
+    assert device_power.decode_source_flags(5) == {
+        "raw": 5,
+        "bits_set": [0, 2],
+        "names": ["SYNTHETIC", "VOLTAGE_VALID"],
+    }
+    assert device_power.decode_source_flags(8) == {
+        "raw": 8,
+        "bits_set": [3],
+        "names": ["CURRENT_VALID"],
+    }
 
 
 def test_decode_source_flags_clamps_negative_to_zero():
-    assert device_power.decode_source_flags(-1) == {"raw": 0, "bits_set": []}
+    assert device_power.decode_source_flags(-1) == {"raw": 0, "bits_set": [], "names": []}
+
+
+def test_decode_source_flags_real_field_value_86():
+    # source_flags=86 (0x56) is the real-world value observed on .185
+    # with central+power both on: REAL + VOLTAGE_VALID + POWER_VALID + ENERGY_VALID.
+    assert device_power.decode_source_flags(86) == {
+        "raw": 86,
+        "bits_set": [1, 2, 4, 6],
+        "names": ["REAL", "VOLTAGE_VALID", "POWER_VALID", "ENERGY_VALID"],
+    }
+
+
+def test_decode_source_flags_unmapped_bit_in_bits_set_but_not_names():
+    # If firmware ever sets a bit beyond the named table (currently 8 bits),
+    # bits_set shows it but names omits — surface visibility over silent drop.
+    assert device_power.decode_source_flags(0x100) == {
+        "raw": 0x100,
+        "bits_set": [8],
+        "names": [],
+    }
 
 
 def test_source_kind_real_vs_synthetic():

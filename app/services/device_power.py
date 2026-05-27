@@ -43,21 +43,46 @@ RECENT_WINDOW_MAX_SECONDS = 24 * 60 * 60  # 24 h — Device-detail upper cap
 REAL_POWER_SOURCES = frozenset({"steady", "burst"})
 
 
+# Bit semantics from `rebooter-firmware/include/app_state.h`. Bit indices
+# correspond to the firmware's `PowerSampleFlag` enum:
+#   0x01 SYNTHETIC          — fallback synthesised sample (no real reading)
+#   0x02 REAL               — produced from a live CSE7766 frame
+#   0x04 VOLTAGE_VALID      — `latest_v` is a valid measurement
+#   0x08 CURRENT_VALID      — `latest_a` / `i_ma` is a valid measurement
+#   0x10 POWER_VALID        — `latest_p` is a valid measurement
+#   0x20 FREQUENCY_VALID    — mains frequency is a valid measurement
+#   0x40 ENERGY_VALID       — `energy_wh` is a valid cumulative reading
+#   0x80 CURRENT_ESTIMATED  — current was estimated from V * PF, not measured
+POWER_SOURCE_FLAG_NAMES = [
+    "SYNTHETIC",          # bit 0
+    "REAL",               # bit 1
+    "VOLTAGE_VALID",      # bit 2
+    "CURRENT_VALID",      # bit 3
+    "POWER_VALID",        # bit 4
+    "FREQUENCY_VALID",    # bit 5
+    "ENERGY_VALID",       # bit 6
+    "CURRENT_ESTIMATED",  # bit 7
+]
+
+
 def decode_source_flags(flags: int | None) -> dict:
     """Decode the integer `source_flags` bitfield into its set bit
-    indices.
+    indices + human-readable names.
 
-    The *semantics* of each bit are firmware-owned and not yet published
-    (tracked as a P1.2 firmware ask — see the CHANGELOG entry for
-    v0.5.55). Until the firmware team ships a bit dictionary the hub
-    surfaces the raw value plus which bit positions are set, so the
-    field is at least inspectable rather than an opaque integer.
+    Bit semantics are owned by the firmware (`rebooter-firmware`
+    `include/app_state.h`). The hub mirrors that table in
+    `POWER_SOURCE_FLAG_NAMES` so operators see "REAL,VOLTAGE_VALID,..."
+    instead of an opaque integer or just bit indices. If the firmware
+    ever adds a new bit beyond `POWER_SOURCE_FLAG_NAMES`, the unmapped
+    index appears in `bits_set` but not in `names` — surface visibility
+    over silent drop.
     """
     raw = int(flags or 0)
     if raw < 0:
         raw = 0
     bits = [i for i in range(raw.bit_length()) if raw & (1 << i)]
-    return {"raw": raw, "bits_set": bits}
+    names = [POWER_SOURCE_FLAG_NAMES[i] for i in bits if i < len(POWER_SOURCE_FLAG_NAMES)]
+    return {"raw": raw, "bits_set": bits, "names": names}
 
 
 def source_kind(source: str | None) -> str:
