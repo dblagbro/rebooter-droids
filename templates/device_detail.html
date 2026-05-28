@@ -49,6 +49,12 @@
       <li>central_status: {{ device.central_status_label }}</li>
       <li>mode: {{ device.latest_heartbeat.mode or '—' }}</li>
       <li>relay_on: {{ device.latest_heartbeat.relay_on }}</li>
+      {% if device.latest_heartbeat.wifi_rssi_dbm is not none %}
+      <li>wifi_rssi: {{ device.latest_heartbeat.wifi_rssi_dbm }} dBm
+        {%- if device.latest_heartbeat.wifi_rssi_dbm >= -60 %} (strong)
+        {%- elif device.latest_heartbeat.wifi_rssi_dbm >= -75 %} (ok)
+        {%- else %} (weak){% endif %}</li>
+      {% endif %}
       <li>health: {{ device.latest_heartbeat.health_state or '—' }}</li>
       <li>uptime_s: {{ device.latest_heartbeat.uptime_seconds or 0 }}</li>
       <li>incident_cycles: {{ device.latest_heartbeat.incident_cycles or 0 }}</li>

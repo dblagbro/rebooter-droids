@@ -65,6 +65,24 @@ def test_record_heartbeat_writes_history_row(hub_db):
         assert hb.uptime_seconds == 1234
 
 
+def test_record_heartbeat_stores_wifi_rssi_dbm(hub_db):
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"wifi_connected": True, "wifi_rssi_dbm": -47})
+    with session_scope() as s:
+        hb = latest_heartbeat(s, "dev-1")
+        assert hb.wifi_rssi_dbm == -47
+
+
+def test_record_heartbeat_wifi_rssi_absent_is_null(hub_db):
+    # Pre-0.2.7 firmware omits the field -> column stays NULL, no crash.
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"wifi_connected": True})
+    with session_scope() as s:
+        assert latest_heartbeat(s, "dev-1").wifi_rssi_dbm is None
+
+
 def test_record_heartbeat_updates_device_firmware_and_ip(hub_db):
     with session_scope() as s:
         _device(s, "dev-1")
