@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-05-28
+
 ### Added
 - **`device_heartbeat_stale` watchdog probe** — the first probe that
   watches the devices the hub *manages* (vs an outbound target or a
