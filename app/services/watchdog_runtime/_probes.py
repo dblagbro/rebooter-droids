@@ -31,6 +31,7 @@ from app.models import WatchdogRule
 # `_probes_integrations` imports nothing from this module (its service
 # imports are all deferred inside function bodies), so no cycle.
 from app.services.watchdog_runtime._probes_integrations import (
+    _probe_device_heartbeat_stale,
     _probe_epg_show_airing,
     _probe_ha_numeric,
     _probe_ha_state_is,
@@ -75,7 +76,7 @@ DISPATCHED_PROBE_KINDS: frozenset[str] = frozenset({
     "solar_production_above", "solar_production_below",
     "snmp_interface_down", "snmp_throughput_above", "snmp_throughput_below",
     "snmp_error_rate_above", "media_session_active", "webhook_field_equals",
-    "mqtt_topic_equals", "epg_show_airing",
+    "mqtt_topic_equals", "epg_show_airing", "device_heartbeat_stale",
 })
 
 
@@ -118,6 +119,8 @@ def run_probe(rule: WatchdogRule) -> tuple[str, dict]:
             return _probe_mqtt_topic_equals(probe)
         if kind == "epg_show_airing":
             return _probe_epg_show_airing(probe)
+        if kind == "device_heartbeat_stale":
+            return _probe_device_heartbeat_stale(probe)
         if kind in ("tcp", "host_awake"):
             # v0.5.62 (B17 Ship 4): `host_awake` is a TCP-connect alias —
             # reachable = the host is powered on / awake. Defaults to

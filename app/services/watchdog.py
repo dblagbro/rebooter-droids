@@ -352,6 +352,12 @@ def _validate_probe(probe: dict) -> None:
             _require_int("window_seconds", low=30, high=86400)
         return
 
+    if kind == "device_heartbeat_stale":
+        _require("device_id")
+        if "max_age_seconds" in probe:
+            _require_int("max_age_seconds", low=30, high=86400)
+        return
+
     # v0.5.89 (BUG-058): the remaining runtime-supported integration
     # probe kinds. Required fields mirror what each `_probe_*` handler
     # in watchdog_runtime/_probes_integrations.py reads.
@@ -832,6 +838,11 @@ def _probe_to_phrase(p: dict) -> str:
         return (
             f"device `{p.get('device_id','?')}` drawing near-zero "
             f"(< {p.get('near_zero_threshold_w', 0.5)} W) while relay is on"
+        )
+    if k == "device_heartbeat_stale":
+        return (
+            f"device `{p.get('device_id','?')}` has not heartbeated in "
+            f"{p.get('max_age_seconds', 300)} s (gone / silent)"
         )
     # v0.5.89 (BUG-058): the remaining canonical integration probes.
     if k in ("ha_numeric_above", "ha_numeric_below"):

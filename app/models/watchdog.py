@@ -93,6 +93,10 @@ PROBE_KIND_WEBHOOK_FIELD_EQUALS = "webhook_field_equals"
 PROBE_KIND_MQTT_TOPIC_EQUALS = "mqtt_topic_equals"
 PROBE_KIND_EPG_SHOW_AIRING = "epg_show_airing"
 PROBE_KIND_HOST_AWAKE = "host_awake"
+# Fleet-presence probe — fails when a managed device's heartbeat goes
+# stale (the first probe that watches the devices the hub manages,
+# rather than an outbound target or a power sample).
+PROBE_KIND_DEVICE_HEARTBEAT_STALE = "device_heartbeat_stale"
 
 KNOWN_PROBE_KINDS = (
     PROBE_KIND_INTERNET,
@@ -121,6 +125,7 @@ KNOWN_PROBE_KINDS = (
     PROBE_KIND_WEBHOOK_FIELD_EQUALS,
     PROBE_KIND_MQTT_TOPIC_EQUALS,
     PROBE_KIND_EPG_SHOW_AIRING,
+    PROBE_KIND_DEVICE_HEARTBEAT_STALE,
 )
 
 # Rule status enum — mirrors webui-redesign-plan.md §7.1.
