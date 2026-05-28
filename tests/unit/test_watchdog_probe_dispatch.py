@@ -146,3 +146,63 @@ def test_probe_ping_missing_host():
     outcome, details = _probes._probe_ping({})
     assert outcome == "failure"
     assert details == {"reason": "missing host"}
+
+
+# ── device_heartbeat_stale (fleet-presence) ────────────────────────────
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from app.db import session_scope  # noqa: E402
+from app.models import Device  # noqa: E402
+
+
+def test_device_heartbeat_stale_missing_device_id():
+    outcome, details = _probes.run_probe(_rule({"kind": "device_heartbeat_stale"}))
+    assert outcome == "failure"
+    assert details["reason"] == "missing device_id"
+
+
+def test_device_heartbeat_stale_no_heartbeat_fails(hub_db):
+    with session_scope() as s:
+        s.add(Device(id="dev-x"))  # last_heartbeat_at is NULL
+    outcome, details = _probes.run_probe(
+        _rule({"kind": "device_heartbeat_stale", "device_id": "dev-x"})
+    )
+    assert outcome == "failure"
+    assert details["reason"] == "no_heartbeat"
+
+
+def test_device_heartbeat_stale_recent_is_success(hub_db):
+    now = datetime.now(timezone.utc)
+    with session_scope() as s:
+        s.add(Device(id="dev-x", last_heartbeat_at=now - timedelta(seconds=30)))
+    outcome, details = _probes.run_probe(
+        _rule({"kind": "device_heartbeat_stale", "device_id": "dev-x",
+               "max_age_seconds": 300})
+    )
+    assert outcome == "success"
+    assert details["age_seconds"] < 300
+
+
+def test_device_heartbeat_stale_old_is_failure(hub_db):
+    now = datetime.now(timezone.utc)
+    with session_scope() as s:
+        s.add(Device(id="dev-x", last_heartbeat_at=now - timedelta(seconds=900)))
+    outcome, details = _probes.run_probe(
+        _rule({"kind": "device_heartbeat_stale", "device_id": "dev-x",
+               "max_age_seconds": 300})
+    )
+    assert outcome == "failure"
+    assert details["reason"] == "heartbeat_stale"
+    assert details["age_seconds"] > 300
+
+
+def test_device_heartbeat_stale_default_window_300s(hub_db):
+    now = datetime.now(timezone.utc)
+    with session_scope() as s:
+        # 240s old, no max_age given -> default 300 -> still success
+        s.add(Device(id="dev-x", last_heartbeat_at=now - timedelta(seconds=240)))
+    outcome, _ = _probes.run_probe(
+        _rule({"kind": "device_heartbeat_stale", "device_id": "dev-x"})
+    )
+    assert outcome == "success"

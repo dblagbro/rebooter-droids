@@ -80,6 +80,9 @@ _VALID_PROBES: dict[str, dict] = {
         "kind": "mqtt_topic_equals", "source_id": "s", "topic": "home/x",
     },
     "epg_show_airing": {"kind": "epg_show_airing", "show": "Jeopardy"},
+    "device_heartbeat_stale": {
+        "kind": "device_heartbeat_stale", "device_id": "d", "max_age_seconds": 300,
+    },
 }
 
 # (kind, field-to-drop) — dropping a required field must be rejected.
@@ -116,8 +119,9 @@ def test_known_kinds_has_no_duplicates():
 
 def test_registry_size():
     # 6 core network + host_awake + 4 HA/roku + 2 weather/ical
-    # + 3 power + 2 solar + 4 snmp + media + webhook + mqtt + epg.
-    assert len(KNOWN_PROBE_KINDS) == 26
+    # + 3 power + 2 solar + 4 snmp + media + webhook + mqtt + epg
+    # + device_heartbeat_stale (fleet-presence).
+    assert len(KNOWN_PROBE_KINDS) == 27
 
 
 def test_fixture_covers_every_kind():

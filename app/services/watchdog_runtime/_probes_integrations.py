@@ -981,3 +981,73 @@ def _probe_epg_show_airing(probe: dict) -> tuple[str, dict]:
         "episode_title": airing.get("episode_title"),
         "airing_end": airing.get("airing_end"),
     }
+
+
+def _probe_device_heartbeat_stale(probe: dict) -> tuple[str, dict]:
+    """Fleet-presence probe: fails when a managed device hasn't sent a
+    heartbeat within `max_age_seconds`.
+
+    Until now every probe was *outbound* (ping/http/tcp to a target) or
+    read device power samples — nothing fired when a managed device
+    simply went silent. This closes that gap using the
+    `Device.last_heartbeat_at` the hub already stamps on every heartbeat.
+
+    Rule shape:
+        probe = {"kind": "device_heartbeat_stale",
+                 "device_id": "dev_…",
+                 "max_age_seconds": 300}   # default 300 (5 min)
+
+    Semantics — "failure" = the unhealthy condition the rule acts on:
+    - failure when the device has NEVER heartbeated, or its last
+      heartbeat is older than `max_age_seconds` (device is gone/silent).
+    - success when the last heartbeat is within the window.
+
+    Pair this with a NOTIFY action (a power-cycle can't reach a device
+    that's already offline). Returns `age_seconds` in details so the
+    operator sees how long it's been silent.
+    """
+    device_id = (probe.get("device_id") or "").strip()
+    if not device_id:
+        return "failure", {"reason": "missing device_id"}
+
+    try:
+        max_age = int(probe.get("max_age_seconds") or 300)
+    except (TypeError, ValueError):
+        max_age = 300
+    if max_age < 30:
+        max_age = 30
+    if max_age > 86400:
+        max_age = 86400
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select as _select
+
+    from app.db import session_scope
+    from app.models import Device as _Device
+
+    with session_scope() as session:
+        last_hb = session.scalar(
+            _select(_Device.last_heartbeat_at).where(_Device.id == device_id)
+        )
+
+    if last_hb is None:
+        return "failure", {
+            "reason": "no_heartbeat",
+            "device_id": device_id,
+            "max_age_seconds": max_age,
+        }
+
+    if last_hb.tzinfo is None:
+        last_hb = last_hb.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - last_hb).total_seconds()
+    details = {
+        "device_id": device_id,
+        "age_seconds": round(age, 1),
+        "max_age_seconds": max_age,
+        "last_heartbeat_at": last_hb.isoformat(),
+    }
+    if age > max_age:
+        details["reason"] = "heartbeat_stale"
+        return "failure", details
+    return "success", details
