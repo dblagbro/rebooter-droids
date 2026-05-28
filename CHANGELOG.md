@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **WiFi RSSI capture** — `device_heartbeats.wifi_rssi_dbm` column
+  (migration `0008`) stores the current-connection signal strength
+  reported by firmware 0.2.7+. Surfaced on the device-detail Overview
+  with a strong/ok/weak label. NULL for pre-0.2.7 heartbeats. Gives the
+  first visibility into per-device WiFi signal quality over time.
+
 ## [0.6.7] - 2026-05-28
 
 ### Added

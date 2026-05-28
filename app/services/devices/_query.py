@@ -446,6 +446,7 @@ def get_device_detail(device_id: str) -> dict | None:
                 "mode": latest_hb.mode,
                 "relay_on": latest_hb.relay_on,
                 "wifi_connected": latest_hb.wifi_connected,
+                "wifi_rssi_dbm": latest_hb.wifi_rssi_dbm,
                 "health_state": latest_hb.health_state,
                 "uptime_seconds": latest_hb.uptime_seconds,
                 "incident_cycles": latest_hb.incident_cycles,

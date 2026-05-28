@@ -260,6 +260,11 @@ class DeviceHeartbeat(Base):
     mode: Mapped[str | None] = mapped_column(String(40), nullable=True)
     relay_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     wifi_connected: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # 0.6.8 / firmware 0.2.7+: current-connection RSSI in dBm (negative; e.g.
+    # -47 = strong, -85 = weak). NULL when the firmware omits it (pre-0.2.7
+    # or not associated). Lets the device-detail page chart WiFi signal
+    # quality and flag degradation.
+    wifi_rssi_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     health_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
     uptime_seconds: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     incident_cycles: Mapped[int | None] = mapped_column(Integer, nullable=True)

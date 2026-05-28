@@ -12,6 +12,7 @@ from app.services.deployments import reconcile_assignment_reported_version
 # now carries (firmware 0.1.19-dev-central-safe+). Every field is copied
 # verbatim onto the DeviceHeartbeat history row.
 _HEARTBEAT_STATUS_FIELDS = (
+    "wifi_rssi_dbm",
     "recovery_mode",
     "auto_recovery_triggered",
     "last_known_good_restored",
