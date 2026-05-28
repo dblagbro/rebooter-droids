@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`device_heartbeat_stale` watchdog probe** — the first probe that
+  watches the devices the hub *manages* (vs an outbound target or a
+  power sample). Fails when a device's `last_heartbeat_at` is older
+  than `max_age_seconds` (default 300) or it never heartbeated. Pair
+  with a NOTIFY action to be alerted when a fleet device goes silent.
+  Wired through the full canonical-probe path (validation + runtime in
+  lockstep per the BUG-058 contract).
+
 ## [0.6.6] - 2026-05-27
 
 ### Added
