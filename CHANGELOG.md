@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-05-29
+
 ### Added
 - **WiFi RSSI capture** — `device_heartbeats.wifi_rssi_dbm` column
   (migration `0008`) stores the current-connection signal strength
