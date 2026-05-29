@@ -117,6 +117,12 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
         for field in _HEARTBEAT_STATUS_FIELDS:
             if field in payload:
                 setattr(hb, field, payload[field])
+        # #165 / firmware 0.2.10+: heap-trajectory ring (5s-resolution samples
+        # collected on-device, flushed per heartbeat). Only land a non-empty
+        # list — silent skip on pre-0.2.10 or compact-mode heartbeats.
+        traj = payload.get("heap_trajectory")
+        if isinstance(traj, list) and traj:
+            hb.heap_trajectory = traj
         session.add(hb)
 
         # Reboot detection — if the new heartbeat's uptime regressed below the

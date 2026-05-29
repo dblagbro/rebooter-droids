@@ -169,6 +169,11 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # snapshot on the device (JSON list of {ssid,rssi}) + its timestamp.
     ("devices", "last_wifi_scan", "JSONB"),
     ("devices", "last_wifi_scan_at", "TIMESTAMPTZ"),
+    # 0.6.11 (firmware 0.2.10+, #165): heap-trajectory ring streamed in each
+    # heartbeat — 5s-resolution heap samples [{up, fh, mfb, fp}, ...]. Lets
+    # us watch fragmentation creep (max_free_block declining while free_heap
+    # stays flat) without polling /api/status over the LAN.
+    ("device_heartbeats", "heap_trajectory", "JSONB"),
 )
 
 
