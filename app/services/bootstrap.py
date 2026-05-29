@@ -162,6 +162,9 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # the extremes here. Both additive nullable.
     ("device_power_samples", "min_w", "NUMERIC(8,2)"),
     ("device_power_samples", "max_w", "NUMERIC(8,2)"),
+    # 0.6.8 (firmware 0.2.7+): current-connection WiFi RSSI (dBm) per
+    # heartbeat. Additive nullable — NULL for pre-0.2.7 heartbeats.
+    ("device_heartbeats", "wifi_rssi_dbm", "INTEGER"),
 )
 
 
