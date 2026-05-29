@@ -9,15 +9,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.16] - 2026-05-29
 
+### Added
+- **Live device-detail status panel (#171)** — extends the 0.6.12 list-page
+  live updates to per-device pages. A compact strip in the Overview polls
+  `/admin/devices/live` every 3s and surfaces heartbeat_state + age, relay
+  state, uptime, `free_heap`, `max_free_block`, `heap_fragmentation_pct`
+  (the last three from the firmware 0.2.10+ trajectory ring's tail
+  sample). `frag_pct` turns amber at >=25% and red at >=40% so operators
+  can watch fragmentation creep toward the BearSSL ceiling in real time.
+
 ## [0.6.15] - 2026-05-29
+
+### Changed
+- **Idle command-poll cadence 30s → 300s (#170)** — when the heartbeat
+  handler finds no pending commands for the device, return
+  `next_poll_after_seconds=300` (5min) instead of the old 30s default.
+  Pairs with firmware 0.2.13's heartbeat-piggyback to drop steady-state
+  HTTPS rate per device from ~3 calls/min (1 hb + 2 polls) to ~1.2/min
+  (1 hb + 1 poll/5min) — ~3x slower BearSSL fragmentation creep. Burst
+  cadence (2s while commands are queued) preserved.
 
 ## [0.6.14] - 2026-05-29
 
+### Added
+- **Heartbeat piggybacks pending commands (#170)** — heartbeat ACK now
+  drains the device's pending command queue (`list_pending_for_device`,
+  `mark_delivered=True`) and includes the rows in
+  `data.pending_commands`. Firmware 0.2.13+ executes them after the
+  heartbeat exits its handler scope. Old firmware ignores the field —
+  the dedicated `/device/commands` GET remains the fallback delivery.
+
 ## [0.6.13] - 2026-05-29
+
+### Added
+- **Adaptive command-poll cadence (#168)** — when commands are pending
+  for a device, return `next_poll_after_seconds=2` in the heartbeat ACK
+  so the device polls again within ~2s instead of the default 30s. As
+  soon as the queue empties, the value rebounds. Cuts burst-control
+  latency for follow-up commands without changing steady-state pressure.
+  First-command latency unchanged (still gated on next heartbeat).
+
+### Note
+- An earlier firmware-side `Prefer: wait=N` long-poll attempt in 0.2.11
+  was reverted — see `feedback_esp8266_blocking_long_poll`. ESP8266 is
+  single-threaded; a blocking long-poll starves the LAN web server and
+  trips the soft WDT (`reset_reason="Exception"` reboots within 2 min).
 
 ## [0.6.12] - 2026-05-29
 
+### Added
+- **Live device-list updates (#167)** — slim
+  `/api/v1/admin/devices/live` endpoint returns per-device online state,
+  relay state, last_seen, and the latest heap snapshot. The
+  `devices_list.html` template tags rows with `data-device-id`, hooks
+  the online cell and relay button, and includes a small JS poller
+  that hits the endpoint every 3s and swaps the badge text + button
+  label/colour + form's hidden `type` input in place. After a relay
+  toggle submit the poller bumps to 1Hz for 30s so the state change
+  appears as soon as the device reports back.
+
 ## [0.6.11] - 2026-05-29
+
+### Added
+- **Heap trajectory ingest (#165)** — `device_heartbeats.heap_trajectory`
+  JSONB column (added via `bootstrap._PENDING_COLUMNS`) stores the
+  per-heartbeat heap-sample ring uploaded by firmware 0.2.10+:
+  `[{up,fh,mfb,fp}, ...]`. Surfaces fragmentation creep that the
+  device's polled `/api/status` `free_heap` alone hides (free_heap
+  often stays flat while `max_free_block` declines toward the BearSSL
+  ceiling). Persisted indefinitely on the hub for forensic correlation.
 
 ## [0.6.10] - 2026-05-29
 
