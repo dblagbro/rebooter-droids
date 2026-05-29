@@ -117,20 +117,23 @@ def heartbeat():
         return err("device_unknown", "Device not found.", status=404)
 
     settings = current_app.config["SETTINGS"]
-    # #170 / 0.6.14: piggyback any pending commands on the heartbeat
-    # response. Firmware 0.2.11+ executes them inline, skipping a
-    # dedicated /device/commands GET — collapses steady-state HTTPS
-    # from ~3 calls/min to ~1/min on each device, slowing the BearSSL
-    # fragmentation creep proportionally. Old firmware just ignores
-    # the extra field. mark_delivered=True flips them out of "pending"
-    # so the next /commands poll won't redeliver.
+    # #170 / 0.6.15: piggyback any pending commands on the heartbeat
+    # response (firmware 0.2.13+ defers execution to the next loop
+    # tick to avoid nested-HTTPS heap pressure). Heartbeat now also
+    # extends the device's command-poll interval — when the queue is
+    # empty, push next_poll_after_seconds to 300s (5min) so the
+    # device's separate /device/commands GET becomes rare, leaving
+    # the heartbeat as the primary delivery channel. Net steady-state
+    # HTTPS rate drops from ~3/min (heartbeat + 2 polls) to ~1.2/min
+    # (heartbeat + 1 poll/5min) → ~3x fewer BearSSL allocations →
+    # ~3x slower fragmentation creep. First-command latency is the
+    # heartbeat interval (≤60s) since piggyback delivers it inline.
+    # 2s while commands are queued keeps follow-ups snappy.
     pending_cmds = list_pending_for_device(device.id, mark_delivered=True)
-    # #168 / 0.6.13: adaptive command-poll cadence. When commands were
-    # just delivered we keep the device on a fast poll for the next
-    # cycle so any newly-queued follow-ups land quickly.
+    next_poll = 2 if pending_cmds else max(int(settings.poll_interval_seconds), 300)
     return ok(
         {
-            "next_poll_after_seconds": 2 if pending_cmds else settings.poll_interval_seconds,
+            "next_poll_after_seconds": next_poll,
             "next_heartbeat_after_seconds": settings.heartbeat_interval_seconds,
             "pending_commands": [
                 {
