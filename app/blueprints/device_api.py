@@ -117,34 +117,33 @@ def heartbeat():
         return err("device_unknown", "Device not found.", status=404)
 
     settings = current_app.config["SETTINGS"]
-    # #168 / 0.6.13: adaptive command-poll cadence. When any commands are
-    # queued for this device, push the device's poll interval down so the
-    # next command-poll fires within ~2s instead of the default 30s. As
-    # soon as the queue empties the value rebounds to settings, so we
-    # only spend the extra HTTPS pressure while a control action is in
-    # flight. Firmware honours `next_poll_after_seconds` (see
-    # central_client.cpp:811) by mirroring it onto pollIntervalSeconds.
-    has_pending = _device_has_pending_commands(device.id)
+    # #170 / 0.6.14: piggyback any pending commands on the heartbeat
+    # response. Firmware 0.2.11+ executes them inline, skipping a
+    # dedicated /device/commands GET — collapses steady-state HTTPS
+    # from ~3 calls/min to ~1/min on each device, slowing the BearSSL
+    # fragmentation creep proportionally. Old firmware just ignores
+    # the extra field. mark_delivered=True flips them out of "pending"
+    # so the next /commands poll won't redeliver.
+    pending_cmds = list_pending_for_device(device.id, mark_delivered=True)
+    # #168 / 0.6.13: adaptive command-poll cadence. When commands were
+    # just delivered we keep the device on a fast poll for the next
+    # cycle so any newly-queued follow-ups land quickly.
     return ok(
         {
-            "next_poll_after_seconds": 2 if has_pending else settings.poll_interval_seconds,
+            "next_poll_after_seconds": 2 if pending_cmds else settings.poll_interval_seconds,
             "next_heartbeat_after_seconds": settings.heartbeat_interval_seconds,
+            "pending_commands": [
+                {
+                    "command_id": c.id,
+                    "type": c.type,
+                    "created_at": c.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "expires_at": c.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "payload": c.payload,
+                }
+                for c in pending_cmds
+            ],
         }
     )
-
-
-def _device_has_pending_commands(device_id: str) -> bool:
-    from app.db import session_scope
-    from app.models.commands import Command
-    from sqlalchemy import select
-
-    with session_scope() as s:
-        row = s.execute(
-            select(Command.id)
-            .where(Command.device_id == device_id, Command.status == "pending")
-            .limit(1)
-        ).first()
-        return row is not None
 
 
 def _parse_prefer_wait(prefer_header: str | None) -> int:
