@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-05-29
+
 ### Added
 - **Nearby-networks scan (#154)** — firmware 0.2.8+ does an opt-in
   periodic async WiFi scan and reports the top-5 networks in the
