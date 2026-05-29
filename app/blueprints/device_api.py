@@ -117,12 +117,34 @@ def heartbeat():
         return err("device_unknown", "Device not found.", status=404)
 
     settings = current_app.config["SETTINGS"]
+    # #168 / 0.6.13: adaptive command-poll cadence. When any commands are
+    # queued for this device, push the device's poll interval down so the
+    # next command-poll fires within ~2s instead of the default 30s. As
+    # soon as the queue empties the value rebounds to settings, so we
+    # only spend the extra HTTPS pressure while a control action is in
+    # flight. Firmware honours `next_poll_after_seconds` (see
+    # central_client.cpp:811) by mirroring it onto pollIntervalSeconds.
+    has_pending = _device_has_pending_commands(device.id)
     return ok(
         {
-            "next_poll_after_seconds": settings.poll_interval_seconds,
+            "next_poll_after_seconds": 2 if has_pending else settings.poll_interval_seconds,
             "next_heartbeat_after_seconds": settings.heartbeat_interval_seconds,
         }
     )
+
+
+def _device_has_pending_commands(device_id: str) -> bool:
+    from app.db import session_scope
+    from app.models.commands import Command
+    from sqlalchemy import select
+
+    with session_scope() as s:
+        row = s.execute(
+            select(Command.id)
+            .where(Command.device_id == device_id, Command.status == "pending")
+            .limit(1)
+        ).first()
+        return row is not None
 
 
 def _parse_prefer_wait(prefer_header: str | None) -> int:
