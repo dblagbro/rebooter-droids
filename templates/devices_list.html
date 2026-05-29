@@ -188,7 +188,7 @@
     </thead>
     <tbody>
     {% for d in devices %}
-      <tr>
+      <tr data-device-id="{{ d.id }}">
         {% if can_bulk_delete %}<td class="v3-bulk-checkbox-cell">
           <input type="checkbox" class="v3-bulk-checkbox" name="device_id" value="{{ d.id }}"
                  form="devices-bulk-delete-form"
@@ -200,7 +200,7 @@
           {% if d.is_protected %}<span class="badge red" title="protected — bulk delete will skip unless override">🔒</span>{% endif %}
         </td>
         <td><span class="badge">{{ d.registration_state }}</span></td>
-        <td>
+        <td data-live="online">
           {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
           {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
           {% else %}<span class="badge red" title="last heartbeat older than 3 min">offline</span>
@@ -214,7 +214,7 @@
              None  -> em-dash, device never heartbeated
            is_held_off and is_protected are surface-only — back end
            still enforces. #}
-        <td style="white-space:nowrap">
+        <td style="white-space:nowrap" data-live="relay">
           {% set can_toggle = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
           {% if d.latest_relay_on is none %}
             <span class="muted" title="no heartbeat from device yet">—</span>
@@ -223,7 +223,7 @@
           {% elif not d.online %}
             <button type="button" class="btn-secondary" disabled
                     title="device is offline — toggle will queue but won't execute until reconnect">
-              {{ 'ON' if d.latest_relay_on else 'OFF' }}
+              <span data-relay-label>{{ 'ON' if d.latest_relay_on else 'OFF' }}</span>
             </button>
           {% elif can_toggle %}
             {% set target_type = 'relay_off' if d.latest_relay_on else 'relay_on' %}
@@ -232,18 +232,19 @@
                   action="{{ url_for('admin_ui.device_send_command', device_id=d.id) }}"
                   style="display:inline; margin:0"
                   {% if d.is_protected %}data-confirm-message="Toggle 🔒 protected device {{ d.display_name or d.id }}? You must also tick override-lockout below to actually fire."{% endif %}>
-              <input type="hidden" name="type" value="{{ target_type }}">
+              <input type="hidden" name="type" value="{{ target_type }}" data-relay-target>
               <input type="hidden" name="next" value="list">
               {% if d.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
-              <button type="submit"
+              <button type="submit" data-relay-toggle
+                      data-current="{{ 'on' if d.latest_relay_on else 'off' }}"
                       class="{{ 'btn' if d.latest_relay_on else 'btn-secondary' }}"
                       title="{{ verb }} ({{ target_type }})"
                       style="{% if d.latest_relay_on %}background:var(--green-fg,#15803d);color:white;{% endif %}font-weight:600;min-width:3.2rem">
-                {{ 'ON' if d.latest_relay_on else 'OFF' }}
+                <span data-relay-label>{{ 'ON' if d.latest_relay_on else 'OFF' }}</span>
               </button>
             </form>
           {% else %}
-            <span class="badge {% if d.latest_relay_on %}green{% endif %}">{{ 'ON' if d.latest_relay_on else 'OFF' }}</span>
+            <span class="badge {% if d.latest_relay_on %}green{% endif %}" data-relay-badge>{{ 'ON' if d.latest_relay_on else 'OFF' }}</span>
           {% endif %}
           {# v0.5.26 (B16 Phase 1A): compact latest-watts chip next to
              the toggle. Renders only when there's a sample; absent
@@ -423,4 +424,94 @@
 </form>
 {% endif %}
 {% endif %}
+
+{# #167 / 0.6.12: live row updates. Polls a slim endpoint every ~3s
+   and swaps the per-row online badge + relay button text in place,
+   so the operator sees devices flip online/offline and ON/OFF
+   without reloading. After clicking a relay toggle the poll jumps
+   to 1Hz for ~30s so the just-issued command's effect appears
+   ASAP (mitigates the 30s device poll latency — proper fix in #168).
+   No-op if no rows render. #}
+<script>
+(function(){
+  const rows = document.querySelectorAll('tr[data-device-id]');
+  if (!rows.length) return;
+  let fastUntil = 0;
+  const url = '{{ url_for("admin_api.devices_live") }}';
+
+  function applyRow(tr, dev) {
+    const onlineCell = tr.querySelector('[data-live="online"]');
+    if (onlineCell) {
+      let html;
+      if (dev.heartbeat_state === 'online') {
+        html = '<span class="badge green" title="last heartbeat within 3 min">online</span>';
+      } else if (dev.heartbeat_state === 'never') {
+        html = '<span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>';
+      } else {
+        html = '<span class="badge red" title="last heartbeat older than 3 min">offline</span>';
+      }
+      if (onlineCell.innerHTML.trim() !== html) onlineCell.innerHTML = html;
+    }
+    // Relay state — flip the button label + form intent only when it changed,
+    // and only on the can-toggle path (where the form exists). Read-only
+    // badges (data-relay-badge) get the same label/class swap.
+    if (dev.latest_relay_on !== null && dev.latest_relay_on !== undefined) {
+      const btn = tr.querySelector('button[data-relay-toggle]');
+      const target = tr.querySelector('input[data-relay-target]');
+      const label = tr.querySelector('[data-relay-label]');
+      const badge = tr.querySelector('[data-relay-badge]');
+      const on = !!dev.latest_relay_on;
+      if (btn && target) {
+        const curOn = btn.dataset.current === 'on';
+        if (curOn !== on) {
+          btn.dataset.current = on ? 'on' : 'off';
+          btn.className = on ? 'btn' : 'btn-secondary';
+          btn.style.background = on ? 'var(--green-fg,#15803d)' : '';
+          btn.style.color = on ? 'white' : '';
+          btn.style.fontWeight = '600';
+          btn.style.minWidth = '3.2rem';
+          target.value = on ? 'relay_off' : 'relay_on';
+          if (label) label.textContent = on ? 'ON' : 'OFF';
+        }
+      }
+      if (badge) {
+        const wantClass = 'badge' + (on ? ' green' : '');
+        if (badge.className !== wantClass) badge.className = wantClass;
+        const wantText = on ? 'ON' : 'OFF';
+        if (badge.textContent !== wantText) badge.textContent = wantText;
+      }
+    }
+  }
+
+  async function tick() {
+    try {
+      const r = await fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j || !j.ok || !j.data || !Array.isArray(j.data.devices)) return;
+      const byId = {};
+      for (const d of j.data.devices) byId[d.id] = d;
+      for (const tr of rows) {
+        const d = byId[tr.dataset.deviceId];
+        if (d) applyRow(tr, d);
+      }
+    } catch (e) { /* network blip — keep polling */ }
+  }
+
+  // Bump to 1Hz for 30s after a relay toggle so the operator sees the
+  // result land ASAP, then back to 3s.
+  document.addEventListener('submit', (ev) => {
+    if (ev.target && ev.target.querySelector && ev.target.querySelector('button[data-relay-toggle]')) {
+      fastUntil = Date.now() + 30000;
+    }
+  }, true);
+
+  // Use a self-rescheduling loop so the interval is dynamic.
+  (function loop(){
+    tick();
+    const delay = Date.now() < fastUntil ? 1000 : 3000;
+    setTimeout(loop, delay);
+  })();
+})();
+</script>
 {% endblock %}

@@ -53,6 +53,74 @@ def _show_qa_fixtures(raw: str | None, default: bool) -> bool:
     return raw.lower() in ("1", "true", "yes", "on")
 
 
+# #167 / 0.6.12: slim live-state endpoint the device list/detail pages
+# poll every ~3s for real-time online/offline + relay state without a
+# full page render. Returns one row per device with just the fields the
+# UI flips: heartbeat_state, latest_relay_on, last_seen_at, heap +
+# fragmentation, pending command count. Excludes deprovisioned devices.
+@admin_api_bp.get("/devices/live")
+@admin_required_api
+def devices_live():
+    from datetime import datetime, timezone
+    from app.db import session_scope
+    from app.models.devices import Device, DeviceHeartbeat
+    from app.models.commands import Command
+    from app.services.devices._serialize import _heartbeat_state_for
+    from sqlalchemy import func, select
+
+    now = datetime.now(timezone.utc)
+    out = []
+    with session_scope() as s:
+        device_rows = s.execute(
+            select(
+                Device.id,
+                Device.last_seen_at,
+                Device.last_heartbeat_at,
+            ).where(Device.registration_state != "deprovisioned")
+        ).all()
+        device_ids = [r.id for r in device_rows]
+        hbs: dict[str, DeviceHeartbeat] = {}
+        pending: dict[str, int] = {}
+        if device_ids:
+            for hb in s.execute(
+                select(DeviceHeartbeat).where(DeviceHeartbeat.device_id.in_(device_ids))
+            ).scalars():
+                cur = hbs.get(hb.device_id)
+                if cur is None or hb.received_at > cur.received_at:
+                    hbs[hb.device_id] = hb
+            for dev_id, n in s.execute(
+                select(Command.device_id, func.count(Command.id))
+                .where(Command.device_id.in_(device_ids), Command.status == "pending")
+                .group_by(Command.device_id)
+            ).all():
+                pending[dev_id] = int(n)
+        for d in device_rows:
+            hb = hbs.get(d.id)
+            hb_state = _heartbeat_state_for(
+                d.last_heartbeat_at, now=now, offline_threshold_seconds=180,
+                last_seen_at=d.last_seen_at,
+            )
+            # Pull the latest heap snapshot from the trajectory ring (firmware
+            # 0.2.10+); falls back to None for older heartbeats.
+            traj = (hb.heap_trajectory if hb else None) or []
+            last_sample = traj[-1] if traj else {}
+            out.append({
+                "id": d.id,
+                "heartbeat_state": hb_state,
+                "online": hb_state == "online",
+                "latest_relay_on": (bool(hb.relay_on) if hb else None),
+                "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None,
+                "uptime_seconds": (hb.uptime_seconds if hb else None),
+                "health_state": (hb.health_state if hb else None),
+                "wifi_rssi_dbm": (hb.wifi_rssi_dbm if hb else None),
+                "free_heap": last_sample.get("fh"),
+                "max_free_block": last_sample.get("mfb"),
+                "heap_fragmentation_pct": last_sample.get("fp"),
+                "pending_commands": pending.get(d.id, 0),
+            })
+    return ok({"devices": out, "ts": now.isoformat()})
+
+
 @admin_api_bp.get("/devices")
 @admin_required_api
 def list_devices():
