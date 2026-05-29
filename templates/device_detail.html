@@ -42,6 +42,24 @@
 {# ── overview ───────────────────────────────────────────────────────── #}
 <section class="v3-card" id="overview">
   <h2>Overview · Heartbeat</h2>
+
+  {# #171 / 0.6.16: live-status panel. Polls /admin/devices/live every
+     3s and surfaces the rapidly-changing metrics that the static
+     server-rendered view below misses between page loads. Shows the
+     heap-trajectory tail sample (free_heap, max_free_block, frag_pct)
+     so the operator can watch fragmentation creep on a single device
+     without reloading or shelling in. #}
+  <div class="v3-live-panel" data-device-live="{{ device.id }}"
+       style="background:var(--surface-alt,#f8f8fa);border:1px solid var(--border,#dde);border-radius:6px;padding:.6rem .9rem;margin:.5rem 0;display:flex;flex-wrap:wrap;gap:.6rem 1.4rem;font-variant-numeric:tabular-nums">
+    <span><strong data-live="heartbeat-badge">…</strong> <span class="muted" data-live="last-seen-age">·</span></span>
+    <span>relay <strong data-live="relay">…</strong></span>
+    <span>uptime <strong data-live="uptime">…</strong>s</span>
+    <span>heap <strong data-live="free-heap">…</strong></span>
+    <span title="largest contiguous block — the BearSSL ~12K ceiling">contig <strong data-live="max-free-block">…</strong></span>
+    <span title="lower = better; >40% danger zone">frag <strong data-live="frag-pct">…</strong>%</span>
+    <span class="muted" style="font-size:.85rem">refreshes every 3s</span>
+  </div>
+
   {% if device.latest_heartbeat %}
     <p>Last seen <strong>{{ device.latest_heartbeat.received_at }}</strong></p>
     <ul>
@@ -632,4 +650,55 @@
   </form>
 </section>
 {% endif %}
+
+{# #171 / 0.6.16: live device-detail poller (see panel near top of page). #}
+<script>
+(function(){
+  const panel = document.querySelector('[data-device-live]');
+  if (!panel) return;
+  const deviceId = panel.dataset.deviceLive;
+  const url = '{{ url_for("admin_api.devices_live") }}';
+  function fmtAge(iso) {
+    if (!iso) return '—';
+    const dt = new Date(iso); const sec = Math.max(0, Math.floor((Date.now() - dt.getTime())/1000));
+    if (sec < 90) return sec + 's ago';
+    if (sec < 3600) return Math.floor(sec/60) + 'm ago';
+    return Math.floor(sec/3600) + 'h ago';
+  }
+  function setText(name, val) {
+    const el = panel.querySelector(`[data-live="${name}"]`);
+    if (el) el.textContent = val;
+  }
+  async function tick() {
+    try {
+      const r = await fetch(url, {credentials:'same-origin', headers:{'Accept':'application/json'}});
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j.ok) return;
+      const dev = (j.data.devices || []).find(d => d.id === deviceId);
+      if (!dev) return;
+      // heartbeat-state badge — colour-coded inline so we don't depend on
+      // app.css badge styles being available in every layout.
+      const badge = panel.querySelector('[data-live="heartbeat-badge"]');
+      if (badge) {
+        const map = {online:['online','#15803d'], offline:['offline','#b91c1c'], never:['never heartbeated','#666']};
+        const [label, colour] = map[dev.heartbeat_state] || ['unknown','#666'];
+        badge.textContent = label;
+        badge.style.color = colour;
+      }
+      setText('last-seen-age', fmtAge(dev.last_seen_at));
+      setText('relay', dev.latest_relay_on === null ? '—' : (dev.latest_relay_on ? 'ON' : 'OFF'));
+      setText('uptime', dev.uptime_seconds ?? '—');
+      setText('free-heap', dev.free_heap ?? '—');
+      setText('max-free-block', dev.max_free_block ?? '—');
+      const fp = dev.heap_fragmentation_pct;
+      setText('frag-pct', fp ?? '—');
+      const fpEl = panel.querySelector('[data-live="frag-pct"]');
+      if (fpEl) fpEl.style.color = (fp != null && fp >= 40) ? '#b91c1c' : (fp != null && fp >= 25) ? '#b45309' : '';
+    } catch (e) { /* keep polling */ }
+  }
+  tick();
+  setInterval(tick, 3000);
+})();
+</script>
 {% endblock %}
