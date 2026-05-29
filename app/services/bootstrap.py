@@ -165,6 +165,10 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # 0.6.8 (firmware 0.2.7+): current-connection WiFi RSSI (dBm) per
     # heartbeat. Additive nullable — NULL for pre-0.2.7 heartbeats.
     ("device_heartbeats", "wifi_rssi_dbm", "INTEGER"),
+    # 0.6.10 (firmware 0.2.8+, #154): latest periodic nearby-network scan
+    # snapshot on the device (JSON list of {ssid,rssi}) + its timestamp.
+    ("devices", "last_wifi_scan", "JSONB"),
+    ("devices", "last_wifi_scan_at", "TIMESTAMPTZ"),
 )
 
 

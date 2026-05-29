@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Nearby-networks scan (#154)** — firmware 0.2.8+ does an opt-in
+  periodic async WiFi scan and reports the top-5 networks in the
+  heartbeat. The hub stores the latest snapshot on the device
+  (`devices.last_wifi_scan` JSONB + `last_wifi_scan_at`, both registered
+  in `bootstrap._PENDING_COLUMNS`) and shows it on the device-detail
+  "WiFi environment" section with strong/ok/weak labels. NULL until a
+  scan arrives. RF-environment visibility (competing APs / mesh / noise).
+
 ## [0.6.9] - 2026-05-29
 
 ### Fixed
