@@ -87,6 +87,13 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             device.firmware_version = payload["firmware_version"]
         if payload.get("local_ip"):
             device.local_ip = payload["local_ip"]
+        # #154 (firmware 0.2.8+): latest periodic nearby-network scan. Store
+        # the snapshot on the device (it changes slowly — per-heartbeat
+        # history would be wasteful). Only a well-formed non-empty list lands.
+        scan = payload.get("wifi_scan")
+        if isinstance(scan, list) and scan:
+            device.last_wifi_scan = scan
+            device.last_wifi_scan_at = now
         session.add(device)
 
         hb = DeviceHeartbeat(

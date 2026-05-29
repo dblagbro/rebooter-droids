@@ -550,6 +550,10 @@ def get_device_detail(device_id: str) -> dict | None:
         out["desired_config_drift"] = device_config.compute_drift(device_id)
         out["desired_config_feature_enabled"] = device_config.is_feature_enabled()
 
+        # #154: latest periodic nearby-network scan snapshot (firmware 0.2.8+).
+        out["last_wifi_scan"] = list(d.last_wifi_scan) if d.last_wifi_scan else []
+        out["last_wifi_scan_at"] = _iso(d.last_wifi_scan_at)
+
         # v0.5.26 (B16 Phase 1A): latest power sample for the Power tab
         # live-card. Imported lazily — keeps the package import graph
         # small for callers that don't render device-detail.

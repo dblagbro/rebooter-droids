@@ -83,6 +83,30 @@ def test_record_heartbeat_wifi_rssi_absent_is_null(hub_db):
         assert latest_heartbeat(s, "dev-1").wifi_rssi_dbm is None
 
 
+def test_record_heartbeat_stores_wifi_scan(hub_db):
+    with session_scope() as s:
+        _device(s, "dev-1")
+    scan = [{"ssid": "VoIPguru_wifi", "rssi": -39}, {"ssid": "Neighbor", "rssi": -80}]
+    record_heartbeat("dev-1", {"wifi_scan": scan})
+    with session_scope() as s:
+        from app.models import Device
+        d = s.get(Device, "dev-1")
+        assert d.last_wifi_scan == scan
+        assert d.last_wifi_scan_at is not None
+
+
+def test_record_heartbeat_wifi_scan_empty_or_absent_ignored(hub_db):
+    with session_scope() as s:
+        _device(s, "dev-1")
+    record_heartbeat("dev-1", {"wifi_scan": []})        # empty list ignored
+    record_heartbeat("dev-1", {"health_state": "healthy"})  # absent ignored
+    with session_scope() as s:
+        from app.models import Device
+        d = s.get(Device, "dev-1")
+        assert d.last_wifi_scan is None
+        assert d.last_wifi_scan_at is None
+
+
 def test_record_heartbeat_updates_device_firmware_and_ip(hub_db):
     with session_scope() as s:
         _device(s, "dev-1")

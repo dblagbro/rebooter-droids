@@ -546,6 +546,26 @@
   {% endif %}
 </section>
 
+{# ── wifi environment (#154) ────────────────────────────────────────── #}
+{% if device.last_wifi_scan %}
+<section class="v3-card" id="wifi-scan">
+  <h2>WiFi environment · nearby networks</h2>
+  <p class="muted" style="margin-top:0">Last scan {{ device.last_wifi_scan_at or '—' }} (periodic, opt-in)</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>SSID</th><th>RSSI (dBm)</th><th></th></tr></thead>
+    <tbody>
+    {% for n in device.last_wifi_scan %}
+      <tr>
+        <td>{{ n.ssid }}</td>
+        <td>{{ n.rssi }}</td>
+        <td>{% if n.rssi >= -60 %}strong{% elif n.rssi >= -75 %}ok{% else %}weak{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
 {# ── events ─────────────────────────────────────────────────────────── #}
 <section class="v3-card" id="events">
   <h2>Recent events</h2>

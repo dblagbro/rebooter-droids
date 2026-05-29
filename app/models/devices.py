@@ -158,6 +158,13 @@ class Device(Base):
     )
     reported_central_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
+    # 0.6.10 / firmware 0.2.8+ (#154): latest opt-in periodic nearby-network
+    # scan — a list of {"ssid","rssi"} top-N, refreshed every scan interval.
+    # The latest snapshot lives on the device (the scan changes slowly, so
+    # per-heartbeat history would be wasteful); NULL until a scan arrives.
+    last_wifi_scan: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    last_wifi_scan_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
+
     created_at: Mapped[datetime] = ts_column()
     updated_at: Mapped[datetime] = ts_column()
 
