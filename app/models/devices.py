@@ -272,6 +272,11 @@ class DeviceHeartbeat(Base):
     # or not associated). Lets the device-detail page chart WiFi signal
     # quality and flag degradation.
     wifi_rssi_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 0.6.11 / firmware 0.2.10+ (#165): 5s-resolution heap trajectory ring
+    # streamed in each heartbeat — list of {up, fh, mfb, fp} (uptime_s,
+    # free_heap, max_free_block, frag_pct). Surfaces fragmentation creep
+    # that ESP.getFreeHeap() alone hides; null on pre-0.2.10 heartbeats.
+    heap_trajectory: Mapped[list | None] = mapped_column(JSON, nullable=True)
     health_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
     uptime_seconds: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     incident_cycles: Mapped[int | None] = mapped_column(Integer, nullable=True)
