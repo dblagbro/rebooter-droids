@@ -7,14 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-05-29
+
+### Fixed
+- **Schema-drift guard** — `device_heartbeats.wifi_rssi_dbm` (added in
+  0.6.8) was missing from `bootstrap._PENDING_COLUMNS`, so the startup
+  bootstrap couldn't add it to an already-existing production DB
+  (a fresh DB was fine via `create_all`). Registered it in
+  `_PENDING_COLUMNS` and dropped the stray alembic migration `0008`
+  (this project upgrades prod via `bootstrap.ensure_schema`, not
+  alembic). Restores CI green.
+
 ## [0.6.8] - 2026-05-29
 
 ### Added
-- **WiFi RSSI capture** — `device_heartbeats.wifi_rssi_dbm` column
-  (migration `0008`) stores the current-connection signal strength
-  reported by firmware 0.2.7+. Surfaced on the device-detail Overview
-  with a strong/ok/weak label. NULL for pre-0.2.7 heartbeats. Gives the
-  first visibility into per-device WiFi signal quality over time.
+- **WiFi RSSI capture** — `device_heartbeats.wifi_rssi_dbm` column stores
+  the current-connection signal strength reported by firmware 0.2.7+.
+  Surfaced on the device-detail Overview with a strong/ok/weak label.
+  NULL for pre-0.2.7 heartbeats. First visibility into per-device WiFi
+  signal quality. (Bootstrap upgrade-path registration was missed —
+  fixed in 0.6.9.)
 
 ## [0.6.7] - 2026-05-28
 
