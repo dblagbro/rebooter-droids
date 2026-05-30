@@ -588,11 +588,44 @@
 <section class="v3-card" id="events">
   <h2>Recent events</h2>
   {% if device.recent_events %}
+  {# #172 / 0.6.17: reboot-class summary. Counts only device.rebooted rows
+     in recent_events, splitting them into ghost (no planned reason — true
+     SDK crash / Exception) vs planned (any reason — api_ota_finalize,
+     heap_pressure_proactive, button_*, etc.). Gives operators a one-line
+     answer to "is this device stable?" without reading every row. #}
+  {% set reboot_rows = device.recent_events|selectattr('type', 'equalto', 'device.rebooted')|list %}
+  {% if reboot_rows %}
+    {% set ghost_n = reboot_rows|selectattr('details')|rejectattr('details.last_planned_restart_reason')|list|length %}
+    {% set planned_n = reboot_rows|length - ghost_n %}
+    <p style="margin:.25rem 0 .5rem 0">
+      Recent reboots:
+      <span class="badge {% if ghost_n > 0 %}red{% endif %}" title="reboots with empty last_planned_restart_reason — SDK system_restart_local or hardware exception">{{ ghost_n }} ghost</span>
+      <span class="badge {% if planned_n > 0 %}green{% endif %}" title="reboots with a recorded reason — api_ota_finalize, heap_pressure_proactive, button_*, central_command, etc.">{{ planned_n }} planned</span>
+    </p>
+  {% endif %}
   <div class="table-wrap"><table>
     <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
     <tbody>
     {% for e in device.recent_events %}
-      <tr><td>{{ e.timestamp }}</td><td>{{ e.type }}</td><td>{{ e.message or '' }}</td></tr>
+      {% if e.type == 'device.rebooted' %}
+        {% set reason = (e.details or {}).get('last_planned_restart_reason') %}
+        {% set rc = (e.details or {}).get('reset_reason') %}
+        <tr{% if not reason %} style="background:rgba(185,28,28,.06)"{% endif %}>
+          <td>{{ e.timestamp }}</td>
+          <td>
+            <span class="badge {% if not reason %}red{% elif reason == 'heap_pressure_proactive' %}amber{% else %}green{% endif %}"
+                  title="reset_reason={{ rc or 'unknown' }} · planned_reason={{ reason or 'EMPTY (ghost)' }}">
+              {% if not reason %}reboot · ghost
+              {% elif reason == 'heap_pressure_proactive' %}reboot · heap-pressure
+              {% else %}reboot · {{ reason }}
+              {% endif %}
+            </span>
+          </td>
+          <td>{{ e.message or '' }}</td>
+        </tr>
+      {% else %}
+        <tr><td>{{ e.timestamp }}</td><td>{{ e.type }}</td><td>{{ e.message or '' }}</td></tr>
+      {% endif %}
     {% endfor %}
     </tbody>
   </table></div>
