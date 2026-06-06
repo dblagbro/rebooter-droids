@@ -53,6 +53,64 @@ def _show_qa_fixtures(raw: str | None, default: bool) -> bool:
     return raw.lower() in ("1", "true", "yes", "on")
 
 
+# 0.6.21 #178 Phase 1: SSE stream of command-queued events. The LAN
+# relay agent (tools/lan-relay-agent.py) subscribes here and POSTs
+# directly to device LAN IPs within ~100-300ms of the operator clicking
+# a button — way under the polling-architecture's ~30s floor. Browser
+# tabs can also subscribe to drive optimistic UI updates without the
+# 3s poller getting in the way. Auth: admin cookie OR bearer token,
+# so a headless agent can use a long-lived rbt_-prefixed token from
+# a service account.
+@admin_api_bp.get("/events/commands")
+def events_commands_stream():
+    from flask import Response, request, g, stream_with_context
+    import json as _json
+    import queue as _queue
+
+    from app.middleware.admin_auth import _resolve_user
+    from app.middleware.token_auth import resolve_api_token_principal
+    from app.services import event_bus
+
+    # Manual auth: accept session cookie OR rbt_ bearer. Decorators that
+    # set tenant scope teardown don't compose cleanly with a long-lived
+    # SSE generator, so we resolve the principal directly and only gate
+    # on its presence.
+    user = _resolve_user()
+    principal = resolve_api_token_principal() if user is None else None
+    if user is None and principal is None:
+        return err("auth_required", "Authentication required.", status=401)
+
+    sub = event_bus.subscribe()
+
+    @stream_with_context
+    def stream():
+        try:
+            yield 'event: hello\ndata: {"ok":true}\n\n'
+            while True:
+                try:
+                    ev = sub.queue.get(timeout=15)
+                except _queue.Empty:
+                    # heartbeat keeps the connection alive through any
+                    # proxies that close idle streams (nginx default 60s)
+                    yield ": heartbeat\n\n"
+                    continue
+                if ev is None:  # close sentinel
+                    return
+                yield f"event: {ev.get('kind','message')}\ndata: {_json.dumps(ev)}\n\n"
+        finally:
+            event_bus.unsubscribe(sub)
+
+    return Response(
+        stream(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",  # disable nginx proxy buffering
+            "Connection": "keep-alive",
+        },
+    )
+
+
 # #167 / 0.6.12: slim live-state endpoint the device list/detail pages
 # poll every ~3s for real-time online/offline + relay state without a
 # full page render. Returns one row per device with just the fields the

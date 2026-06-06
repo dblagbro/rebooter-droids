@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
 
 from app.db import session_scope
 from app.models import Command, CommandResult, Device, GroupMembership
+
+log = logging.getLogger(__name__)
 
 DEFAULT_TTL_SECONDS = 600
 ALLOWED_TYPES = {
@@ -181,7 +184,30 @@ def enqueue_for_device(
             session.add(target)
         session.add(cmd)
         session.flush()
+        # 0.6.21 #178 Phase 1: publish to the in-process event bus so SSE
+        # subscribers (LAN relay agent, optionally the admin browser) can
+        # react in <200ms without polling. Captured before expunge so the
+        # device's local_ip lands in the event (the agent needs it to
+        # know where to POST).
+        _event_payload = {
+            "kind": "command_queued",
+            "command_id": cmd.id,
+            "device_id": device_id,
+            "device_local_ip": target.local_ip,
+            "type": cmd_type,
+            "payload": payload,
+            "created_at": cmd.created_at.isoformat() if cmd.created_at else None,
+        }
         session.expunge(cmd)
+    # Publish OUTSIDE the txn so subscribers don't see partial state if
+    # an outer caller rolls back. The event itself carries the row id;
+    # subscribers can re-read if they need full state. In practice the
+    # power commands the agent reacts to are idempotent.
+    try:
+        from app.services import event_bus
+        event_bus.publish(_event_payload)
+    except Exception:  # pragma: no cover - bus failures must not break queueing
+        log.exception("event_bus.publish failed for command %s", cmd.id)
     return cmd
 
 
