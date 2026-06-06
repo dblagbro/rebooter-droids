@@ -38,18 +38,29 @@
   <header class="topbar" role="banner">
     <a class="brand" href="{{ url_for('admin_ui.index') }}">Rebooter</a>
     <nav class="topnav" role="navigation" aria-label="Primary">
+      {% if not ui_flags.nav_v2 %}
       <a href="{{ url_for('admin_ui.index') }}"
          {% if active == 'status' %}aria-current="page"{% endif %}>Status</a>
+      {% endif %}
       <a href="{{ url_for('admin_ui.list_devices_page') }}"
          {% if active == 'devices' %}aria-current="page"{% endif %}>Devices</a>
       <a href="{{ url_for('admin_ui.rules_page') }}"
          {% if active == 'rules' %}aria-current="page"{% endif %}>Rules</a>
       <a href="{{ url_for('admin_ui.history_page') }}"
          {% if active == 'history' %}aria-current="page"{% endif %}>History</a>
+      {% if not ui_flags.nav_v2 %}
       <a href="{{ url_for('admin_ui.fleet_power_page') }}"
          {% if active == 'power' %}aria-current="page"{% endif %}>Power</a>
+      {% endif %}
       <a href="{{ url_for('admin_ui.settings_page') }}"
          {% if active == 'settings' %}aria-current="page"{% endif %}>Settings</a>
+      {% if ui_flags.nav_v2 %}
+        {# 0.6.29 PR-9: Status + Power removed from the bar to ship 4
+           top-level items (brutal-review prescription: 6 items is too
+           many; mobile thumb-comfortable limit is 4-5). Status is the
+           dashboard the brand link points to; Power has its own page
+           but is reached via ⌘K → "Power" or via a device's detail. #}
+      {% endif %}
     </nav>
     <div class="topbar-actions">
       <span class="version" title="rebooter-droids version">v{{ version }}</span>
@@ -80,11 +91,13 @@
 
 {% if current_user is defined and current_user %}
   <nav class="bottomnav" role="navigation" aria-label="Mobile primary">
+    {% if not ui_flags.nav_v2 %}
     <a href="{{ url_for('admin_ui.index') }}"
        {% if active == 'status' %}aria-current="page"{% endif %}>
       <span class="ico" aria-hidden="true">●</span>
       <span>Status</span>
     </a>
+    {% endif %}
     <a href="{{ url_for('admin_ui.list_devices_page') }}"
        {% if active == 'devices' %}aria-current="page"{% endif %}>
       <span class="ico" aria-hidden="true">▭</span>
@@ -100,11 +113,13 @@
       <span class="ico" aria-hidden="true">≡</span>
       <span>History</span>
     </a>
+    {% if not ui_flags.nav_v2 %}
     <a href="{{ url_for('admin_ui.fleet_power_page') }}"
        {% if active == 'power' %}aria-current="page"{% endif %}>
       <span class="ico" aria-hidden="true">⚡</span>
       <span>Power</span>
     </a>
+    {% endif %}
     <a href="{{ url_for('admin_ui.settings_page') }}"
        {% if active == 'settings' %}aria-current="page"{% endif %}>
       <span class="ico" aria-hidden="true">⚙</span>

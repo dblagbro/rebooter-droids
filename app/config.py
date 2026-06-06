@@ -45,6 +45,7 @@ class Settings:
     ui_copy_v2: bool = True   # PR-8: kill jargon, sentence-case, plain verbs
     ui_table_v2: bool = True  # PR-3: single responsive table (no mobile-card duplicate)
     ui_detail_v2: bool = True # PR-7: device-detail one primary action above the fold
+    ui_nav_v2: bool = True    # PR-9: nav trim 6→4 (Status + Power reachable via brand/⌘K)
 
 
 @lru_cache
@@ -143,5 +144,7 @@ def load_settings() -> Settings:
         ui_table_v2=os.environ.get("REBOOTER_UI_TABLE_V2", "1").strip().lower()
         not in ("0", "false", "no", "off"),
         ui_detail_v2=os.environ.get("REBOOTER_UI_DETAIL_V2", "1").strip().lower()
+        not in ("0", "false", "no", "off"),
+        ui_nav_v2=os.environ.get("REBOOTER_UI_NAV_V2", "1").strip().lower()
         not in ("0", "false", "no", "off"),
     )
