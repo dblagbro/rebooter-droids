@@ -139,5 +139,8 @@
    page. CSP-compliant (no inline, no eval). No-op unless the body has
    the data-cmdk-search-url attribute (= the user is logged in). #}
 <script src="{{ url_for('static', filename='js/cmdk.js') }}" defer></script>
+{# 0.6.30 PR-5: touch-only swipe actions on device rows. No-op on
+   mouse-capable pointers. See static/js/swipe.js. #}
+<script src="{{ url_for('static', filename='js/swipe.js') }}" defer></script>
 </body>
 </html>
