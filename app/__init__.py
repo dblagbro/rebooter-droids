@@ -215,6 +215,7 @@ def create_app() -> Flask:
                 "row_v2": s.ui_row_v2,
                 "a11y_v2": s.ui_a11y_v2,
                 "copy_v2": s.ui_copy_v2,
+                "table_v2": s.ui_table_v2,
             }
         }
 
