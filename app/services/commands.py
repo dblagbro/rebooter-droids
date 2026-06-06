@@ -254,27 +254,55 @@ def cancel_pending_command(command_id: str, by_user_id: str | None) -> bool:
         return True
 
 
-def list_pending_for_device(device_id: str, mark_delivered: bool = True) -> list[Command]:
+# 0.6.18 review fix #4: how this function shapes its result decides
+# whether commands get delivered twice. The function returns rows whose
+# status is in ('pending', 'accepted', 'running') and only flips pending
+# → accepted. Pre-piggyback that was fine: only the device's own
+# `/device/commands` GET ever called it, and the device acked each row
+# via /command-result before polling again. After piggyback (#170) the
+# heartbeat handler ALSO calls this — so a heartbeat at T+0 piggybacks
+# the row (status now 'accepted'); the device's next `/device/commands`
+# GET at T+2 (next_poll_after_seconds=2 from #168 when queue was hot)
+# re-receives the same accepted row and double-executes. The new
+# `recent_delivery_grace_seconds` argument lets the polling path exclude
+# rows that were just piggybacked, while the heartbeat path keeps the
+# unfiltered behaviour (it is the source of truth for delivery).
+def list_pending_for_device(
+    device_id: str,
+    mark_delivered: bool = True,
+    recent_delivery_grace_seconds: int | None = None,
+) -> list[Command]:
     now = datetime.now(timezone.utc)
     with session_scope() as session:
-        rows = list(
-            session.scalars(
-                select(Command)
-                .where(
-                    Command.device_id == device_id,
-                    Command.status.in_(("pending", "accepted", "running")),
-                    Command.expires_at > now,
-                )
-                .order_by(Command.created_at.asc())
+        stmt = (
+            select(Command)
+            .where(
+                Command.device_id == device_id,
+                Command.status.in_(("pending", "accepted", "running")),
+                Command.expires_at > now,
             )
+            .order_by(Command.created_at.asc())
         )
+        if recent_delivery_grace_seconds is not None:
+            # Exclude rows that another delivery channel handed off within
+            # the grace window — they're still in flight, not stuck.
+            cutoff = now - timedelta(seconds=recent_delivery_grace_seconds)
+            stmt = stmt.where(
+                (Command.delivered_at.is_(None)) | (Command.delivered_at <= cutoff)
+            )
+        rows = list(session.scalars(stmt))
         if mark_delivered:
+            any_new = False
             for r in rows:
                 if r.status == "pending":
                     r.status = "accepted"
                     r.delivered_at = now
                     session.add(r)
-            session.flush()
+                    any_new = True
+            # 0.6.18 review fix #12: only flush when something actually changed,
+            # so empty heartbeats stay read-only on the DB side.
+            if any_new:
+                session.flush()
         for r in rows:
             session.expunge(r)
     return rows

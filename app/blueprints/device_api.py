@@ -130,7 +130,14 @@ def heartbeat():
     # heartbeat interval (≤60s) since piggyback delivers it inline.
     # 2s while commands are queued keeps follow-ups snappy.
     pending_cmds = list_pending_for_device(device.id, mark_delivered=True)
-    next_poll = 2 if pending_cmds else max(int(settings.poll_interval_seconds), 300)
+    # 0.6.18 review fix #11: pre-fix did `max(settings.poll_interval_seconds, 300)`
+    # which silently floored an operator-configured shorter interval up to 5min.
+    # Honour the operator's setting except when it's still the legacy 30s default
+    # — in that case widen to 300 since heartbeat-piggyback covers command
+    # delivery and the dedicated poll is now a low-frequency fallback.
+    configured_poll = int(settings.poll_interval_seconds)
+    idle_poll = 300 if configured_poll == 30 else configured_poll
+    next_poll = 2 if pending_cmds else idle_poll
     return ok(
         {
             "next_poll_after_seconds": next_poll,
@@ -217,7 +224,18 @@ def poll_commands():
         request.headers.get("Prefer")
     )
 
-    cmds = list_pending_for_device(device.id, mark_delivered=True)
+    # 0.6.18 review fix #4: skip rows the heartbeat piggyback handed off
+    # within the last 10s — the firmware is still about to drain them on
+    # its next loop() tick. Without this filter, the heartbeat ACK and a
+    # follow-up /device/commands GET (which fires every 2s while the
+    # queue looks non-empty, per #168) deliver the same command twice and
+    # the firmware double-executes (no command_id dedup on the device).
+    POST_PIGGYBACK_GRACE_S = 10
+    cmds = list_pending_for_device(
+        device.id,
+        mark_delivered=True,
+        recent_delivery_grace_seconds=POST_PIGGYBACK_GRACE_S,
+    )
 
     def _serialize() -> dict:
         return {
@@ -249,7 +267,11 @@ def poll_commands():
     deadline = time.monotonic() + requested_wait
     while time.monotonic() < deadline:
         time.sleep(LONG_POLL_CHECK_INTERVAL_SECONDS)
-        cmds = list_pending_for_device(device.id, mark_delivered=True)
+        cmds = list_pending_for_device(
+            device.id,
+            mark_delivered=True,
+            recent_delivery_grace_seconds=POST_PIGGYBACK_GRACE_S,
+        )
         if cmds:
             return ok(
                 _serialize(),

@@ -61,33 +61,37 @@ def _show_qa_fixtures(raw: str | None, default: bool) -> bool:
 @admin_api_bp.get("/devices/live")
 @admin_required_api
 def devices_live():
+    """0.6.18 review fixes (#3 + #7):
+    - Was: `select(DeviceHeartbeat).where(device_id.in_(ids))` with no LIMIT
+      pulled the full append-only heartbeat history for every device on
+      every 3s poll. Replaced with `_latest_heartbeat_by_device`, which is
+      a correlated subquery on the indexed (device_id, received_at DESC).
+    - Was: hand-rolled `Device.registration_state != 'deprovisioned'`
+      filter bypassed the per-tenant scope filter that list_devices
+      applies, leaking other tenants' devices into the live feed.
+      Replaced with the same `filter_devices_with_shadow_logging` call.
+    """
     from datetime import datetime, timezone
     from app.db import session_scope
-    from app.models.devices import Device, DeviceHeartbeat
     from app.models.commands import Command
+    from app.models.devices import Device
+    from app.services.devices._query import _latest_heartbeat_by_device
     from app.services.devices._serialize import _heartbeat_state_for
+    from app.services.rbac_filter import filter_devices_with_shadow_logging
     from sqlalchemy import func, select
 
     now = datetime.now(timezone.utc)
     out = []
     with session_scope() as s:
-        device_rows = s.execute(
-            select(
-                Device.id,
-                Device.last_seen_at,
-                Device.last_heartbeat_at,
-            ).where(Device.registration_state != "deprovisioned")
-        ).all()
+        stmt = (
+            select(Device.id, Device.last_seen_at, Device.last_heartbeat_at)
+            .where(Device.registration_state != "deprovisioned")
+        )
+        device_rows = filter_devices_with_shadow_logging(stmt, s)
         device_ids = [r.id for r in device_rows]
-        hbs: dict[str, DeviceHeartbeat] = {}
+        hbs = _latest_heartbeat_by_device(s, device_ids) if device_ids else {}
         pending: dict[str, int] = {}
         if device_ids:
-            for hb in s.execute(
-                select(DeviceHeartbeat).where(DeviceHeartbeat.device_id.in_(device_ids))
-            ).scalars():
-                cur = hbs.get(hb.device_id)
-                if cur is None or hb.received_at > cur.received_at:
-                    hbs[hb.device_id] = hb
             for dev_id, n in s.execute(
                 select(Command.device_id, func.count(Command.id))
                 .where(Command.device_id.in_(device_ids), Command.status == "pending")
@@ -100,10 +104,12 @@ def devices_live():
                 d.last_heartbeat_at, now=now, offline_threshold_seconds=180,
                 last_seen_at=d.last_seen_at,
             )
-            # Pull the latest heap snapshot from the trajectory ring (firmware
-            # 0.2.10+); falls back to None for older heartbeats.
+            # Latest heap snapshot from the trajectory ring (fw 0.2.10+);
+            # None for older firmware that doesn't carry the ring.
             traj = (hb.heap_trajectory if hb else None) or []
-            last_sample = traj[-1] if traj else {}
+            last_sample = traj[-1] if isinstance(traj, list) and traj else {}
+            if not isinstance(last_sample, dict):
+                last_sample = {}
             out.append({
                 "id": d.id,
                 "heartbeat_state": hb_state,

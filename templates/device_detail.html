@@ -595,7 +595,18 @@
      answer to "is this device stable?" without reading every row. #}
   {% set reboot_rows = device.recent_events|selectattr('type', 'equalto', 'device.rebooted')|list %}
   {% if reboot_rows %}
-    {% set ghost_n = reboot_rows|selectattr('details')|rejectattr('details.last_planned_restart_reason')|list|length %}
+    {# 0.6.18 (review fix): rejectattr with a dotted attribute path follows
+       Python attribute access, NOT dict key access — `details` is a JSONB
+       dict, so `'details.last_planned_restart_reason'` raises
+       `UndefinedError: 'dict object' has no attribute ...` and 500s the
+       page. Compute the count with a plain loop instead. #}
+    {% set ns = namespace(ghost_n=0) %}
+    {% for r in reboot_rows %}
+      {% if not (r.details and r.details.get('last_planned_restart_reason')) %}
+        {% set ns.ghost_n = ns.ghost_n + 1 %}
+      {% endif %}
+    {% endfor %}
+    {% set ghost_n = ns.ghost_n %}
     {% set planned_n = reboot_rows|length - ghost_n %}
     <p style="margin:.25rem 0 .5rem 0">
       Recent reboots:
@@ -684,54 +695,4 @@
 </section>
 {% endif %}
 
-{# #171 / 0.6.16: live device-detail poller (see panel near top of page). #}
-<script>
-(function(){
-  const panel = document.querySelector('[data-device-live]');
-  if (!panel) return;
-  const deviceId = panel.dataset.deviceLive;
-  const url = '{{ url_for("admin_api.devices_live") }}';
-  function fmtAge(iso) {
-    if (!iso) return '—';
-    const dt = new Date(iso); const sec = Math.max(0, Math.floor((Date.now() - dt.getTime())/1000));
-    if (sec < 90) return sec + 's ago';
-    if (sec < 3600) return Math.floor(sec/60) + 'm ago';
-    return Math.floor(sec/3600) + 'h ago';
-  }
-  function setText(name, val) {
-    const el = panel.querySelector(`[data-live="${name}"]`);
-    if (el) el.textContent = val;
-  }
-  async function tick() {
-    try {
-      const r = await fetch(url, {credentials:'same-origin', headers:{'Accept':'application/json'}});
-      if (!r.ok) return;
-      const j = await r.json();
-      if (!j.ok) return;
-      const dev = (j.data.devices || []).find(d => d.id === deviceId);
-      if (!dev) return;
-      // heartbeat-state badge — colour-coded inline so we don't depend on
-      // app.css badge styles being available in every layout.
-      const badge = panel.querySelector('[data-live="heartbeat-badge"]');
-      if (badge) {
-        const map = {online:['online','#15803d'], offline:['offline','#b91c1c'], never:['never heartbeated','#666']};
-        const [label, colour] = map[dev.heartbeat_state] || ['unknown','#666'];
-        badge.textContent = label;
-        badge.style.color = colour;
-      }
-      setText('last-seen-age', fmtAge(dev.last_seen_at));
-      setText('relay', dev.latest_relay_on === null ? '—' : (dev.latest_relay_on ? 'ON' : 'OFF'));
-      setText('uptime', dev.uptime_seconds ?? '—');
-      setText('free-heap', dev.free_heap ?? '—');
-      setText('max-free-block', dev.max_free_block ?? '—');
-      const fp = dev.heap_fragmentation_pct;
-      setText('frag-pct', fp ?? '—');
-      const fpEl = panel.querySelector('[data-live="frag-pct"]');
-      if (fpEl) fpEl.style.color = (fp != null && fp >= 40) ? '#b91c1c' : (fp != null && fp >= 25) ? '#b45309' : '';
-    } catch (e) { /* keep polling */ }
-  }
-  tick();
-  setInterval(tick, 3000);
-})();
-</script>
 {% endblock %}
