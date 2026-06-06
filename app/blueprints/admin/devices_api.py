@@ -141,12 +141,16 @@ def devices_live():
     now = datetime.now(timezone.utc)
     out = []
     with session_scope() as s:
+        # filter_devices_with_shadow_logging uses session.scalars() which
+        # collapses a multi-column select to first-column-only — so the
+        # stmt must select the whole ORM entity. devices_live reads just
+        # 3 columns of it; ORM overhead per row is small at fleet scale.
         stmt = (
-            select(Device.id, Device.last_seen_at, Device.last_heartbeat_at)
+            select(Device)
             .where(Device.registration_state != "deprovisioned")
         )
         device_rows = filter_devices_with_shadow_logging(stmt, s)
-        device_ids = [r.id for r in device_rows]
+        device_ids = [d.id for d in device_rows]
         hbs = _latest_heartbeat_by_device(s, device_ids) if device_ids else {}
         pending: dict[str, int] = {}
         if device_ids:

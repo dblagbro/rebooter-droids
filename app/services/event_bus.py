@@ -36,7 +36,10 @@ class Subscriber:
     """One SSE consumer. `queue` carries dict payloads; close() unblocks
     a waiting iterator so the SSE generator can exit cleanly."""
 
-    __slots__ = ("queue", "_closed")
+    # 0.6.22 bugfix: __weakref__ must be in __slots__ for weakref.ref()
+    # to work — the bus tracks subscribers via weak refs so a dropped
+    # SSE client doesn't pin memory.
+    __slots__ = ("queue", "_closed", "__weakref__")
 
     def __init__(self, max_size: int = _DEFAULT_QUEUE_SIZE) -> None:
         self.queue: "queue.Queue[dict | None]" = queue.Queue(maxsize=max_size)
