@@ -66,7 +66,14 @@ def test_register_then_heartbeat_then_command_round_trip(base_url, admin_headers
         timeout=10,
     )
     assert r.status_code == 200
-    assert r.json()["data"]["next_poll_after_seconds"] == 30
+    # 0.6.18 #170: when no commands are queued and settings still hold the
+    # legacy 30s default, heartbeat returns 300s — heartbeat-piggyback is
+    # the primary delivery channel and the dedicated /device/commands poll
+    # is a 5min fallback. After the admin enqueue (below) a follow-up
+    # heartbeat should burst to 2s and carry pending_commands.
+    assert r.json()["data"]["next_poll_after_seconds"] == 300
+    # Also assert no commands piggybacked on a quiet queue.
+    assert r.json()["data"].get("pending_commands", []) == []
 
     # admin enqueue relay_on
     r = requests.post(
