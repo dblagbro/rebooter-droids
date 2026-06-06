@@ -202,6 +202,22 @@ def create_app() -> Flask:
 
     register_envelope_handlers(app)
 
+    # 0.6.24 UI redesign: expose the ui_* feature flags to every template
+    # so the post-brutal-review hero/row/copy/a11y patches can opt-in
+    # cleanly. Each flag defaults ON (see app/config.py); set
+    # REBOOTER_UI_<NAME>=0 to revert one without touching the others.
+    @app.context_processor
+    def _inject_ui_flags():
+        s = app.config["SETTINGS"]
+        return {
+            "ui_flags": {
+                "hero_v2": s.ui_hero_v2,
+                "row_v2": s.ui_row_v2,
+                "a11y_v2": s.ui_a11y_v2,
+                "copy_v2": s.ui_copy_v2,
+            }
+        }
+
     @app.get("/")
     def root_redirect():
         # v0.5.84: prefix-aware. Hardcoded `/app/` sent a device or

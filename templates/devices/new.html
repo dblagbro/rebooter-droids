@@ -1,10 +1,10 @@
 {% extends "layout.html" %}
-{% block title %}Enrol a device - Rebooter-Droids{% endblock %}
+{% block title %}Add a device - Rebooter-Droids{% endblock %}
 {% block content %}
 <p><a href="{{ url_for('admin_ui.list_devices_page') }}">← Devices</a></p>
 
 <div class="v3-page-header">
-  <h1>Enrol a device</h1>
+  <h1>Add a device</h1>
   <p class="v3-page-sub">Mint a one-time enrollment token, then point a freshly-flashed device at this portal.</p>
 </div>
 
@@ -40,7 +40,7 @@ enrollment_token:    {{ new_token.enrollment_token }}</code></pre>
 
   <div class="actions" style="margin-top:1rem">
     <a class="btn" href="{{ url_for('admin_ui.list_devices_page') }}">Done</a>
-    <a class="btn btn-secondary" href="{{ url_for('admin_ui.enroll_device_wizard') }}">Enrol another</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin_ui.enroll_device_wizard') }}">Add another</a>
   </div>
 </section>
 {% else %}

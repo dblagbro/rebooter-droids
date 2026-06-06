@@ -17,12 +17,23 @@
   <title>{% block title %}Rebooter-Droids{% endblock %}</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {# 0.6.24: brutal-review redesign — hero/row/copy/a11y patches. Each
+     surface is feature-flagged in app/config.py (REBOOTER_UI_*=0 to
+     revert). Loaded after app.css so its selectors win without
+     !important. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/redesign.css') }}">
   {# v0.4.22: theme-flash mitigation extracted to a static file so we
      can drop 'unsafe-inline' from CSP script-src. Synchronous so it
      runs before <body> renders. #}
   <script src="{{ url_for('static', filename='js/theme_flash.js') }}"></script>
 </head>
 <body{% if current_user is defined and current_user %} data-devices-live-url="{{ url_for('admin_api.devices_live') }}"{% endif %}>
+{% if ui_flags is defined and ui_flags.a11y_v2 %}
+  {# 0.6.24 PR-6: skip-link as first focusable element. Brutal review
+     called out 12+ nav anchors being keyboard-tabbable before reaching
+     <main>. CSS in redesign.css hides it offscreen until focused. #}
+  <a class="skip-link" href="#main">Skip to content</a>
+{% endif %}
 {% if current_user is defined and current_user %}
   <header class="topbar" role="banner">
     <a class="brand" href="{{ url_for('admin_ui.index') }}">Rebooter</a>
@@ -53,7 +64,8 @@
   </header>
 {% endif %}
 
-  <main role="main">
+  {# 0.6.24 PR-6: id + tabindex so the skip-link target focuses cleanly. #}
+  <main role="main" id="main" tabindex="-1">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flashes">

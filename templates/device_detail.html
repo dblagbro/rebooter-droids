@@ -110,7 +110,7 @@
     {% endif %}
   {% else %}
     <p>
-      <span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
+      <span class="badge" title="device row exists but no heartbeat ever received">never reported in</span>
       <span class="muted">— this device is enrolled but has not yet sent a first heartbeat. Check the firmware: is the device powered, on Wi-Fi, and configured with the correct <code>central_base_url</code>?</span>
     </p>
     {% if device.active_firmware_assignment %}

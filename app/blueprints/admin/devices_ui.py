@@ -93,6 +93,12 @@ def list_devices_page():
     # v0.5.2: pending-adoption count for the sub-header chip.
     pending_count = count_pending_announcements()
 
+    # 0.6.24 PR-1: recent-reboots line for the hero. Pulls up to 3 most
+    # recent device.rebooted events in the last 24h, joined to display
+    # name + classifies ghost vs planned via details.last_planned_restart_reason.
+    # Keeps the query small (LIMIT 6, in-Python uniquify by device).
+    recent_reboots = _recent_reboot_summary(limit=3)
+
     return render_template(
         "devices_list.html",
         **_ctx(
@@ -105,6 +111,7 @@ def list_devices_page():
                 # (numerically newer)?". Replaces the old `!=` check.
                 "is_upgrade": _is_upgrade,
                 "pending_adoption_count": pending_count,
+                "recent_reboots": recent_reboots,
                 "filters": {
                     "search": request.args.get("search", ""),
                     "status": request.args.get("status", ""),
@@ -114,6 +121,47 @@ def list_devices_page():
             }
         ),
     )
+
+
+def _recent_reboot_summary(limit: int = 3) -> list[dict]:
+    """0.6.24 PR-1: top-`limit` most-recent reboots in the fleet, one
+    row per device. Used by the hero recents line — operator's morning
+    glance shows what actually rebooted overnight without scrolling."""
+    from datetime import datetime, timezone, timedelta
+    from app.db import session_scope
+    from app.models import Device, DeviceEvent
+    from sqlalchemy import select
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    seen: set[str] = set()
+    out: list[dict] = []
+    with session_scope() as s:
+        rows = s.execute(
+            select(DeviceEvent.device_id, DeviceEvent.timestamp, DeviceEvent.details,
+                   Device.display_name)
+            .join(Device, Device.id == DeviceEvent.device_id)
+            .where(
+                DeviceEvent.type == "device.rebooted",
+                DeviceEvent.timestamp >= cutoff,
+            )
+            .order_by(DeviceEvent.timestamp.desc())
+            .limit(limit * 4)  # over-fetch a bit so duplicates per device collapse
+        ).all()
+        for dev_id, ts, details, display_name in rows:
+            if dev_id in seen:
+                continue
+            seen.add(dev_id)
+            planned = (details or {}).get("last_planned_restart_reason") or ""
+            out.append({
+                "device_id": dev_id,
+                "display_name": display_name or dev_id,
+                "reason": planned if planned else "ghost",
+                "is_ghost": not planned,
+                "ts": ts,
+            })
+            if len(out) >= limit:
+                break
+    return out
 
 
 @admin_ui_bp.get("/devices/<device_id>")
