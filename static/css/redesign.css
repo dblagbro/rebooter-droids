@@ -3,6 +3,18 @@
    block is feature-flag-gated by a body data-attribute set in
    layout.html based on the ui_flags context the app injects. */
 
+/* PR-5: on narrow viewports the PR-1 hero sticks to the top of the
+   page so the "is anything wrong?" answer stays visible while the
+   operator scrolls the device list. Limited to (hover: none) so a
+   desktop-with-narrow-window doesn't unexpectedly get stuck UI. */
+@media (max-width: 639px) and (hover: none) {
+  .v3-hero-v2 {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+  }
+}
+
 /* PR-1: hero sentence + recents (replaces v3-fleet-status chip strip). */
 .v3-hero-v2 {
   margin: 0 0 1rem 0;
