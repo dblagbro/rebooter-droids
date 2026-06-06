@@ -221,7 +221,7 @@
                  form="devices-bulk-delete-form" aria-label="Select all devices">
         </th>{% endif %}
         <th>Name</th>
-        <th>State</th>
+        {% if not ui_flags.row_v2 %}<th>State</th>{% endif %}
         <th>Online</th>
         <th>Power</th>
         <th>Central</th>
@@ -240,10 +240,32 @@
         </td>{% endif %}
         <td>
           <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
-          {% if d.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
-          {% if d.is_protected %}<span class="badge red" title="protected — bulk delete will skip unless override">🔒</span>{% endif %}
+          {% if ui_flags.row_v2 %}
+            {# 0.6.25 PR-2: collapse the per-row badge soup. The brutal
+               review counted 4-7 pills per row with identical shape/size,
+               so attention metadata (QA, lock, registration_state) couldn't
+               win the eye against status (online/offline). Demote them to
+               a single muted meta line — operators who need them still
+               see them, but they don't fight the state badges for attention.
+               Only renders when there's something to show. Registration
+               state collapses to text-only (no badge); 'active' is the
+               default and is silently elided so the line stays empty
+               in the common case. #}
+            {% set _meta_bits = [] %}
+            {% if d.is_qa_fixture %}{% set _ = _meta_bits.append('QA') %}{% endif %}
+            {% if d.is_protected %}{% set _ = _meta_bits.append('🔒 protected') %}{% endif %}
+            {% if d.registration_state and d.registration_state != 'active' %}{% set _ = _meta_bits.append(d.registration_state) %}{% endif %}
+            {% if _meta_bits %}
+              <span class="v3-row-meta muted">{{ _meta_bits|join(' · ') }}</span>
+            {% endif %}
+          {% else %}
+            {% if d.is_qa_fixture %}<span class="badge" title="created by the QA test suite">QA</span>{% endif %}
+            {% if d.is_protected %}<span class="badge red" title="protected — bulk delete will skip unless override">🔒</span>{% endif %}
+          {% endif %}
         </td>
+        {% if not ui_flags.row_v2 %}
         <td><span class="badge">{{ d.registration_state }}</span></td>
+        {% endif %}
         <td data-live="online">
           {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
           {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never reported in</span>
