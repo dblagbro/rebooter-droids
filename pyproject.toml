@@ -1,6 +1,6 @@
 [project]
 name = "rebooter-droids"
-version = "0.6.25"
+version = "0.6.26"
 description = "Central coordination server for Sonoff S31-based Rebooter devices"
 authors = [{ name = "dblagbro", email = "dblagbro@gmail.com" }]
 requires-python = ">=3.12"
