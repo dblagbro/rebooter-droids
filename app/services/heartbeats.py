@@ -125,6 +125,34 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             hb.heap_trajectory = traj
         session.add(hb)
 
+        # 0.6.23 #178 Phase 2: publish a state-change event so the browser
+        # SSE pollers can update relay buttons within ~100ms of the device
+        # confirming, instead of waiting for the next 3s poll tick. Carries
+        # exactly what devices_live returns so the JS can swap fields in
+        # place without an extra fetch. Captured BEFORE the heavy reboot/
+        # recovery branches below run so the publish reflects the just-
+        # ingested row state.
+        _state_event = {
+            "kind": "device_state_changed",
+            "device_id": device_id,
+            "local_ip": device.local_ip,
+            "latest_relay_on": (bool(payload["relay_on"])
+                                if "relay_on" in payload else None),
+            "uptime_seconds": payload.get("uptime_seconds"),
+            "health_state": payload.get("health_state"),
+            "wifi_rssi_dbm": payload.get("wifi_rssi_dbm"),
+            "free_heap": (traj[-1].get("fh")
+                          if isinstance(traj, list) and traj
+                          and isinstance(traj[-1], dict) else None),
+            "max_free_block": (traj[-1].get("mfb")
+                               if isinstance(traj, list) and traj
+                               and isinstance(traj[-1], dict) else None),
+            "heap_fragmentation_pct": (traj[-1].get("fp")
+                                       if isinstance(traj, list) and traj
+                                       and isinstance(traj[-1], dict) else None),
+            "ts": now.isoformat(),
+        }
+
         # Reboot detection — if the new heartbeat's uptime regressed below the
         # prior heartbeat's uptime, the device restarted in between. Emit a
         # `device.rebooted` event so operators see the timeline + cause. The
@@ -240,6 +268,19 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
         from app.services.device_config import maybe_push_after_recovery
 
         maybe_push_after_recovery(device_id, trigger=recovery_trigger)
+
+    # 0.6.23 #178 Phase 2: publish the heartbeat-driven state-change event
+    # AFTER the txn commits, so browser SSE subscribers see a consistent
+    # row. Failures must not break heartbeat recording.
+    try:
+        from app.services import event_bus
+
+        event_bus.publish(_state_event)
+    except Exception:  # pragma: no cover - bus failures must not break ingestion
+        import logging
+        logging.getLogger(__name__).exception(
+            "event_bus.publish failed for state change %s", device_id
+        )
 
     return {"recorded_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
 

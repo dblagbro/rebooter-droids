@@ -111,6 +111,52 @@ def events_commands_stream():
     )
 
 
+# 0.6.23 #178 Phase 1 — service-account enqueue. Pairs with the SSE
+# events stream above so integrations + the live LAN-relay-agent can
+# POST commands without the full cookie-bound user-session dance the
+# scope_required_api decorator demands. Token bearer with WRITE scope
+# is enough — the audit row captures the principal so accountability is
+# preserved. Behaviour is identical to the cookie-authed
+# /devices/<id>/commands route below; this just gates auth differently.
+@admin_api_bp.post("/services/devices/<device_id>/enqueue")
+def services_enqueue(device_id: str):
+    from app.middleware.token_auth import resolve_api_token_principal
+    from app.services import api_tokens as token_svc
+
+    principal = resolve_api_token_principal()
+    if principal is None:
+        return err("auth_required", "Authentication required.", status=401)
+    scopes = principal.get("scopes") or []
+    if token_svc.SCOPE_WRITE not in scopes:
+        return err("forbidden", "Token lacks write scope.", status=403)
+
+    body = request.get_json(silent=True) or {}
+    cmd_type = body.get("type")
+    if not cmd_type:
+        return err("validation_failed", "type is required.", status=400)
+    payload = body.get("payload") or {}
+    try:
+        cmd = enqueue_for_device(
+            device_id=device_id,
+            cmd_type=cmd_type,
+            payload=payload,
+            issued_by_user_id=None,
+            ttl_seconds=body.get("ttl_seconds"),
+            override_lockout=bool(body.get("override_lockout")),
+        )
+    except LookupError:
+        return err("device_unknown", "Device not found.", status=404)
+    except DeviceLockedError as e:
+        return err("device_locked", str(e), status=409)
+    except ValueError as e:
+        return err("validation_failed", str(e), status=400)
+    return ok({
+        "command_id": cmd.id,
+        "type": cmd.type,
+        "status": cmd.status,
+    }, status=201)
+
+
 # #167 / 0.6.12: slim live-state endpoint the device list/detail pages
 # poll every ~3s for real-time online/offline + relay state without a
 # full page render. Returns one row per device with just the fields the

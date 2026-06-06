@@ -146,8 +146,82 @@
     }
   }, true);
 
+  // 0.6.23 #178 Phase 2: subscribe to the hub SSE stream for instant
+  // state confirmations. Polling stays as a fallback (also reconciles
+  // server-rendered state on initial page load) but SSE updates land
+  // in ~100ms when a device heartbeats. EventSource handles auth via
+  // the session cookie; no separate token needed on the same origin.
+  var sse = null;
+  // Derive from the polling URL so dev (/api/v1/...) and prod
+  // (/rebooter/api/v1/...) both work without a separate data attribute.
+  var sseUrl = url.replace(/\/devices\/live$/, '/events/commands');
+  function connectSSE() {
+    if (sse) try { sse.close(); } catch (e) {}
+    try {
+      sse = new EventSource(sseUrl);
+    } catch (e) { return; }
+    sse.addEventListener('device_state_changed', function (msg) {
+      try {
+        var ev = JSON.parse(msg.data);
+        // List page: find the row and apply just the rapid-update fields
+        if (listRows.length) {
+          for (var i = 0; i < listRows.length; i++) {
+            if (listRows[i].dataset.deviceId === ev.device_id) {
+              applyListRow(listRows[i], {
+                heartbeat_state: 'online',  // a fresh heartbeat means online
+                latest_relay_on: ev.latest_relay_on,
+              });
+              break;
+            }
+          }
+        }
+        if (detailPanel && detailPanel.dataset.deviceLive === ev.device_id) {
+          applyDetailPanel({
+            heartbeat_state: 'online',
+            latest_relay_on: ev.latest_relay_on,
+            last_seen_at: ev.ts,
+            uptime_seconds: ev.uptime_seconds,
+            free_heap: ev.free_heap,
+            max_free_block: ev.max_free_block,
+            heap_fragmentation_pct: ev.heap_fragmentation_pct,
+          });
+        }
+      } catch (e) {}
+    });
+    sse.addEventListener('command_queued', function (msg) {
+      // A relay command was just queued — bump to fast-poll so we catch
+      // the device-side state flip ASAP. The LAN agent (if running) is
+      // about to POST to the device directly; the next heartbeat will
+      // carry the confirmed new state and re-emit device_state_changed.
+      try {
+        var ev = JSON.parse(msg.data);
+        if (ev.type && ev.type.indexOf('relay_') === 0) {
+          fastUntil = Date.now() + FAST_BURST_MS;
+        }
+      } catch (e) {}
+    });
+    sse.onerror = function () {
+      // EventSource auto-reconnects after ~3s; nothing to do here.
+    };
+  }
+  connectSSE();
+
+  // LOW #4 (code review): tear down on page hide so back-forward cache
+  // navigation doesn't leak intervals + open SSE connections.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      if (sse) try { sse.close(); } catch (e) {}
+      sse = null;
+    } else if (!sse) {
+      connectSSE();
+    }
+  });
+  window.addEventListener('pagehide', function () {
+    if (sse) try { sse.close(); } catch (e) {}
+  });
+
   (function loop() {
-    tick();
+    if (!document.hidden) tick();
     var delay = Date.now() < fastUntil ? POLL_FAST_MS : POLL_SLOW_MS;
     setTimeout(loop, delay);
   })();
