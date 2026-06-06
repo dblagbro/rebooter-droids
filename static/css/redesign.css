@@ -29,6 +29,23 @@
 .v3-hero-recent-reason { font-variant-numeric: tabular-nums; opacity: .8; }
 .v3-hero-recent-reason-ghost { color: var(--red-fg, #b91c1c); opacity: 1; font-weight: 500; }
 
+/* PR-2: per-row meta line — replaces the 4-7 same-shape badges
+   under the device name with one small muted text line. Only renders
+   when there's actually metadata to show, so the common case (active
+   non-QA non-protected device) has zero clutter. */
+.v3-row-meta {
+  display: inline-block;
+  margin-left: .5rem;
+  font-size: .8rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.v3-row-meta::before {
+  content: '·';
+  margin-right: .35rem;
+  opacity: .6;
+}
+
 /* PR-6 placeholders — skip link + visible focus.
    Default: skip link present but only revealed on keyboard focus. */
 .skip-link {
