@@ -43,6 +43,49 @@
 {% set _pct = (_online * 100 // _total) if _total else 0 %}
 {% set _fw_count = (fw_breakdown|length) if fw_breakdown else 0 %}
 {% if _total > 0 %}
+{% if ui_flags.hero_v2 %}
+{# 0.6.24 PR-1: hero sentence. Replaces the 5-chip strip with one human
+   answer to "is anything wrong?". The brutal review called the old hero
+   "counts instead of conclusions" — the new one is a conclusion. Falls
+   back to the chip strip if REBOOTER_UI_HERO_V2=0. #}
+{% set _attention_count = _offline + (pending_adoption_count or 0) + ((fw_breakdown|length - 1) if fw_breakdown and fw_breakdown|length > 1 else 0) %}
+<section class="v3-hero-v2" aria-live="polite" aria-label="Fleet status">
+  {% if _attention_count == 0 and _never == 0 %}
+    <p class="v3-hero-sentence v3-hero-sentence-ok">
+      <strong>All {{ _total }} device{{ '' if _total == 1 else 's' }}</strong>
+      {{ 'is' if _total == 1 else 'are' }} healthy.
+    </p>
+  {% elif _attention_count > 0 %}
+    <p class="v3-hero-sentence v3-hero-sentence-attention">
+      <strong>{{ _attention_count }} device{{ '' if _attention_count == 1 else 's' }}</strong>
+      need{{ 's' if _attention_count == 1 else '' }} attention:
+      {% set _bits = [] %}
+      {% if _offline %}{% set _ = _bits.append(_offline ~ ' offline') %}{% endif %}
+      {% if pending_adoption_count %}{% set _ = _bits.append(pending_adoption_count ~ ' pending adoption') %}{% endif %}
+      {% if fw_breakdown and fw_breakdown|length > 1 %}{% set _outlier = fw_breakdown|length - 1 %}{% set _ = _bits.append(_outlier ~ ' firmware outlier' ~ ('' if _outlier == 1 else 's')) %}{% endif %}
+      {{ _bits|join(', ') }}.
+      {% if _never %}<span class="muted">{{ _never }} {{ 'has' if _never == 1 else 'have' }} never reported in.</span>{% endif %}
+    </p>
+  {% else %}
+    <p class="v3-hero-sentence">
+      <strong>All {{ _online }} active device{{ '' if _online == 1 else 's' }}</strong>
+      {{ 'is' if _online == 1 else 'are' }} healthy
+      <span class="muted">— {{ _never }} {{ 'has' if _never == 1 else 'have' }} never reported in.</span>
+    </p>
+  {% endif %}
+  {% if recent_reboots %}
+  <p class="v3-hero-recents muted">
+    <span>Recent reboots:</span>
+    {% for r in recent_reboots %}
+      <a href="{{ url_for('admin_ui.device_detail_page', device_id=r.device_id) }}#events">{{ r.display_name }}</a>
+      <span class="v3-hero-recent-reason{% if r.is_ghost %} v3-hero-recent-reason-ghost{% endif %}">
+        {%- if r.is_ghost -%}(ghost){%- else -%}({{ r.reason }}){%- endif -%}
+      </span>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+</section>
+{% else %}
 <section class="v3-fleet-status" aria-label="Fleet status summary">
   <div class="v3-fleet-stat v3-fleet-stat-primary
               {% if _pct == 100 %}v3-fleet-stat-good
@@ -58,7 +101,7 @@
   {% if _never > 0 %}
   <div class="v3-fleet-stat v3-fleet-stat-muted">
     <div class="v3-fleet-stat-num">{{ _never }}</div>
-    <div class="v3-fleet-stat-label">never heartbeated</div>
+    <div class="v3-fleet-stat-label">never reported in</div>
   </div>
   {% endif %}
   <div class="v3-fleet-stat {% if pending_adoption_count and pending_adoption_count > 0 %}v3-fleet-stat-warn{% endif %}">
@@ -70,6 +113,7 @@
     <div class="v3-fleet-stat-label">firmware version{{ '' if _fw_count == 1 else 's' }}</div>
   </div>
 </section>
+{% endif %}
 {% endif %}
 
 {# ── v0.4.19 (Tier-1 A): firmware-version breakdown ────────────────── #}
@@ -130,7 +174,7 @@
   </label>
   {% for c in filters.chips %}<input type="hidden" name="chip" value="{{ c }}">{% endfor %}
   <button type="submit">Filter</button>
-  <a class="btn btn-secondary" href="{{ url_for('admin_ui.enroll_device_wizard') }}">+ Enrol a device</a>
+  <a class="btn btn-secondary" href="{{ url_for('admin_ui.enroll_device_wizard') }}">Add device</a>
 </form>
 
 {# ── empty state ─────────────────────────────────────────────────────── #}
@@ -140,8 +184,8 @@
     {% set empty_body = "Clear the filters above to see the full fleet." %}
   {% else %}
     {% set empty_title = "No devices yet" %}
-    {% set empty_body = "Enrol your first device to start monitoring it from this portal." %}
-    {% set empty_cta_label = "+ Enrol a device" %}
+    {% set empty_body = "Add your first device to start monitoring it from this portal." %}
+    {% set empty_cta_label = "Add device" %}
     {% set empty_cta_href = url_for('admin_ui.enroll_device_wizard') %}
   {% endif %}
   {% include "_components/empty_state.html" %}
@@ -202,7 +246,7 @@
         <td><span class="badge">{{ d.registration_state }}</span></td>
         <td data-live="online">
           {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
-          {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never heartbeated</span>
+          {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never reported in</span>
           {% else %}<span class="badge red" title="last heartbeat older than 3 min">offline</span>
           {% endif %}
         </td>
@@ -211,7 +255,7 @@
            chosen from latest_relay_on:
              true  -> green ON button, click queues relay_off
              false -> grey OFF button, click queues relay_on
-             None  -> em-dash, device never heartbeated
+             None  -> em-dash, device never reported in
            is_held_off and is_protected are surface-only — back end
            still enforces. #}
         <td style="white-space:nowrap" data-live="relay">
@@ -348,7 +392,7 @@
       {% endif %}
       <div>
         {% if d.heartbeat_state == 'online' %}<span class="badge green">online</span>
-        {% elif d.heartbeat_state == 'never' %}<span class="badge">never heartbeated</span>
+        {% elif d.heartbeat_state == 'never' %}<span class="badge">never reported in</span>
         {% else %}<span class="badge red">offline</span>
         {% endif %}
       </div>

@@ -33,6 +33,12 @@ class Settings:
     cors_allowed_origins: tuple[str, ...]
     cookie_domain: str | None
     session_cookie_secure: bool
+    # UI redesign feature flags (post-brutal-review). Each is a per-surface
+    # opt-in so the operator can revert one without touching the others.
+    ui_hero_v2: bool          # PR-1: hero sentence + recents
+    ui_row_v2: bool           # PR-2: collapse badge soup
+    ui_a11y_v2: bool          # PR-6: skip-link, landmarks, focus, contrast
+    ui_copy_v2: bool          # PR-8: kill jargon, sentence-case, plain verbs
 
 
 @lru_cache
@@ -118,4 +124,14 @@ def load_settings() -> Settings:
             os.environ.get("REBOOTER_SESSION_COOKIE_SECURE", "1").strip().lower()
             not in ("0", "false", "no", "off")
         ),
+        # UI redesign flags — default ON in 0.6.24+. Each can be turned off
+        # independently via REBOOTER_UI_<NAME>=0 if a regression hits at 02:00.
+        ui_hero_v2=os.environ.get("REBOOTER_UI_HERO_V2", "1").strip().lower()
+        not in ("0", "false", "no", "off"),
+        ui_row_v2=os.environ.get("REBOOTER_UI_ROW_V2", "1").strip().lower()
+        not in ("0", "false", "no", "off"),
+        ui_a11y_v2=os.environ.get("REBOOTER_UI_A11Y_V2", "1").strip().lower()
+        not in ("0", "false", "no", "off"),
+        ui_copy_v2=os.environ.get("REBOOTER_UI_COPY_V2", "1").strip().lower()
+        not in ("0", "false", "no", "off"),
     )

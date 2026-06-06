@@ -356,7 +356,7 @@
                     data-mac="{{ (d.mac_address or '')|lower }}">
               {{ d.display_name or d.id }}
               {%- if d.online %} · online
-              {%- elif d.heartbeat_state == 'never' %} · never heartbeated
+              {%- elif d.heartbeat_state == 'never' %} · never reported in
               {%- else %} · offline
               {%- endif -%}
             </option>
