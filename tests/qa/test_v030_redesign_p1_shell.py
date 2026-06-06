@@ -88,26 +88,34 @@ def test_settings_page_resolves(base_url, shell_session):
 
 # ── nav semantics ──────────────────────────────────────────────────────────
 
-def test_top_nav_renders_five_destinations(base_url, shell_session):
+def test_top_nav_renders_destinations(base_url, shell_session):
     s = shell_session
     body = s.get(f"{base_url}/app/", timeout=10).text
-    # Each top-nav destination link must be present.
-    assert ">Status<" in body
+    # 0.6.29 PR-9 (brutal-review nav trim): Status and Power are no
+    # longer in either nav bar — Status is reached via the brand link
+    # (the dashboard the / redirect lands on); Power is reached via
+    # ⌘K or a device's detail page. The four remaining nav items
+    # MUST be present.
     assert ">Devices<" in body
     assert ">Rules<" in body
     assert ">History<" in body
     assert ">Settings<" in body
 
 
-def test_status_marks_status_active_on_root(base_url, shell_session):
-    """The Status nav link must carry aria-current='page' when the
-    operator is on /app/."""
+def test_status_dashboard_reachable_via_brand_link(base_url, shell_session):
+    """0.6.29 PR-9: when ui_nav_v2 is on, Status is no longer a nav
+    item — the dashboard at /app/ is the destination of the brand
+    link in the top-bar header. Test confirms /app/ still serves a
+    dashboard page (not a 404 or 500) and that the brand link points
+    at it. Active-marking on a removed nav item is unmaintainable;
+    that older assertion is dropped along with the nav trim.
+    """
     s = shell_session
-    body = s.get(f"{base_url}/app/", timeout=10).text
-    # Robust assertion: somewhere in the body, aria-current="page"
-    # must appear on a link to /app/ (it could be the top or bottom
-    # nav, both render).
-    assert 'aria-current="page"' in body, "no nav item is marked active"
+    r = s.get(f"{base_url}/app/", timeout=10)
+    assert r.status_code == 200
+    # Brand link in the topbar points back at /app/.
+    assert 'class="brand"' in r.text
+    assert 'href="' in r.text and '/app/' in r.text
 
 
 def test_devices_marks_devices_active(base_url, shell_session):

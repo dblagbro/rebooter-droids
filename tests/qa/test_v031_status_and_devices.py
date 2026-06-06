@@ -161,11 +161,16 @@ def test_chips_compose_with_AND_semantics(base_url, shell_session):
 
 # ── Mobile vs. desktop layout markup ───────────────────────────────────────
 
-def test_devices_list_renders_both_layouts_in_dom(base_url, shell_session):
-    """Both layouts are always in the DOM; CSS swaps which one is
-    visible per breakpoint. (R-DEV-3 mobile-card + desktop-table.)
-    The empty-state replaces both wrappers when fleet=0; create a
-    fixture device so this assertion is meaningful."""
+def test_devices_list_renders_responsive_table(base_url, shell_session):
+    """0.6.26 PR-3 (brutal-review): the previous double rendering
+    (.v3-devices-table for desktop + .v3-device-cards for <640px)
+    was a footgun — same rows in two DOMs, bulk-checkbox selectors
+    hit both, payload was ~40% larger than needed. The cards block
+    is deleted; the single table reflows via CSS at <640px when
+    `.v3-table-responsive` is added (controlled by ui.table_v2).
+
+    This test confirms the surviving table wrapper renders.
+    """
     s = shell_session
     et = s.post(
         f"{base_url}/api/v1/admin/enrollment-tokens",
@@ -186,8 +191,9 @@ def test_devices_list_renders_both_layouts_in_dom(base_url, shell_session):
     dev_id = reg.json()["data"]["device_id"]
     try:
         body = s.get(f"{base_url}/app/devices?show_qa_fixtures=1", timeout=10).text
-        assert 'class="v3-devices-table"' in body, "missing desktop-table wrapper"
-        assert 'class="v3-device-cards"' in body, "missing mobile-card wrapper"
+        # Open-ended substring so additional classes (v3-table-responsive)
+        # don't break the match.
+        assert 'class="v3-devices-table' in body, "missing devices-table wrapper"
     finally:
         s.delete(f"{base_url}/api/v1/admin/devices/{dev_id}", timeout=10)
 
@@ -235,7 +241,10 @@ def test_device_detail_renders_tab_strip(base_url, shell_session):
     if not devs:
         pytest.skip("no devices exist on live to test detail page against")
     body = s.get(f"{base_url}/app/devices/{devs[0]['id']}", timeout=10).text
-    assert 'class="v3-tabbar"' in body, "device-detail page missing tab strip"
+    # 0.6.27 PR-7 added v3-tabbar-sticky on the same element; open-ended
+    # substring match keeps this test stable against future class
+    # additions to the tab strip.
+    assert 'class="v3-tabbar' in body, "device-detail page missing tab strip"
     # All 7 section anchors must be present.
     for anchor in ("#overview", "#power", "#watchdog", "#schedule", "#audit", "#events", "#settings"):
         assert anchor in body, f"missing tab anchor {anchor}"
