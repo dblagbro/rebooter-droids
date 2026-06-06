@@ -331,6 +331,13 @@ def record_result(
             result=result or {},
             completed_at=completed_dt,
         )
+        # 0.6.20 review fix #9: this POST is the ONLY signal the device
+        # actually received and executed the command. Stamp
+        # ack_received_at exactly once (idempotent re-POSTs keep the
+        # original timestamp). Dashboards should count this column, not
+        # delivered_at, for "device received" metrics.
+        if cmd.ack_received_at is None:
+            cmd.ack_received_at = datetime.now(timezone.utc)
         cmd.status = status
         cmd.completed_at = completed_dt
         session.add(cmd)

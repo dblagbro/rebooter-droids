@@ -51,7 +51,15 @@ class Command(Base):
 
     created_at: Mapped[datetime] = ts_column()
     expires_at: Mapped[datetime] = ts_column(default_now=False, nullable=False)
+    # 0.6.20 review fix #9: separate "hub flipped the row to accepted
+    # and handed it off to a delivery channel (heartbeat piggyback or
+    # /device/commands GET)" from "device acknowledged via
+    # /command-result POST". Pre-fix dashboards conflated them and lied
+    # about delivery; the firmware may never have seen a row that has
+    # delivered_at set (lost response, mid-delivery reboot, etc).
+    # Tooling that counts "device received" should use ack_received_at.
     delivered_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
+    ack_received_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
     completed_at: Mapped[datetime | None] = ts_column(default_now=False, nullable=True)
 
 

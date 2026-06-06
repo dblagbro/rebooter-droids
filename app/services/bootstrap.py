@@ -174,6 +174,14 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # us watch fragmentation creep (max_free_block declining while free_heap
     # stays flat) without polling /api/status over the LAN.
     ("device_heartbeats", "heap_trajectory", "JSONB"),
+    # 0.6.20 review fix #9: separate "hub-side marked this row for
+    # delivery" (delivered_at — set by heartbeat/poll handlers) from
+    # "device acknowledged receipt via /command-result POST"
+    # (ack_received_at — set by record_result). Pre-fix dashboards that
+    # checked delivered_at IS NOT NULL conflated the two and reported
+    # commands as received-by-device that the firmware never saw (lost
+    # heartbeat response, mid-delivery reboot, etc).
+    ("commands", "ack_received_at", "TIMESTAMPTZ"),
 )
 
 
