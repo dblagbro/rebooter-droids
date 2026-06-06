@@ -35,10 +35,14 @@ class Settings:
     session_cookie_secure: bool
     # UI redesign feature flags (post-brutal-review). Each is a per-surface
     # opt-in so the operator can revert one without touching the others.
-    ui_hero_v2: bool          # PR-1: hero sentence + recents
-    ui_row_v2: bool           # PR-2: collapse badge soup
-    ui_a11y_v2: bool          # PR-6: skip-link, landmarks, focus, contrast
-    ui_copy_v2: bool          # PR-8: kill jargon, sentence-case, plain verbs
+    # Defaults are True so test fixtures that construct Settings() without
+    # passing these still build; production sets them via env (see
+    # load_settings below) and the brutal-review redesign is always-on
+    # in prod with revert paths documented in CHANGELOG.
+    ui_hero_v2: bool = True   # PR-1: hero sentence + recents
+    ui_row_v2: bool = True    # PR-2: collapse badge soup
+    ui_a11y_v2: bool = True   # PR-6: skip-link, landmarks, focus, contrast
+    ui_copy_v2: bool = True   # PR-8: kill jargon, sentence-case, plain verbs
 
 
 @lru_cache

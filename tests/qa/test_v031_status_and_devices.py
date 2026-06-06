@@ -57,7 +57,10 @@ def test_status_page_renders_emergency_controls(base_url, shell_session):
     assert "Manual controls" in body
     # Emergency-affordance buttons land in the actions block.
     assert "Open devices" in body
-    assert "Enrol a device" in body or "Enroll" in body
+    # 0.6.24 #187 copy sweep: accept the new "Add device" CTA in addition
+    # to the legacy strings. Test just needs to confirm a "go enroll one"
+    # affordance exists, not the exact wording.
+    assert any(s in body for s in ("Add device", "Add a device", "Enrol a device", "Enroll"))
 
 
 def test_status_page_links_into_history(base_url, shell_session):
@@ -259,7 +262,10 @@ def test_enroll_device_wizard_renders(base_url, shell_session):
     s = shell_session
     r = s.get(f"{base_url}/app/devices/new", timeout=10)
     assert r.status_code == 200
-    assert "Enrol a device" in r.text
+    # 0.6.24 #187 copy sweep: "Enrol a device" → "Add a device" (US
+    # spelling + verb+noun pattern). Route names + Python identifiers
+    # stay (enroll_device_wizard) — only display strings changed.
+    assert "Add a device" in r.text
     assert 'name="display_name_hint"' in r.text
 
 
