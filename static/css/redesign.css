@@ -29,6 +29,72 @@
 .v3-hero-recent-reason { font-variant-numeric: tabular-nums; opacity: .8; }
 .v3-hero-recent-reason-ghost { color: var(--red-fg, #b91c1c); opacity: 1; font-weight: 500; }
 
+/* PR-4: ⌘K command palette overlay. Center on viewport, max-width
+   600px, slight scrim behind. Keyboard nav inside is handled by JS;
+   CSS just paints. */
+.v3-cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, .45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.v3-cmdk-panel {
+  width: min(600px, 92vw);
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dde);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+}
+.v3-cmdk-input {
+  border: 0;
+  outline: 0;
+  padding: 1rem 1.1rem;
+  font-size: 1.05rem;
+  background: transparent;
+  color: inherit;
+}
+.v3-cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--border, #eee);
+}
+.v3-cmdk-item {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  align-items: center;
+  gap: .6rem;
+  padding: .55rem .9rem;
+  cursor: pointer;
+  font-size: .95rem;
+}
+.v3-cmdk-item-selected,
+.v3-cmdk-item:hover {
+  background: var(--surface-alt, #f3f4f8);
+}
+.v3-cmdk-kind {
+  color: var(--muted, #5b6371);
+  font-weight: 600;
+  text-align: center;
+}
+.v3-cmdk-label { font-weight: 500; }
+.v3-cmdk-sub {
+  color: var(--muted, #5b6371);
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+body.v3-cmdk-open { overflow: hidden; }
+
 /* PR-7: device-detail primary-action hero — one state sentence, one
    button, above everything else. Stacks on phones. */
 .v3-detail-hero {

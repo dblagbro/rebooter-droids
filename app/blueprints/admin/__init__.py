@@ -52,4 +52,5 @@ from app.blueprints.admin import (  # noqa: E402,F401
     backup,          # Hub Tier-2 Feature 3 — config backup / restore
     api_tokens,      # Hub Tier-2 Feature 4a — scoped API tokens
     setup,           # Tier-2 Feature 1 — first-run wizard + 3-mode picker
+    search,          # 0.6.28 PR-4 — ⌘K command palette feeder
 )

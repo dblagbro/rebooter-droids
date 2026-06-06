@@ -27,7 +27,7 @@
      runs before <body> renders. #}
   <script src="{{ url_for('static', filename='js/theme_flash.js') }}"></script>
 </head>
-<body{% if current_user is defined and current_user %} data-devices-live-url="{{ url_for('admin_api.devices_live') }}"{% endif %}>
+<body{% if current_user is defined and current_user %} data-devices-live-url="{{ url_for('admin_api.devices_live') }}" data-cmdk-search-url="{{ url_for('admin_api.cmdk_search') }}"{% endif %}>
 {% if ui_flags is defined and ui_flags.a11y_v2 %}
   {# 0.6.24 PR-6: skip-link as first focusable element. Brutal review
      called out 12+ nav anchors being keyboard-tabbable before reaching
@@ -120,5 +120,9 @@
    pages. Self-activates on `tr[data-device-id]` (list) or
    `[data-device-live]` (detail). No-op everywhere else. #}
 <script src="{{ url_for('static', filename='js/devices_live.js') }}" defer></script>
+{# 0.6.28 PR-4: ⌘K / Ctrl+K / "/" opens a command palette over the
+   page. CSP-compliant (no inline, no eval). No-op unless the body has
+   the data-cmdk-search-url attribute (= the user is logged in). #}
+<script src="{{ url_for('static', filename='js/cmdk.js') }}" defer></script>
 </body>
 </html>
