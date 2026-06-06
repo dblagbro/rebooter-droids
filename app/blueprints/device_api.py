@@ -129,7 +129,18 @@ def heartbeat():
     # ~3x slower fragmentation creep. First-command latency is the
     # heartbeat interval (≤60s) since piggyback delivers it inline.
     # 2s while commands are queued keeps follow-ups snappy.
-    pending_cmds = list_pending_for_device(device.id, mark_delivered=True)
+    # 0.6.19 sweep fix S1: same grace as /device/commands. Pre-fix the
+    # heartbeat handler unconditionally re-piggybacked rows that the
+    # PRIOR heartbeat had already handed off; the firmware would see the
+    # same command_id every ~60s until its /command-result POST landed
+    # — and execute it again (no device-side dedup). The grace skips
+    # rows another delivery channel touched within the window, including
+    # the previous heartbeat from this same device.
+    pending_cmds = list_pending_for_device(
+        device.id,
+        mark_delivered=True,
+        recent_delivery_grace_seconds=POST_PIGGYBACK_GRACE_S,
+    )
     # 0.6.18 review fix #11: pre-fix did `max(settings.poll_interval_seconds, 300)`
     # which silently floored an operator-configured shorter interval up to 5min.
     # Honour the operator's setting except when it's still the legacy 30s default
@@ -181,6 +192,13 @@ def _parse_prefer_wait(prefer_header: str | None) -> int:
 
 LONG_POLL_MAX_WAIT_SECONDS = 30
 LONG_POLL_CHECK_INTERVAL_SECONDS = 1.0
+# 0.6.18 review fix #4 + 0.6.19 sweep fix S1: grace window after a
+# command is handed off via the heartbeat-piggyback or /device/commands
+# delivery channel. Subsequent calls (heartbeat→heartbeat,
+# heartbeat→/commands, /commands→/commands) skip rows touched inside
+# this window so the device doesn't see the same command_id twice (no
+# device-side dedup) and double-execute the toggle.
+POST_PIGGYBACK_GRACE_S = 10
 
 
 @bp.get("/commands")
@@ -225,12 +243,10 @@ def poll_commands():
     )
 
     # 0.6.18 review fix #4: skip rows the heartbeat piggyback handed off
-    # within the last 10s — the firmware is still about to drain them on
-    # its next loop() tick. Without this filter, the heartbeat ACK and a
-    # follow-up /device/commands GET (which fires every 2s while the
-    # queue looks non-empty, per #168) deliver the same command twice and
-    # the firmware double-executes (no command_id dedup on the device).
-    POST_PIGGYBACK_GRACE_S = 10
+    # within POST_PIGGYBACK_GRACE_S — the firmware is still about to drain
+    # them on its next loop() tick. Without this filter the heartbeat ACK
+    # and a follow-up /device/commands GET (every 2s while the queue
+    # looks non-empty per #168) deliver the same command twice.
     cmds = list_pending_for_device(
         device.id,
         mark_delivered=True,
