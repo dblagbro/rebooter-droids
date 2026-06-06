@@ -22,7 +22,7 @@
      runs before <body> renders. #}
   <script src="{{ url_for('static', filename='js/theme_flash.js') }}"></script>
 </head>
-<body>
+<body{% if current_user is defined and current_user %} data-devices-live-url="{{ url_for('admin_api.devices_live') }}"{% endif %}>
 {% if current_user is defined and current_user %}
   <header class="topbar" role="banner">
     <a class="brand" href="{{ url_for('admin_ui.index') }}">Rebooter</a>
@@ -104,5 +104,9 @@
 {# v0.4.22 (BUG-049): replaces inline onsubmit="return confirm(...)"
    attributes so CSP script-src can drop 'unsafe-inline'. #}
 <script src="{{ url_for('static', filename='js/confirm_handlers.js') }}" defer></script>
+{# 0.6.18 (#167/#171 CSP fix): live device-state poller for list + detail
+   pages. Self-activates on `tr[data-device-id]` (list) or
+   `[data-device-live]` (detail). No-op everywhere else. #}
+<script src="{{ url_for('static', filename='js/devices_live.js') }}" defer></script>
 </body>
 </html>
