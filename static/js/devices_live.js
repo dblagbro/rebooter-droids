@@ -127,7 +127,14 @@
           for (var i = 0; i < j.data.devices.length; i++) byId[j.data.devices[i].id] = j.data.devices[i];
           for (var k = 0; k < listRows.length; k++) {
             var d = byId[listRows[k].dataset.deviceId];
-            if (d) applyListRow(listRows[k], d);
+            if (d) {
+              // PR-10: poll-confirmation path mirror — clear pending
+              // optimistic state when the polled value matches.
+              if (d.latest_relay_on !== null && d.latest_relay_on !== undefined) {
+                clearPendingIfMatches(d.id, !!d.latest_relay_on);
+              }
+              applyListRow(listRows[k], d);
+            }
           }
         }
         if (detailPanel) {
@@ -140,11 +147,95 @@
       .catch(function () { /* keep polling */ });
   }
 
+  // 0.6.31 PR-10: optimistic relay flip + 4s snap-back-on-timeout.
+  // Pending optimistic states keyed by deviceId — when an SSE
+  // device_state_changed event (or a tick from the slow-poll fallback)
+  // confirms the matching latest_relay_on, we clear the entry. If the
+  // deadline passes first, we revert the row's button + toast.
+  var pendingOptimistic = {};  // {deviceId: {expectedOn: bool, deadline: number, originalLabel: string}}
+  var OPTIMISTIC_TIMEOUT_MS = 4000;
+
+  function flipRowOptimistic(tr, willBeOn) {
+    var btn = tr.querySelector('button[data-relay-toggle]');
+    var target = tr.querySelector('input[data-relay-target]');
+    var label = tr.querySelector('[data-relay-label]');
+    if (!btn || !target) return null;
+    var original = btn.dataset.current;
+    btn.dataset.current = willBeOn ? 'on' : 'off';
+    btn.className = willBeOn ? 'btn' : 'btn-secondary';
+    btn.style.background = willBeOn ? 'var(--green-fg,#15803d)' : '';
+    btn.style.color = willBeOn ? 'white' : '';
+    btn.style.fontWeight = '600';
+    btn.style.minWidth = '3.2rem';
+    target.value = willBeOn ? 'relay_off' : 'relay_on';
+    if (label) label.textContent = willBeOn ? 'ON' : 'OFF';
+    return original;
+  }
+
+  function revertRow(tr, originalCurrent) {
+    var willBeOn = originalCurrent === 'on';
+    flipRowOptimistic(tr, willBeOn);
+  }
+
+  function toast(msg, severity) {
+    var existing = document.querySelector('.v3-toast');
+    if (existing) existing.remove();
+    var el = document.createElement('div');
+    el.className = 'v3-toast' + (severity ? ' v3-toast-' + severity : '');
+    el.textContent = msg;
+    el.setAttribute('role', 'status');
+    document.body.appendChild(el);
+    setTimeout(function () { el.classList.add('v3-toast-fade'); }, 3000);
+    setTimeout(function () { el.remove(); }, 4000);
+  }
+
   document.addEventListener('submit', function (ev) {
-    if (ev.target && ev.target.querySelector && ev.target.querySelector('button[data-relay-toggle]')) {
-      fastUntil = Date.now() + FAST_BURST_MS;
-    }
+    var form = ev.target;
+    var btn = form && form.querySelector ? form.querySelector('button[data-relay-toggle]') : null;
+    if (!btn) return;
+    fastUntil = Date.now() + FAST_BURST_MS;
+    // Optimistic flip — the current button state IS the action the
+    // operator just confirmed by clicking. data-current was the
+    // pre-click value; we want to display its inverse.
+    var tr = btn.closest('tr[data-device-id]');
+    if (!tr) return;
+    var preClickOn = btn.dataset.current === 'on';
+    var willBeOn = !preClickOn;
+    var originalCurrent = flipRowOptimistic(tr, willBeOn);
+    var deviceId = tr.dataset.deviceId;
+    pendingOptimistic[deviceId] = {
+      expectedOn: willBeOn,
+      originalCurrent: originalCurrent,
+      deadline: Date.now() + OPTIMISTIC_TIMEOUT_MS,
+    };
+    // Schedule the snap-back check.
+    setTimeout(function () {
+      var entry = pendingOptimistic[deviceId];
+      if (!entry) return;  // already confirmed
+      if (Date.now() < entry.deadline) return;
+      // Verify the live state actually shows the expected value before
+      // reverting — if the form submit returned 200 and the page already
+      // refreshed, that's fine.
+      var liveBtn = tr.querySelector('button[data-relay-toggle]');
+      if (!liveBtn) { delete pendingOptimistic[deviceId]; return; }
+      var liveOn = liveBtn.dataset.current === 'on';
+      if (liveOn !== entry.expectedOn) {
+        revertRow(tr, entry.originalCurrent);
+        toast('Device did not confirm the change', 'error');
+      }
+      delete pendingOptimistic[deviceId];
+    }, OPTIMISTIC_TIMEOUT_MS + 100);
   }, true);
+
+  // When SSE / poll confirms the expected state for a pending entry,
+  // clear it so the timeout doesn't fire.
+  function clearPendingIfMatches(deviceId, latestRelayOn) {
+    var entry = pendingOptimistic[deviceId];
+    if (!entry) return;
+    if (latestRelayOn === entry.expectedOn) {
+      delete pendingOptimistic[deviceId];
+    }
+  }
 
   // 0.6.23 #178 Phase 2: subscribe to the hub SSE stream for instant
   // state confirmations. Polling stays as a fallback (also reconciles
@@ -163,6 +254,10 @@
     sse.addEventListener('device_state_changed', function (msg) {
       try {
         var ev = JSON.parse(msg.data);
+        // PR-10: confirm any pending optimistic flip whose expected
+        // state matches the freshly-reported one — this clears the
+        // pending entry so the 4s snap-back doesn't fire.
+        clearPendingIfMatches(ev.device_id, !!ev.latest_relay_on);
         // List page: find the row and apply just the rapid-update fields
         if (listRows.length) {
           for (var i = 0; i < listRows.length; i++) {
