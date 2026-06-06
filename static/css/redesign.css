@@ -29,6 +29,49 @@
 .v3-hero-recent-reason { font-variant-numeric: tabular-nums; opacity: .8; }
 .v3-hero-recent-reason-ghost { color: var(--red-fg, #b91c1c); opacity: 1; font-weight: 500; }
 
+/* PR-7: device-detail primary-action hero — one state sentence, one
+   button, above everything else. Stacks on phones. */
+.v3-detail-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  margin: 0 0 .75rem 0;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dde);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.v3-detail-hero-sentence {
+  font-size: 1.15rem;
+  line-height: 1.4;
+  flex: 1 1 auto;
+  min-width: 60%;
+}
+.v3-detail-hero-sentence .ok    { color: var(--green-fg, #15803d); }
+.v3-detail-hero-sentence .warn  { color: var(--amber-fg, #b45309); }
+.v3-detail-hero-sentence .bad   { color: var(--red-fg,   #b91c1c); }
+.v3-detail-hero-sentence .muted { color: var(--muted, #5b6371); font-weight: 400; }
+.v3-detail-hero-action { flex: 0 0 auto; }
+.v3-detail-hero-action .btn,
+.v3-detail-hero-action .btn-secondary {
+  font-size: 1rem;
+  padding: .55rem 1.1rem;
+  min-height: 44px;   /* mobile tap target */
+}
+
+/* PR-7: sticky tab strip on detail so jumping back to a section
+   doesn't lose the primary action above. */
+.v3-tabbar-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg, var(--surface, #fff));
+  padding: .35rem .25rem;
+  margin: 0 0 1rem 0;
+}
+
 /* PR-3: single responsive table — reflows to card layout at <640px so
    we don't need the duplicate v3-device-cards block. Wider screens use
    the normal table layout. Bulk-select checkboxes hit one DOM only.

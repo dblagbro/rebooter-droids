@@ -27,8 +27,65 @@
   {% endif %}
 </div>
 
+{% if ui_flags.detail_v2 %}
+{# 0.6.27 PR-7: primary-action hero above the tab strip.
+   Brutal review: the page had 8 anchor "tabs" and ~11 sections; the
+   daily-task answer ("why did this reboot?") was 9th. Operator opened
+   the page and had to scroll past Watchdog/Schedule/Audit/Failsafe to
+   find Events. This hero hoists ONE state sentence + ONE primary
+   action above everything else, so a phone-at-the-rack operator can
+   take the obvious action in one tap. The action is context-driven:
+     • held-off       → "Power on (clear hold-off)"
+     • offline        → "Investigate" (jumps to #events)
+     • never reported → no action; show "Review settings"
+     • otherwise      → "Reboot" (queues device_restart command).
+   Diagnostics sections stay below, just with the tab strip now sticky
+   so the operator can jump without losing the action button. #}
+{% set _hb = device.latest_heartbeat %}
+{% set _state_sentence_class = 'v3-detail-hero-sentence' %}
+<section class="v3-detail-hero" aria-label="Primary action">
+  <div class="v3-detail-hero-sentence">
+    {% if device.heartbeat_state == 'online' and not device.is_held_off %}
+      <strong class="ok">Online</strong>
+    {% elif device.heartbeat_state == 'never' %}
+      <strong class="muted">Never reported in</strong>
+    {% elif device.is_held_off %}
+      <strong class="warn">Locked off by operator</strong>
+    {% else %}
+      <strong class="bad">Offline</strong>
+    {% endif %}
+    {% if device.firmware_version %}<span class="muted">· firmware {{ device.firmware_version }}</span>{% endif %}
+    {% if _hb and _hb.relay_on is not none %}
+      <span class="muted">· relay {{ 'ON' if _hb.relay_on else 'OFF' }}</span>
+    {% endif %}
+  </div>
+  <div class="v3-detail-hero-action">
+    {% set can_act = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+    {% if device.is_held_off and can_act %}
+      <form method="post"
+            action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
+            data-confirm-message="Power on {{ device.display_name or device.id }} and clear hold-off?">
+        <input type="hidden" name="type" value="relay_on">
+        <button type="submit" class="btn">Power on (clear hold-off)</button>
+      </form>
+    {% elif device.heartbeat_state == 'offline' %}
+      <a class="btn btn-secondary" href="#events">Investigate</a>
+    {% elif device.heartbeat_state == 'never' %}
+      <a class="btn btn-secondary" href="#settings">Review settings</a>
+    {% elif can_act %}
+      <form method="post"
+            action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
+            data-confirm-message="Reboot {{ device.display_name or device.id }}?">
+        <input type="hidden" name="type" value="device_restart">
+        <button type="submit" class="btn">Reboot</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
 {# ── tab strip / table-of-contents ──────────────────────────────────── #}
-<nav class="v3-tabbar" aria-label="Device sections">
+<nav class="v3-tabbar{% if ui_flags.detail_v2 %} v3-tabbar-sticky{% endif %}" aria-label="Device sections">
   <a href="#overview">Overview</a>
   <a href="#power">Power</a>
   <a href="#watchdog">Watchdog</a>
