@@ -1,0 +1,41 @@
+# systemd-user unit for the rebooter-droids LAN relay agent.
+#
+# Setup (one-time):
+#   1. Copy this file to ~/.config/systemd/user/lan-relay-agent.service
+#   2. Create a .env at ~/.config/lan-relay-agent.env with:
+#        REBOOTER_HUB_URL=https://www.voipguru.org/rebooter
+#        REBOOTER_API_TOKEN=rbt_xxxxxxxxxxxx     # mint via /app/tokens
+#   3. Enable + start:
+#        systemctl --user enable --now lan-relay-agent.service
+#   4. Confirm:
+#        systemctl --user status lan-relay-agent.service
+#        journalctl --user -u lan-relay-agent -f
+#
+# To survive logout, enable lingering once: sudo loginctl enable-linger $USER
+#
+# Token rotation: mint a new token, edit the .env, then:
+#   systemctl --user restart lan-relay-agent.service
+#
+# Logs go to journald; filter with `journalctl --user -u lan-relay-agent`.
+# The agent logs each delivered command with the device IP + measured
+# round-trip latency, so journalctl tail is the place to see whether the
+# sub-200ms goal is being hit.
+
+[Unit]
+Description=rebooter-droids LAN relay agent — sub-second control via SSE
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/lan-relay-agent.env
+ExecStart=/usr/bin/python3 -u %h/rebooter-droids/tools/lan-relay-agent.py
+Restart=always
+RestartSec=5s
+# Cap memory in case requests grows a leak someday.
+MemoryMax=64M
+# Don't write to disk except journald.
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
