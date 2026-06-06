@@ -29,6 +29,65 @@
 .v3-hero-recent-reason { font-variant-numeric: tabular-nums; opacity: .8; }
 .v3-hero-recent-reason-ghost { color: var(--red-fg, #b91c1c); opacity: 1; font-weight: 500; }
 
+/* PR-3: single responsive table — reflows to card layout at <640px so
+   we don't need the duplicate v3-device-cards block. Wider screens use
+   the normal table layout. Bulk-select checkboxes hit one DOM only.
+   Activated by adding `v3-table-responsive` to the wrapper. */
+@media (max-width: 639px) {
+  .v3-table-responsive .table-wrap { overflow-x: visible; }
+  .v3-table-responsive table {
+    width: 100%;
+    display: block;
+    border-collapse: collapse;
+  }
+  .v3-table-responsive thead { display: none; }
+  .v3-table-responsive tbody { display: block; }
+  .v3-table-responsive tbody tr {
+    display: block;
+    border: 1px solid var(--border, #dde);
+    border-radius: 8px;
+    padding: .75rem .9rem;
+    margin: 0 0 .5rem 0;
+    background: var(--surface, #fff);
+  }
+  .v3-table-responsive tbody td {
+    display: block;
+    padding: .35rem 0;
+    border: 0;
+    text-align: right;
+    font-size: .9rem;
+  }
+  .v3-table-responsive tbody td::before {
+    content: attr(data-label);
+    float: left;
+    font-weight: 600;
+    color: var(--muted, #5b6371);
+    margin-right: 1rem;
+  }
+  /* Name cell stretches full width; no label prefix. */
+  .v3-table-responsive tbody td.v3-cell-name {
+    text-align: left;
+    font-weight: 600;
+    font-size: 1rem;
+    padding-bottom: .5rem;
+    border-bottom: 1px solid var(--border, #eee);
+    margin-bottom: .25rem;
+  }
+  .v3-table-responsive tbody td.v3-cell-name::before { content: ''; margin: 0; }
+  .v3-table-responsive tbody td.v3-cell-name a { font-weight: 600; color: inherit; }
+  /* Bulk-checkbox cell collapses to inline left of the name. */
+  .v3-table-responsive tbody td.v3-bulk-checkbox-cell {
+    display: inline-block;
+    padding: 0 .5rem 0 0;
+    border: 0;
+    text-align: left;
+  }
+  .v3-table-responsive tbody td.v3-bulk-checkbox-cell::before { content: ''; }
+  /* Empty cells (no value rendered) drop their label too — avoids
+     leaking "Firmware:" rows on devices that never reported a version. */
+  .v3-table-responsive tbody td:empty { display: none; }
+}
+
 /* PR-2: per-row meta line — replaces the 4-7 same-shape badges
    under the device name with one small muted text line. Only renders
    when there's actually metadata to show, so the common case (active

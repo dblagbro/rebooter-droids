@@ -43,6 +43,7 @@ class Settings:
     ui_row_v2: bool = True    # PR-2: collapse badge soup
     ui_a11y_v2: bool = True   # PR-6: skip-link, landmarks, focus, contrast
     ui_copy_v2: bool = True   # PR-8: kill jargon, sentence-case, plain verbs
+    ui_table_v2: bool = True  # PR-3: single responsive table (no mobile-card duplicate)
 
 
 @lru_cache
@@ -137,5 +138,7 @@ def load_settings() -> Settings:
         ui_a11y_v2=os.environ.get("REBOOTER_UI_A11Y_V2", "1").strip().lower()
         not in ("0", "false", "no", "off"),
         ui_copy_v2=os.environ.get("REBOOTER_UI_COPY_V2", "1").strip().lower()
+        not in ("0", "false", "no", "off"),
+        ui_table_v2=os.environ.get("REBOOTER_UI_TABLE_V2", "1").strip().lower()
         not in ("0", "false", "no", "off"),
     )

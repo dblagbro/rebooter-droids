@@ -212,7 +212,7 @@
    isn't a DOM descendant. #}
 
 {# ── desktop table layout ────────────────────────────────────────────── #}
-<div class="v3-devices-table">
+<div class="v3-devices-table{% if ui_flags.table_v2 %} v3-table-responsive{% endif %}">
   <div class="table-wrap"><table>
     <thead>
       <tr>
@@ -238,7 +238,7 @@
                  form="devices-bulk-delete-form"
                  data-bulk-row aria-label="Select {{ d.display_name or d.id }}">
         </td>{% endif %}
-        <td>
+        <td class="v3-cell-name">
           <a href="{{ url_for('admin_ui.device_detail_page', device_id=d.id) }}">{{ d.display_name or d.id }}</a>
           {% if ui_flags.row_v2 %}
             {# 0.6.25 PR-2: collapse the per-row badge soup. The brutal
@@ -266,7 +266,7 @@
         {% if not ui_flags.row_v2 %}
         <td><span class="badge">{{ d.registration_state }}</span></td>
         {% endif %}
-        <td data-live="online">
+        <td data-live="online" data-label="Online">
           {% if d.heartbeat_state == 'online' %}<span class="badge green" title="last heartbeat within 3 min">online</span>
           {% elif d.heartbeat_state == 'never' %}<span class="badge" title="device row exists but no heartbeat ever received">never reported in</span>
           {% else %}<span class="badge red" title="last heartbeat older than 3 min">offline</span>
@@ -280,7 +280,7 @@
              None  -> em-dash, device never reported in
            is_held_off and is_protected are surface-only — back end
            still enforces. #}
-        <td style="white-space:nowrap" data-live="relay">
+        <td style="white-space:nowrap" data-live="relay" data-label="Power">
           {% set can_toggle = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
           {% if d.latest_relay_on is none %}
             <span class="muted" title="no heartbeat from device yet">—</span>
@@ -325,7 +325,7 @@
             </span>
           {% endif %}
         </td>
-        <td>
+        <td data-label="Central">
           {# v0.5.52 (P0.2): single chip; severity comes from the
              service-derived central_status_class (green/amber/red/""). #}
           <span class="badge {{ d.central_status_class }}" title="{{ d.central_status_reason }}">{{ d.central_status_label }}</span>
@@ -351,7 +351,7 @@
             {% endif %}
           {% endif %}
         </td>
-        <td>
+        <td data-label="Firmware">
           {{ d.firmware_version or '—' }}
           {# v0.4.21 / v0.4.29: one-click upgrade when this device
              is strictly *behind* the current latest-stable release.
@@ -380,8 +380,8 @@
             </form>
           {% endif %}
         </td>
-        <td>{{ d.last_heartbeat_at or '—' }}</td>
-        <td>
+        <td data-label="Last heartbeat">{{ d.last_heartbeat_at or '—' }}</td>
+        <td data-label="Local IP">
           {% if d.local_ip %}<a href="http://{{ d.local_ip }}/" target="_blank" rel="noopener">{{ d.local_ip }}</a>{% else %}—{% endif %}
         </td>
       </tr>
@@ -390,7 +390,13 @@
   </table></div>
 </div>
 
-{# ── mobile card layout ──────────────────────────────────────────────── #}
+{# 0.6.26 PR-3: mobile-cards block is suppressed when the responsive
+   table is on (default). The table reflows to card-style at <640px
+   via CSS — one DOM, no duplication, bulk-select selectors no longer
+   hit two copies. Revert with REBOOTER_UI_TABLE_V2=0 if a regression
+   shows up on a specific viewport. #}
+{% if not ui_flags.table_v2 %}
+{# ── mobile card layout (legacy duplicate rendering) ─────────────── #}
 <div class="v3-device-cards">
   {% for d in devices %}
   <article class="v3-device-card">
@@ -461,6 +467,7 @@
   </article>
   {% endfor %}
 </div>
+{% endif %}{# /not ui_flags.table_v2 — 0.6.26 PR-3 mobile-card guard #}
 
 {% if can_bulk_delete %}
 {# v0.5.3: bulk-delete form sits OUTSIDE the table so per-row
