@@ -41,6 +41,29 @@
 .v3-hero-recent-reason { font-variant-numeric: tabular-nums; opacity: .8; }
 .v3-hero-recent-reason-ghost { color: var(--red-fg, #b91c1c); opacity: 1; font-weight: 500; }
 
+/* PR-10: snap-back toast — bottom-center, auto-fades. */
+.v3-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 900;
+  padding: .7rem 1.1rem;
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dde);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+  font-size: .95rem;
+  max-width: 92vw;
+  transition: opacity .4s;
+}
+.v3-toast-error {
+  background: var(--red-fg, #b91c1c);
+  color: white;
+  border-color: var(--red-fg, #b91c1c);
+}
+.v3-toast-fade { opacity: 0; }
+
 /* PR-4: ⌘K command palette overlay. Center on viewport, max-width
    600px, slight scrim behind. Keyboard nav inside is handled by JS;
    CSS just paints. */
