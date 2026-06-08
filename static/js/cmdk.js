@@ -92,21 +92,32 @@
     return false;
   }
 
+  // 0.6.36 hotfix Finding #4: out-of-order fetch staleness. Pre-fix
+  // typing "abc" then backspacing to "a" could land the "abc" response
+  // after the "a" response, overwriting items with the narrower set —
+  // common-prefix matches silently vanished until the next keystroke.
+  // Each fetch now uses an AbortController that the next fetch cancels.
+  var inFlight = null;
   function fetchItems(q) {
-    var now = Date.now();
     var url = searchUrl + (q ? ('?q=' + encodeURIComponent(q)) : '');
     if (pendingFetch) clearTimeout(pendingFetch);
     pendingFetch = setTimeout(function () {
       pendingFetch = null;
-      lastFetchAt = Date.now();
-      fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      if (inFlight) { try { inFlight.abort(); } catch (e) {} }
+      var controller = ('AbortController' in window) ? new AbortController() : null;
+      inFlight = controller;
+      var opts = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+      if (controller) opts.signal = controller.signal;
+      fetch(url, opts)
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (j) {
+          if (inFlight !== controller) return;  // a newer fetch superseded us
+          inFlight = null;
           if (!j || !j.ok || !j.data || !Array.isArray(j.data.items)) return;
           items = j.data.items;
           rank(q);
         })
-        .catch(function () { /* ignore */ });
+        .catch(function () { /* aborted or network — ignore */ });
     }, FETCH_DEBOUNCE_MS);
   }
 
