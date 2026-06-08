@@ -103,8 +103,43 @@ systemctl --user restart lan-relay-agent.service
   power-cycle.
 
 **400-700ms per delivery is the ESP8266's HTTP processing floor.**
-Phase 3 (#179 — persistent TCP / UDP control channel) targets <50ms but
-needs a firmware change.
+
+## Phase 3 — UDP fast path (firmware 0.2.23+, agent 0.6.34+)
+
+The agent automatically prefers a **UDP control channel** to each
+device that drops delivery to **~10-50ms** end-to-end. To enable it,
+populate `~/.config/lan-relay-agent-udp-secrets.json` with the
+device-token that was shown ONCE during enrollment:
+
+```json
+{
+  "192.168.18.190": "dt_AbcDefGhIjKl....",
+  "192.168.18.188": "dt_MnOpQrStUvWx...."
+}
+```
+
+```bash
+chmod 600 ~/.config/lan-relay-agent-udp-secrets.json
+systemctl --user restart lan-relay-agent.service
+```
+
+The agent loads the file once at startup; restart after editing. Log
+will show `UDP path armed for N device(s)`. Subsequent deliveries
+prefer UDP and fall through to HTTP silently if a packet is lost or
+the device doesn't have a matching secret.
+
+**Why isn't this fetched from the hub automatically?** The hub stores
+only the SHA-256 hash of the device token (it's a bearer credential
+the device proves it has, not something the hub recovers). The
+plaintext is shown once at enrollment; if you captured it then,
+paste it into the secrets file above. If you didn't, the agent
+stays on HTTP for that device — no breakage, just no UDP speedup.
+
+Protocol details: `docs/phase3-udp-control-design.md` in the firmware
+repo. Listener binds UDP port 31416. HMAC-SHA256-truncated-16 over
+(nonce ‖ unix-ts ‖ cmd); 32-nonce ring + ±60s timestamp window
+prevent replay. Bad-HMAC packets are silently dropped (no reflection
+of a probe attacker).
 
 ## Architecture
 
