@@ -157,6 +157,17 @@ def services_enqueue(device_id: str):
     }, status=201)
 
 
+# Note: a previous draft of this file included a /control-secret endpoint
+# for the Phase 3 UDP path (#179). Removed because the hub only stores
+# the *hash* of the device token (token_hash = _hash(raw_secret) at
+# enrollment-consume time); the plaintext was never persisted, so the
+# hub cannot serve it. The UDP agent's "secret per device" is instead
+# loaded from a local file the operator populates manually (the device
+# token was displayed ONCE at enrollment; if the operator captured it,
+# they can paste it). HTTP remains the silent fallback path for any
+# device whose secret the agent doesn't know.
+
+
 # #167 / 0.6.12: slim live-state endpoint the device list/detail pages
 # poll every ~3s for real-time online/offline + relay state without a
 # full page render. Returns one row per device with just the fields the
