@@ -36,10 +36,16 @@
   document.addEventListener('pointerdown', function (e) {
     var row = findRow(e.target);
     if (!row) return;
-    // Ignore if the press lands on an interactive element — the user
-    // probably wanted to tap that, not swipe.
+    // 0.6.36 hotfix Finding #5: pre-fix the bail caught the device-name
+    // anchor inside the row — the natural finger target on mobile —
+    // so right-swipe-toggle and left-swipe-reboot silently did nothing.
+    // Narrow the anchor exclusion to anchors OUTSIDE the row (header
+    // nav, breadcrumbs); buttons + inputs still bail because those
+    // need their tap.
     var t = e.target;
-    if (t.closest && (t.closest('button') || t.closest('a') || t.closest('input'))) return;
+    if (t.closest && (t.closest('button') || t.closest('input'))) return;
+    var a = t.closest && t.closest('a');
+    if (a && !a.closest('tr[data-device-id]')) return;
     active = { row: row, startX: e.clientX, startY: e.clientY, startT: Date.now() };
   });
 

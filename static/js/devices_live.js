@@ -40,7 +40,16 @@
   }
 
   function applyListRow(tr, dev) {
-    var onlineCell = tr.querySelector('[data-live="online"]');
+    // 0.6.36 hotfix Finding #2: while a pending optimistic flip is in
+    // flight for this device, the next slow-poll tick (~3s) or SSE
+    // event could clobber the optimistic state with the stale relay
+    // value the device hasn't yet had time to flip. Skipping the row
+    // refresh during the pending window preserves the optimistic UI
+    // until clearPendingIfMatches confirms or the snap-back fires.
+    // The row's data-device-id is the source of truth — the partial
+    // dev object passed by the SSE path doesn't carry id.
+    var rowDevId = tr.dataset.deviceId;
+    if (rowDevId && pendingOptimistic[rowDevId]) return;
     if (onlineCell) {
       var html;
       if (dev.heartbeat_state === 'online') {
@@ -155,11 +164,21 @@
   var pendingOptimistic = {};  // {deviceId: {expectedOn: bool, deadline: number, originalLabel: string}}
   var OPTIMISTIC_TIMEOUT_MS = 4000;
 
-  function flipRowOptimistic(tr, willBeOn) {
+  // 0.6.36 hotfix (Finding #1, CRITICAL): split visual flip from the
+  // form-target mutation. Pre-fix, flipRowOptimistic ran during the
+  // capture-phase submit handler AND wrote target.value BEFORE the
+  // form serialized — so every relay click posted the OPPOSITE command
+  // (click ON → device received OFF). Now:
+  //   flipRowVisual()  — class, style, label, data-current. Safe to run
+  //                      before the form serializes.
+  //   updateRelayTarget() — mutate the hidden input's `value` AFTER the
+  //                      current task (form serialization) completes,
+  //                      so the right command goes out on this click
+  //                      and the inverted command on the NEXT click.
+  function flipRowVisual(tr, willBeOn) {
     var btn = tr.querySelector('button[data-relay-toggle]');
-    var target = tr.querySelector('input[data-relay-target]');
     var label = tr.querySelector('[data-relay-label]');
-    if (!btn || !target) return null;
+    if (!btn) return null;
     var original = btn.dataset.current;
     btn.dataset.current = willBeOn ? 'on' : 'off';
     btn.className = willBeOn ? 'btn' : 'btn-secondary';
@@ -167,14 +186,19 @@
     btn.style.color = willBeOn ? 'white' : '';
     btn.style.fontWeight = '600';
     btn.style.minWidth = '3.2rem';
-    target.value = willBeOn ? 'relay_off' : 'relay_on';
     if (label) label.textContent = willBeOn ? 'ON' : 'OFF';
     return original;
   }
 
+  function updateRelayTarget(tr, willBeOn) {
+    var target = tr.querySelector('input[data-relay-target]');
+    if (target) target.value = willBeOn ? 'relay_off' : 'relay_on';
+  }
+
   function revertRow(tr, originalCurrent) {
     var willBeOn = originalCurrent === 'on';
-    flipRowOptimistic(tr, willBeOn);
+    flipRowVisual(tr, willBeOn);
+    updateRelayTarget(tr, willBeOn);
   }
 
   function toast(msg, severity) {
@@ -201,30 +225,42 @@
     if (!tr) return;
     var preClickOn = btn.dataset.current === 'on';
     var willBeOn = !preClickOn;
-    var originalCurrent = flipRowOptimistic(tr, willBeOn);
+    // 0.6.36 hotfix Finding #1: visual flip is synchronous, target.value
+    // mutation is deferred so the form serializes the CURRENT click's
+    // value before we rewrite it for the NEXT click.
+    var originalCurrent = flipRowVisual(tr, willBeOn);
+    setTimeout(function () { updateRelayTarget(tr, willBeOn); }, 0);
     var deviceId = tr.dataset.deviceId;
-    pendingOptimistic[deviceId] = {
-      expectedOn: willBeOn,
-      originalCurrent: originalCurrent,
-      deadline: Date.now() + OPTIMISTIC_TIMEOUT_MS,
-    };
-    // Schedule the snap-back check.
-    setTimeout(function () {
-      var entry = pendingOptimistic[deviceId];
-      if (!entry) return;  // already confirmed
-      if (Date.now() < entry.deadline) return;
-      // Verify the live state actually shows the expected value before
-      // reverting — if the form submit returned 200 and the page already
-      // refreshed, that's fine.
-      var liveBtn = tr.querySelector('button[data-relay-toggle]');
-      if (!liveBtn) { delete pendingOptimistic[deviceId]; return; }
-      var liveOn = liveBtn.dataset.current === 'on';
-      if (liveOn !== entry.expectedOn) {
-        revertRow(tr, entry.originalCurrent);
-        toast('Device did not confirm the change', 'error');
+    // 0.6.36 hotfix Finding #3: defer the pendingOptimistic registration
+    // until after the bubble-phase confirm-handler has had its say. If
+    // confirm_handlers.js preventDefault'd this submit, evt.defaultPrevented
+    // will be true — revert visually and skip the timeout entirely so no
+    // spurious "Device did not confirm" toast fires 4s later.
+    queueMicrotask(function () {
+      if (ev.defaultPrevented) {
+        flipRowVisual(tr, preClickOn);  // revert visual
+        updateRelayTarget(tr, preClickOn);  // revert target
+        return;
       }
-      delete pendingOptimistic[deviceId];
-    }, OPTIMISTIC_TIMEOUT_MS + 100);
+      pendingOptimistic[deviceId] = {
+        expectedOn: willBeOn,
+        originalCurrent: originalCurrent,
+        deadline: Date.now() + OPTIMISTIC_TIMEOUT_MS,
+      };
+      setTimeout(function () {
+        var entry = pendingOptimistic[deviceId];
+        if (!entry) return;  // already confirmed
+        if (Date.now() < entry.deadline) return;
+        var liveBtn = tr.querySelector('button[data-relay-toggle]');
+        if (!liveBtn) { delete pendingOptimistic[deviceId]; return; }
+        var liveOn = liveBtn.dataset.current === 'on';
+        if (liveOn !== entry.expectedOn) {
+          revertRow(tr, entry.originalCurrent);
+          toast('Device did not confirm the change', 'error');
+        }
+        delete pendingOptimistic[deviceId];
+      }, OPTIMISTIC_TIMEOUT_MS + 100);
+    });
   }, true);
 
   // When SSE / poll confirms the expected state for a pending entry,
