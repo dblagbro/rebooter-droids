@@ -22,3 +22,5 @@ backups/
 
 .DS_Store
 *.swp
+tools/ui-audit-out/
+tools/ui-audit-cookie.txt

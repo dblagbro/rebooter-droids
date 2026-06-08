@@ -51,5 +51,10 @@ markers = [
   "responsive: mobile/tablet viewport regression tests",
   "slow: tests that block on rate-limit windows or sleep",
   "ci: verified green against a fresh ephemeral instance — the GitHub Actions gate (see docs/test-plan.md)",
+  # 0.6.34: register the `timeout` marker used by test_hardening_probes.py.
+  # We don't actually run pytest-timeout in CI (the BUG-025 budget is enforced
+  # by the test body itself), but the marker is still applied — registering
+  # it silences the PytestUnknownMarkWarning that's been polluting CI logs.
+  "timeout: documents a per-test wall-clock budget (not enforced by pytest-timeout)",
 ]
 addopts = "-m 'not slow'"
