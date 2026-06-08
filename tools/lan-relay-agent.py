@@ -59,6 +59,98 @@ RELAY_PATHS = {
     "relay_toggle": "/api/relay/toggle",
 }
 
+# 0.6.34 / firmware 0.2.23 Phase 3 (#179) — UDP control channel.
+# Device-side listener at port 31416 accepts 29-byte HMAC-SHA256-authed
+# packets and answers with a 26-byte ACK. Wire latency <10ms on LAN vs
+# ~280ms for HTTP. Per-device secrets are loaded from
+# ~/.config/lan-relay-agent-udp-secrets.json (operator-populated, since
+# the hub doesn't store device tokens in plaintext).
+import hashlib  # noqa: E402
+import hmac     # noqa: E402
+import os.path  # noqa: E402
+import secrets as _secrets  # noqa: E402
+import socket   # noqa: E402
+import struct   # noqa: E402
+
+UDP_PORT = 31416
+UDP_TIMEOUT_S = 0.05      # 50ms first-attempt budget
+UDP_MAX_RETRIES = 2       # then give up + fall back to HTTP
+UDP_CMD_CODES = {"relay_on": 0x01, "relay_off": 0x02, "relay_toggle": 0x03}
+
+_udp_secrets: dict[str, bytes] = {}
+_udp_sockets: dict[str, socket.socket] = {}
+
+
+def _load_udp_secrets() -> None:
+    """Populate _udp_secrets from the operator-managed JSON file.
+
+    File format: {"192.168.18.190": "dt_xxxxxxxxxxxxxxxxxxxxxxxx", ...}
+    Token strings are the device.deviceToken shown ONCE at enrollment.
+    Missing file or unreadable JSON = empty mapping; agent silently
+    stays on the HTTP path for every device.
+    """
+    path = os.path.expanduser("~/.config/lan-relay-agent-udp-secrets.json")
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        log.warning("UDP secrets file %s unreadable: %s", path, e)
+        return
+    for ip, secret in (data or {}).items():
+        if isinstance(secret, str) and secret:
+            _udp_secrets[ip] = secret.encode("utf-8")
+    if _udp_secrets:
+        log.info("UDP path armed for %d device(s)", len(_udp_secrets))
+
+
+def _udp_socket_for(ip: str) -> socket.socket:
+    sock = _udp_sockets.get(ip)
+    if sock is None:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(UDP_TIMEOUT_S)
+        _udp_sockets[ip] = sock
+    return sock
+
+
+def _try_udp(ip: str, ctype: str) -> bool:
+    """Send a UDP control packet + await ACK. Returns True on confirmed
+    ack=OK from the device. False on any other outcome (no secret, no
+    ACK, bad ACK, timeout) — caller falls back to HTTP."""
+    secret = _udp_secrets.get(ip)
+    if not secret:
+        return False
+    cmd_code = UDP_CMD_CODES.get(ctype)
+    if cmd_code is None:
+        return False
+    sock = _udp_socket_for(ip)
+    for attempt in range(UDP_MAX_RETRIES + 1):
+        nonce = _secrets.token_bytes(8)
+        ts = int(time.time()).to_bytes(4, "big")
+        cmd = bytes([cmd_code])
+        payload = nonce + ts + cmd
+        tag = hmac.new(secret, payload, hashlib.sha256).digest()[:16]
+        pkt = tag + payload
+        try:
+            sock.sendto(pkt, (ip, UDP_PORT))
+            resp, _ = sock.recvfrom(64)
+        except (socket.timeout, OSError):
+            continue
+        if len(resp) != 26:
+            continue
+        resp_tag, resp_nonce, ack, relay = resp[:16], resp[16:24], resp[24], resp[25]
+        if resp_nonce != nonce:
+            continue
+        # Verify response HMAC over (nonce ‖ ack ‖ relay).
+        expected = hmac.new(secret, resp_nonce + bytes([ack, relay]), hashlib.sha256).digest()[:16]
+        if not hmac.compare_digest(resp_tag, expected):
+            continue
+        if ack == 0:
+            return True
+    return False
+
+
 # Per-device persistent sessions so the second POST skips TCP handshake.
 _device_sessions: dict[str, requests.Session] = {}
 
@@ -83,13 +175,19 @@ def deliver(event: dict) -> None:
         # heartbeat-piggyback path. Other command types aren't latency
         # sensitive in the same way.
         return
-    url = f"http://{ip}{path}"
+    # Try the UDP fast path first; fall back to HTTP if the device has
+    # no UDP secret configured for the agent, or the device didn't ACK.
     t0 = time.monotonic()
+    if _try_udp(ip, ctype):
+        dt_ms = int((time.monotonic() - t0) * 1000)
+        log.info("delivered %s → %s via UDP (%s ms)", ctype, ip, dt_ms)
+        return
+    url = f"http://{ip}{path}"
     try:
         r = _session_for(ip).post(url, timeout=DEVICE_TIMEOUT_S)
         dt_ms = int((time.monotonic() - t0) * 1000)
         log.info(
-            "delivered %s → %s (%s ms, http %s)",
+            "delivered %s → %s via HTTP (%s ms, http %s)",
             ctype, ip, dt_ms, r.status_code,
         )
     except requests.RequestException as e:
@@ -162,6 +260,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    _load_udp_secrets()
     stream_loop()
 
 
