@@ -31,7 +31,11 @@ def _pages() -> list[dict]:
         {"label": "History",   "url": url_for("admin_ui.history_page")},
         {"label": "Power",     "url": url_for("admin_ui.fleet_power_page")},
         {"label": "Settings",  "url": url_for("admin_ui.settings_page")},
-        {"label": "Firmware",  "url": url_for("admin_ui.firmware_page")},
+        # 0.6.33 audit-found bug: was admin_ui.firmware_page (doesn't
+        # exist) — the real endpoint is admin_ui.list_firmware_page.
+        # url_for() raised BuildError → /api/v1/admin/search 500'd
+        # every time the ⌘K palette was opened, breaking it entirely.
+        {"label": "Firmware",  "url": url_for("admin_ui.list_firmware_page")},
     ]
 
 
