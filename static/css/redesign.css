@@ -66,7 +66,15 @@
 
 /* PR-4: ⌘K command palette overlay. Center on viewport, max-width
    600px, slight scrim behind. Keyboard nav inside is handled by JS;
-   CSS just paints. */
+   CSS just paints.
+
+   0.6.32 hotfix: `.v3-cmdk-overlay { display: flex }` was overriding
+   the `hidden` HTML attribute (which sets `display: none` only via the
+   user-agent stylesheet, lowest specificity), so the palette opened
+   visible on every page load with `open = false` — and the Escape
+   handler returned early because state said "not open." Explicit
+   `[hidden]` rule restores the attribute's intended behaviour. */
+.v3-cmdk-overlay[hidden] { display: none !important; }
 .v3-cmdk-overlay {
   position: fixed;
   inset: 0;

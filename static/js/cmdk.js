@@ -188,6 +188,16 @@
 
   // ---- event wiring ------------------------------------------------------
   document.addEventListener('keydown', function (e) {
+    // 0.6.32 hotfix: Escape ALWAYS closes the overlay if it's visible,
+    // even if our state thinks it's not open. Pre-fix, a CSS bug let the
+    // overlay paint with open=false and Escape returned early via the
+    // !open branch — locking the operator out of the page until reload.
+    var visuallyOpen = !overlay.hidden;
+    if (e.key === 'Escape' && visuallyOpen) {
+      e.preventDefault();
+      hide();
+      return;
+    }
     // open palette
     if (!open) {
       var isCmdK = (e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey);
