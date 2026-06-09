@@ -179,9 +179,15 @@ def create_app() -> Flask:
     register_sync_emission()
 
     # Run the scheduler in only ONE worker (the first to claim a Postgres advisory lock).
+    # 0.6.37 #206: also start the diag-syslog UDP collector inside the
+    # same single-worker gate (a second _claim_scheduler_lock() call
+    # checks out a NEW pooled connection and would race against the
+    # first session's still-held lock).
     if _claim_scheduler_lock():
         from app.jobs.scheduler import start as start_scheduler
         start_scheduler()
+        from app.services.diag_syslog_collector import start_collector
+        start_collector()
 
     from app.blueprints.version import bp as version_bp
     from app.blueprints.auth import bp as auth_bp
