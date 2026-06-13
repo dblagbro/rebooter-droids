@@ -294,10 +294,23 @@
           {% elif can_toggle %}
             {% set target_type = 'relay_off' if d.latest_relay_on else 'relay_on' %}
             {% set verb = 'Turn off' if d.latest_relay_on else 'Turn on' %}
+            {# 0.6.38 #210: build a confirm message that combines the existing
+               protected-device warning AND a power-topology warning when
+               turning OFF a device that powers other devices. Either gate
+               surfaces a confirm dialog; both gates combine into one. #}
+            {% set _confirm_msg = '' %}
+            {% if d.is_protected %}
+              {% set _confirm_msg = 'Toggle protected device ' ~ (d.display_name or d.id) ~ '?' %}
+            {% endif %}
+            {% if d.latest_relay_on and d.powers_devices %}
+              {% set _names = d.powers_devices|map(attribute='display_name')|join(', ') %}
+              {% set _topo = 'Turning ' ~ (d.display_name or d.id) ~ ' off will power-cycle: ' ~ _names ~ '. Continue?' %}
+              {% set _confirm_msg = (_confirm_msg ~ ' ' if _confirm_msg else '') ~ _topo %}
+            {% endif %}
             <form method="post"
                   action="{{ url_for('admin_ui.device_send_command', device_id=d.id) }}"
                   style="display:inline; margin:0"
-                  {% if d.is_protected %}data-confirm-message="Toggle 🔒 protected device {{ d.display_name or d.id }}? You must also tick override-lockout below to actually fire."{% endif %}>
+                  {% if _confirm_msg %}data-confirm-message="{{ _confirm_msg }}"{% endif %}>
               <input type="hidden" name="type" value="{{ target_type }}" data-relay-target>
               <input type="hidden" name="next" value="list">
               {% if d.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}

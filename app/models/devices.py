@@ -13,7 +13,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models import Base
 from app.models._helpers import new_id, ts_column
@@ -104,6 +104,39 @@ class Device(Base):
     # device-side state; this is the operator's intended state.
     is_held_off: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
+    )
+
+    # 0.6.38 (#210): power topology. When set, this device draws AC
+    # through the named parent device's relay — toggling the parent's
+    # relay off power-cycles this child. Operator-confirmed on the
+    # 2026-06 fleet that .188 was plugged into .185's relay; the
+    # historical "Power On" reset_reason count on .188 was double-counting
+    # parent-relay-cycle events as software crashes. Used by the relay-
+    # toggle confirm dialog (warn before power-cycling a known child)
+    # and the reboot classifier (annotate "Power On" with relay_induced
+    # when the parent's relay was off at that moment). NULL = device is
+    # independently powered (the default).
+    power_source_device_id: Mapped[str | None] = mapped_column(
+        String(40),
+        ForeignKey("devices.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # 0.6.38 #210: self-referential relationships for the power topology.
+    # `power_source` = the parent device whose relay feeds this one.
+    # `powers_devices` = the list of children fed by this device's relay.
+    # remote_side on the parent side tells SQLAlchemy which side of the
+    # join is the "parent" for the self-referential FK.
+    power_source = relationship(
+        "Device",
+        remote_side="Device.id",
+        foreign_keys=[power_source_device_id],
+        back_populates="powers_devices",
+        lazy="joined",
+    )
+    powers_devices = relationship(
+        "Device",
+        back_populates="power_source",
+        foreign_keys=[power_source_device_id],
     )
 
     # v0.5.22 (B21): operator-set intended config for centrally managed

@@ -360,6 +360,10 @@ def list_devices(
             latest_hb = heartbeats_by_device.get(d.id)
             obj["latest_relay_on"] = bool(latest_hb.relay_on) if latest_hb else None
             obj["latest_mode"] = latest_hb.mode if latest_hb else None
+            # 0.6.38 #210: tiny pass-through so the relay confirm dialog
+            # in devices_list can warn before toggling a parent off.
+            # Filled in below in one shot after the row loop.
+            obj["powers_devices"] = []
             assignment = assignments_by_device.get(d.id)
             if assignment:
                 obj["active_firmware_assignment"] = assignment
@@ -410,6 +414,22 @@ def list_devices(
                             "mismatched": [],
                         }
             out.append(obj)
+        # 0.6.38 #210: fill obj["powers_devices"] in one shot. One query
+        # to fetch every (parent_id, child_id) row whose parent is in the
+        # current page; then group child names under the right parent.
+        # Cheap — single SELECT, no N+1.
+        if out:
+            from collections import defaultdict
+            ids = [o["id"] for o in out]
+            children_by_parent: dict[str, list[dict]] = defaultdict(list)
+            child_rows = session.execute(
+                select(Device.id, Device.display_name, Device.power_source_device_id)
+                .where(Device.power_source_device_id.in_(ids))
+            ).all()
+            for cid, cname, parent in child_rows:
+                children_by_parent[parent].append({"id": cid, "display_name": cname})
+            for o in out:
+                o["powers_devices"] = children_by_parent.get(o["id"], [])
         return out
 
 
@@ -576,4 +596,25 @@ def get_device_detail(device_id: str) -> dict | None:
         out["power_intraday_series"] = device_power.intraday_power_series(
             device_id, window_seconds=24 * 60 * 60
         )
+        # 0.6.38 #210: power topology. `power_source` = the parent device
+        # whose relay feeds THIS one (single, may be None). `powers_devices`
+        # = the list of children fed by THIS device's relay. Both used by
+        # the detail template + the relay confirm dialog so the operator
+        # can see what toggling this device's relay will affect.
+        if d.power_source_device_id:
+            parent = session.get(Device, d.power_source_device_id)
+            out["power_source"] = {
+                "id": parent.id,
+                "display_name": parent.display_name,
+            } if parent else None
+        else:
+            out["power_source"] = None
+        children = (
+            session.execute(
+                select(Device).where(Device.power_source_device_id == device_id)
+            ).scalars().all()
+        )
+        out["powers_devices"] = [
+            {"id": c.id, "display_name": c.display_name} for c in children
+        ]
         return out

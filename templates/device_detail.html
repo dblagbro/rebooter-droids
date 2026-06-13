@@ -25,6 +25,30 @@
       <span style="font-size:.85rem">— opens the device's on-board web UI on your LAN.</span>
     </p>
   {% endif %}
+  {# 0.6.38 #210: power topology callouts. "Powered by" = this device
+     gets AC through the named parent's relay (toggling parent off
+     power-cycles this device). "Powers" = this device's relay feeds
+     listed children (toggling THIS device off power-cycles them).
+     Used by the relay confirm dialog + the reboot classifier so the
+     hub can distinguish a real ghost reboot from a parent-relay-cycle
+     consequence. #}
+  {% if device.power_source %}
+    <p class="muted">
+      Powered by:
+      <a href="{{ url_for('admin_ui.device_detail_page', device_id=device.power_source.id) }}">{{ device.power_source.display_name or device.power_source.id }}</a>
+      <span style="font-size:.85rem">— if its relay turns off, this device loses AC.</span>
+    </p>
+  {% endif %}
+  {% if device.powers_devices %}
+    <p class="muted">
+      Powers:
+      {% for child in device.powers_devices %}
+        <a href="{{ url_for('admin_ui.device_detail_page', device_id=child.id) }}">{{ child.display_name or child.id }}</a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+      <span style="font-size:.85rem">— turning this device's relay off power-cycles
+        {{ 'it' if device.powers_devices|length == 1 else 'them' }}.</span>
+    </p>
+  {% endif %}
 </div>
 
 {% if ui_flags.detail_v2 %}
