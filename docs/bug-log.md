@@ -1319,3 +1319,17 @@ but are worth scheduling:
   in v0.6.40 (handler-side strip).**
 - **BUG-071** — Detail page renders unbounded children inline.
   Cosmetic for now; will get ugly past ~10 children. **Status: open.**
+
+## Reserved-for-history (gap numbers from earlier sweeps)
+
+Batch A QA hygiene (2026-06-13): three bug numbers were never assigned
+during earlier sweep numbering. Recording them explicitly here so
+future readers don't hunt for them.
+
+- **BUG-039** — reserved, no entry assigned.
+- **BUG-047** — reserved, no entry assigned.
+- **BUG-049** — reserved, no entry assigned.
+
+If a future bug needs a number, use the next sequential after the
+highest assigned (currently BUG-071). Do NOT reuse 039 / 047 / 049 —
+keeping them empty preserves the original sweep's numbering audit.

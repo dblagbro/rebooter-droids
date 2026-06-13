@@ -6,7 +6,17 @@ import requests
 from .conftest import ADMIN_EMAIL, ADMIN_PASS
 
 # v0.5.80: in the `-m ci` gate (P-QA gate-3 partial-fail bucket).
-pytestmark = pytest.mark.ci
+# Batch A QA hygiene (2026-06-13): the negative-auth fixtures
+# intentionally use short HMAC keys to forge invalid JWTs. PyJWT
+# warns about that in production code, but in test code it's expected
+# — the warning is a fixture artefact, not a defect. The filterwarnings
+# entry below keeps CI logs clean of that one specific noise pattern.
+pytestmark = [
+    pytest.mark.ci,
+    pytest.mark.filterwarnings(
+        "ignore:The specified key is .* bits which is below the .* bit minimum"
+    ),
+]
 
 
 def test_refresh_with_garbage(base_url):
