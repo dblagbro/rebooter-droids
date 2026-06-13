@@ -1,0 +1,227 @@
+{
+  "desktop": [
+    {
+      "url": "https://www.voipguru.org/rebooter/app/",
+      "viewport": "desktop",
+      "status": 200,
+      "title": "Status - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": null,
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/desktop-status-dashboard.png"
+    },
+    {
+      "url": "https://www.voipguru.org/rebooter/app/devices",
+      "viewport": "desktop",
+      "status": 200,
+      "title": "Devices - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": "11 devices\n      need attention:\n      \n      \n      \n      \n      7 offline, 4 firmware outliers.",
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/desktop-devices-list.png"
+    },
+    {
+      "url": "https://www.voipguru.org/rebooter/app/rules",
+      "viewport": "desktop",
+      "status": 200,
+      "title": "Rules - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": null,
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/desktop-rules.png"
+    },
+    {
+      "url": "https://www.voipguru.org/rebooter/app/history",
+      "viewport": "desktop",
+      "status": 200,
+      "title": "History - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": null,
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/desktop-history.png"
+    },
+    {
+      "url": "https://www.voipguru.org/rebooter/app/settings",
+      "viewport": "desktop",
+      "status": 200,
+      "title": "Settings - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": null,
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/desktop-settings.png"
+    },
+    {
+      "url": "https://www.voipguru.org/rebooter/app/firmware",
+      "viewport": "desktop",
+      "status": 200,
+      "title": "Firmware - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": null,
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/desktop-firmware.png"
+    },
+    {
+      "url": "https://www.voipguru.org/rebooter/app/power",
+      "viewport": "desktop",
+      "status": 200,
+      "title": "Fleet power - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": null,
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/desktop-power.png"
+    }
+  ],
+  "mobile": [
+    {
+      "url": "https://www.voipguru.org/rebooter/app/",
+      "viewport": "mobile",
+      "status": 200,
+      "title": "Status - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": null,
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/mobile-status-dashboard.png"
+    },
+    {
+      "url": "https://www.voipguru.org/rebooter/app/devices",
+      "viewport": "mobile",
+      "status": 200,
+      "title": "Devices - Rebooter-Droids",
+      "cmdk": {
+        "present": true,
+        "hidden_attr": true,
+        "display": "none",
+        "visibility": "visible",
+        "bounding_height": 0,
+        "visible_to_user": false
+      },
+      "hero_sentence": "11 devices\n      need attention:\n      \n      \n      \n      \n      7 offline, 4 firmware outliers.\n      3 have never reported in.",
+      "topnav_count": 4,
+      "has_skip_link": true,
+      "screenshot": "out/mobile-devices-list.png"
+    }
+  ],
+  "behavior": [
+    {
+      "test": "cmdk hidden on page load (operator-reported)",
+      "passed": true,
+      "detail": {
+        "hidden_attr": true,
+        "display": "none",
+        "visible": false
+      }
+    },
+    {
+      "test": "Ctrl+K opens palette",
+      "passed": true,
+      "detail": {
+        "is_open": true
+      }
+    },
+    {
+      "test": "Escape closes palette (operator-reported)",
+      "passed": true,
+      "detail": {
+        "is_hidden": true
+      }
+    },
+    {
+      "test": "Skip-link is first tab target (a11y)",
+      "passed": true,
+      "detail": {
+        "tag": "A",
+        "cls": "skip-link",
+        "href": "#main"
+      }
+    },
+    {
+      "test": "Brand link points at /app/",
+      "passed": true,
+      "detail": {
+        "href": "/rebooter/app/"
+      }
+    },
+    {
+      "test": "cmdk feeder /api/v1/admin/search returns matches",
+      "passed": true,
+      "detail": {
+        "status": 200,
+        "page_count": 1
+      }
+    },
+    {
+      "test": "Device detail hero renders with a primary action",
+      "passed": true,
+      "detail": {
+        "hero": true,
+        "primary_action": true,
+        "device_id": "dev_01KST8TDKK4850YERCH147BGH5"
+      }
+    }
+  ],
+  "console_entries": []
+}
