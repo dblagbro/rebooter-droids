@@ -1334,6 +1334,64 @@ but are worth scheduling:
   Cosmetic for now; will get ugly past ~10 children. **Status: fixed
   in v0.6.43 (Batch B) — children collapse to `<details>` when N>10.**
 
+## BUG-072 through BUG-076 — next-tier cleanup from #201 re-run
+
+Re-running the v0.6.10..HEAD code review at extra-high effort surfaced
+5 next-tier candidates that the original 15-finding cap had truncated.
+All verified by direct file read.
+
+- **BUG-072** — `display_name` blanks when operator submits an empty
+  or whitespace-only value. The Batch C comment at
+  `app/blueprints/admin/devices_ui.py:276-277` promises "Empty string
+  after strip falls back to current value rather than blanking" but
+  lines 278-282 add `clean_name=""` to the patch unconditionally.
+  **Status: open.** Failure: operator clears the name field by accident
+  → device row stores `display_name=""` → list/detail pages show
+  `(no name)` until a re-edit. Fix: `if not clean_name: patch.pop(...)`
+  before the patch dict, or apply the documented fallback explicitly.
+
+- **BUG-073** — `site_id` has no app-layer validator. Batch D made
+  `_PATCHABLE` a typed validator map specifically so future FK columns
+  would inherit pre-flight checks; but `site_id` is mapped to
+  `_accept_any`. The handler does NOT pre-check site existence either
+  (`app/blueprints/admin/devices_ui.py:245` reads `request.form.get
+  ("site_id")` and passes through). **Status: open.** Failure: stale
+  form / form-tamper submits a deleted-site UUID → DB FK rejects with
+  IntegrityError → user sees 500. Fix: `_validate_site_id(value, *,
+  device, session)` calling `session.get(Site, value)` and raising a
+  typed error mirroring `PowerTopologyError`.
+
+- **BUG-074** — Schedule target picker has no `visible_ids`
+  re-validation. The BUG-068 fix applied the visible-set defense to
+  the devices handler only. `app/blueprints/admin/schedules.py:76-80`
+  reads `target_id` from the form and stuffs it straight into
+  `target = {"kind": target_kind, "id": target_id}` for `svc_create`.
+  **Status: open.** Failure: same exact cross-site RBAC vector as
+  BUG-064 / BUG-068, just on a different picker. Operator scoped to
+  Site A form-tampers a Site B device id and a schedule targeting
+  Site B gets created. Fix: capture `visible_ids` (devices + groups)
+  from the same filter the picker used, drop with flash if
+  `target_id not in visible_ids`.
+
+- **BUG-075** — Power-source picker filter logic duplicated at
+  `devices_ui.py:196-201` (render) and `devices_ui.py:263-267`
+  (submit re-validation). Same predicate, two copies. **Status:
+  open.** Failure: when the filter is extended (e.g. exclude
+  decommissioned devices, RBAC visibility), one copy will drift from
+  the other and re-open BUG-068. Fix: extract
+  `_visible_power_source_ids(device_id, this_site)` returning a set
+  used by both call sites.
+
+- **BUG-076** — `update_device_with_diff` opens its own
+  `session_scope()` to snapshot the old row (lines 228-232) then
+  delegates to `update_device` which opens a fresh session and
+  re-fetches the same row. Two round-trips where one would do.
+  **Status: open.** Failure: extra ~2-5ms per device edit on
+  Postgres. Low impact today (handful of edits per day) but a smell
+  worth fixing while the surface is fresh. Fix: pass an open session
+  through, or restructure so `update_device_with_diff` snapshots and
+  mutates inside one scope.
+
 ## Reserved-for-history (gap numbers from earlier sweeps)
 
 Batch A QA hygiene (2026-06-13): three bug numbers were never assigned
@@ -1345,5 +1403,5 @@ future readers don't hunt for them.
 - **BUG-049** — reserved, no entry assigned.
 
 If a future bug needs a number, use the next sequential after the
-highest assigned (currently BUG-071). Do NOT reuse 039 / 047 / 049 —
+highest assigned (currently BUG-076). Do NOT reuse 039 / 047 / 049 —
 keeping them empty preserves the original sweep's numbering audit.
