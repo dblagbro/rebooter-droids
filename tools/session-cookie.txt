@@ -1,2 +1,0 @@
-INFO:app.services.sync_emission:Sync emission hooks registered for device, group, site, user
-COOKIE eyJ1c2VyX2lkIjoidXNyXzAxS1I1ODIyOUhBNzdZTUhaMFM2QlpISjBQIn0.aiyjcA.p11w2v4IEB-d0Ua2JAbbiG-JRac
