@@ -89,28 +89,28 @@ def test_mobile_stat_grid_collapses_to_one_column(mobile_logged_in_page):
     )
 
 
-def test_mobile_topbar_nav_links_reachable(mobile_logged_in_page):
-    """0.6.40 BUG-065 fix: PR-9 (0.6.29, brutal-review redesign) trimmed
-    the nav from 6 items (Status / Devices / Rules / History / Power /
-    Settings) to 4 items (Devices / Rules / History / Settings) when
-    `ui_nav_v2=1` (default). Status is reached via the brand link;
-    Power via ⌘K palette or device-detail. This test was missed during
-    PR-9 because it lives in the `responsive` marker bucket which the
-    -m ci gate doesn't run by default. Expectation now matches the
-    shipped nav — both `.topnav` and `.bottomnav` show 4 destinations
-    when nav_v2 is on (default), 6 when reverted via REBOOTER_UI_NAV_V2=0.
-    """
+# 0.6.45 Batch E: split the original
+# `test_mobile_topbar_nav_links_reachable` into two distinct tests so a
+# CI failure points at one bucket (.topnav vs .bottomnav) instead of
+# making the operator dig through a combined trace. PR-9 (0.6.29) trims
+# both navs from 6 items to 4 when `ui_nav_v2=1` (default in prod);
+# the legacy 6-item shape remains supported via REBOOTER_UI_NAV_V2=0.
+# Status is reached via the brand link; Power via ⌘K or device-detail.
+# These now live in the file-level `pytest.mark.ci` bucket so the gate
+# catches future regressions before they ship (BUG-065 was missed
+# pre-v0.5.98 because the `responsive` marker was outside `-m ci`).
+def test_mobile_topnav_link_count(mobile_logged_in_page):
     p = mobile_logged_in_page
     top_nav_count = p.locator(".topnav a").count()
-    bottom_nav_count = p.locator(".bottomnav a").count()
-    # Accept BOTH the trimmed nav (default in prod) AND the legacy
-    # 6-item nav (used when the flag is reverted) — either is a valid
-    # state. Failing only when the count is something else entirely
-    # protects against accidental further regressions.
     assert top_nav_count in (4, 6), (
         f"expected 4 (nav_v2 on) or 6 (nav_v2 off) desktop top-nav "
         f"links, got {top_nav_count}"
     )
+
+
+def test_mobile_bottomnav_link_count(mobile_logged_in_page):
+    p = mobile_logged_in_page
+    bottom_nav_count = p.locator(".bottomnav a").count()
     assert bottom_nav_count in (4, 6), (
         f"expected 4 (nav_v2 on) or 6 (nav_v2 off) mobile bottom-nav "
         f"links, got {bottom_nav_count}"
