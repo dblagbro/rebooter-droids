@@ -23,6 +23,7 @@ _PATCHABLE = {
     "notes",
     "central_management_enabled",
     "is_protected",  # v0.3.2 (P3)
+    "power_source_device_id",  # 0.6.39 #210
 }
 
 

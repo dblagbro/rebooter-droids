@@ -180,11 +180,19 @@ def device_detail_page(device_id: str):
     )
 
     desired_cfg = detail.get("desired_config") or {}
+    # 0.6.39 #210: list of other devices for the "Powered by" picker on
+    # the settings form. Exclude THIS device (circular topology is
+    # meaningless) and QA fixtures. Small fleet → flat list is fine.
+    all_devices_for_picker = [
+        d for d in svc_list_devices(include_qa_fixtures=False)
+        if d.get("id") != device_id
+    ]
     return render_template(
         "device_detail.html",
         **_ctx({
             "device": detail,
             "sites": sites,
+            "all_devices_for_picker": all_devices_for_picker,
             # v0.5.97: the Watchdog / Schedule sections were stubs —
             # now list the rules / schedules whose target resolves to
             # this device (directly or via a group).
@@ -223,11 +231,16 @@ def device_update_submit(device_id: str):
     if before is None:
         abort(404)
     site_id = (request.form.get("site_id") or "").strip()
+    # 0.6.39 #210: optional power-source assignment. Empty / "(none)"
+    # value clears the topology; an existing device id sets the parent.
+    # Update-device handles the not-found / cycle-detect guards.
+    power_source_raw = (request.form.get("power_source_device_id") or "").strip()
     patch = {
         "display_name": request.form.get("display_name") or "",
         "notes": request.form.get("notes") or None,
         "central_management_enabled": "central_management_enabled" in request.form,
         "site_id": site_id or None,
+        "power_source_device_id": power_source_raw or None,
     }
     try:
         updated = update_device(device_id, patch)

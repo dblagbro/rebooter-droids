@@ -747,6 +747,21 @@
       </select>
     </label>
     <label>Notes <textarea name="notes" rows="3">{{ device.notes or '' }}</textarea></label>
+    {# 0.6.39 #210: power-source picker. List every other live device
+       (excluding this one — circular topology is meaningless) plus a
+       "(none / independent)" option. The picker stays a flat dropdown
+       since the fleet is small; if/when this grows past ~50 devices we
+       can switch to a search-as-you-type widget. #}
+    <label>Powered by
+      <select name="power_source_device_id">
+        <option value="">— none / independent —</option>
+        {% for other in all_devices_for_picker %}
+        <option value="{{ other.id }}" {% if device.power_source and device.power_source.id == other.id %}selected{% endif %}>
+          {{ other.display_name or other.id }}{% if other.local_ip %} ({{ other.local_ip }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
     <label><input type="checkbox" name="central_management_enabled" {% if device.central_management_enabled %}checked{% endif %}> Central management enabled</label>
     <button type="submit">Save</button>
   </form>
