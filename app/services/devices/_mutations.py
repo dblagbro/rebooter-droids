@@ -19,13 +19,71 @@ from app.services.devices._serialize import serialize_device
 log = logging.getLogger(__name__)
 
 
+# 0.6.45 Batch D (#211): typed validator map. Pre-fix _PATCHABLE was a
+# flat whitelist — any new field added to the set inherited zero
+# validation by default. That's how BUG-064 (cross-scope RBAC bypass)
+# and BUG-062/063 (cycle / missing FK) all became latent bugs as soon
+# as power_source_device_id joined the set. Now every patchable field
+# carries a validator. The default (`_accept_any`) preserves current
+# behaviour for fields where any value is fine; FK fields get a
+# `_resolve_*` validator that pre-flights existence + invariants.
+#
+# Each validator: (value, *, device, session) -> normalized_value.
+# Raises PowerTopologyError or similar typed exception on rejection.
+# Returns the value to store (may differ from input if normalized).
+
+def _accept_any(value, *, device, session):  # noqa: ARG001
+    return value
+
+
+def _validate_power_source_device_id(value, *, device, session):
+    """0.6.45 Batch D: migration of the cycle/self/missing checks from
+    inline-in-update_device into the typed validator. Same logic, same
+    PowerTopologyError subtypes — the move is purely organizational.
+    """
+    if value is None:
+        return None
+    if value == device.id:
+        raise PowerTopologyError(
+            "self_parent",
+            "A device cannot be powered by itself.",
+        )
+    parent = session.get(Device, value)
+    if parent is None:
+        raise PowerTopologyError(
+            "parent_missing",
+            f"Selected power source no longer exists (id={value}).",
+        )
+    # Walk parent → grandparent → ... refuse if device.id appears.
+    cur = parent
+    for _ in range(50):
+        if cur.id == device.id:
+            raise PowerTopologyError(
+                "cycle",
+                f"Assignment would create a power-source cycle "
+                f"through {parent.display_name or parent.id}.",
+            )
+        if cur.power_source_device_id is None:
+            break
+        cur = session.get(Device, cur.power_source_device_id)
+        if cur is None:
+            break
+    else:
+        raise PowerTopologyError(
+            "cycle",
+            "Power-source chain exceeds 50 hops — refusing to extend "
+            "a likely-corrupt graph.",
+        )
+    return value
+
+
 _PATCHABLE = {
-    "display_name",
-    "site_id",
-    "notes",
-    "central_management_enabled",
-    "is_protected",  # v0.3.2 (P3)
-    "power_source_device_id",  # 0.6.39 #210
+    "display_name": _accept_any,
+    "site_id": _accept_any,
+    "notes": _accept_any,
+    "central_management_enabled": _accept_any,
+    "is_protected": _accept_any,  # v0.3.2 (P3)
+    "power_source_device_id": _validate_power_source_device_id,  # 0.6.39/0.6.45
 }
 
 
@@ -161,7 +219,7 @@ def update_device_with_diff(device_id: str, patch: dict) -> tuple[dict | None, d
     Returns (updated_dict_or_None, diff). When `updated_dict` is None
     the device wasn't found and diff is empty.
     """
-    unknown = set(patch.keys()) - _PATCHABLE
+    unknown = set(patch.keys()) - _PATCHABLE.keys()
     if unknown:
         raise UnknownPatchFieldError(unknown)
     # Capture old values BEFORE any setattr fires. session_scope below
@@ -187,7 +245,7 @@ def update_device_with_diff(device_id: str, patch: dict) -> tuple[dict | None, d
 
 
 def update_device(device_id: str, patch: dict) -> dict | None:
-    unknown = set(patch.keys()) - _PATCHABLE
+    unknown = set(patch.keys()) - _PATCHABLE.keys()
     if unknown:
         raise UnknownPatchFieldError(unknown)
 
@@ -196,55 +254,19 @@ def update_device(device_id: str, patch: dict) -> dict | None:
         if d is None:
             return None
 
-        # 0.6.40 BUG-062/063 fix: power-topology guards. Pre-flight check
-        # before any setattr so the validation error fires BEFORE the FK
-        # IntegrityError. Three sub-checks:
-        #   - self-parent     (A → A) is meaningless
-        #   - cycle           (A → B → ... → A) leaves no real power source
-        #   - parent_missing  (FK target doesn't exist) → 500 → flash
-        # Cycle walk follows .power_source_device_id up the chain with a
-        # depth limit; the fleet is small (3 devices) so any chain >50 is
-        # a corrupt graph and we abort.
-        if "power_source_device_id" in patch:
-            new_parent_id = patch["power_source_device_id"]
-            if new_parent_id is not None:
-                if new_parent_id == device_id:
-                    raise PowerTopologyError(
-                        "self_parent",
-                        "A device cannot be powered by itself.",
-                    )
-                parent = session.get(Device, new_parent_id)
-                if parent is None:
-                    raise PowerTopologyError(
-                        "parent_missing",
-                        f"Selected power source no longer exists "
-                        f"(id={new_parent_id}).",
-                    )
-                # Walk parent → grandparent → ... and refuse if device_id
-                # appears (would close a cycle).
-                cur = parent
-                for _ in range(50):
-                    if cur.id == device_id:
-                        raise PowerTopologyError(
-                            "cycle",
-                            f"Assignment would create a power-source cycle "
-                            f"through {parent.display_name or parent.id}.",
-                        )
-                    if cur.power_source_device_id is None:
-                        break
-                    cur = session.get(Device, cur.power_source_device_id)
-                    if cur is None:
-                        break
-                else:
-                    raise PowerTopologyError(
-                        "cycle",
-                        "Power-source chain exceeds 50 hops — refusing to "
-                        "extend a likely-corrupt graph.",
-                    )
+        # 0.6.45 Batch D (#211): per-field validator dispatch. Each
+        # validator runs BEFORE any setattr so a typed error
+        # (PowerTopologyError, future FK guards, ...) fires while the
+        # row is still pristine. _accept_any is the default for fields
+        # where any value is fine; future FK fields get their own
+        # validator and inherit the same fail-before-mutate guarantee.
+        normalized: dict = {}
+        for k, v in patch.items():
+            normalized[k] = _PATCHABLE[k](v, device=d, session=session)
 
         # Only bump updated_at when a real change occurs (BUG-011).
         changed = False
-        for k, v in patch.items():
+        for k, v in normalized.items():
             if getattr(d, k) != v:
                 setattr(d, k, v)
                 changed = True
