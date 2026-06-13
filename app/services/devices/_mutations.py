@@ -27,6 +27,22 @@ _PATCHABLE = {
 }
 
 
+class PowerTopologyError(ValueError):
+    """0.6.40 BUG-062/063/064 fix: typed error for invalid power_source
+    assignments. The blueprint handler catches this and renders a
+    user-facing flash instead of letting the bare IntegrityError
+    propagate to a 500.
+
+    Subtypes:
+      - 'self_parent'   — A → A
+      - 'cycle'         — A → B → ... → A
+      - 'parent_missing' — referenced device id doesn't exist
+    """
+    def __init__(self, subtype: str, message: str) -> None:
+        super().__init__(message)
+        self.subtype = subtype
+
+
 class UnknownPatchFieldError(ValueError):
     def __init__(self, fields: set[str]):
         super().__init__(
@@ -106,6 +122,53 @@ def update_device(device_id: str, patch: dict) -> dict | None:
         d = session.get(Device, device_id)
         if d is None:
             return None
+
+        # 0.6.40 BUG-062/063 fix: power-topology guards. Pre-flight check
+        # before any setattr so the validation error fires BEFORE the FK
+        # IntegrityError. Three sub-checks:
+        #   - self-parent     (A → A) is meaningless
+        #   - cycle           (A → B → ... → A) leaves no real power source
+        #   - parent_missing  (FK target doesn't exist) → 500 → flash
+        # Cycle walk follows .power_source_device_id up the chain with a
+        # depth limit; the fleet is small (3 devices) so any chain >50 is
+        # a corrupt graph and we abort.
+        if "power_source_device_id" in patch:
+            new_parent_id = patch["power_source_device_id"]
+            if new_parent_id is not None:
+                if new_parent_id == device_id:
+                    raise PowerTopologyError(
+                        "self_parent",
+                        "A device cannot be powered by itself.",
+                    )
+                parent = session.get(Device, new_parent_id)
+                if parent is None:
+                    raise PowerTopologyError(
+                        "parent_missing",
+                        f"Selected power source no longer exists "
+                        f"(id={new_parent_id}).",
+                    )
+                # Walk parent → grandparent → ... and refuse if device_id
+                # appears (would close a cycle).
+                cur = parent
+                for _ in range(50):
+                    if cur.id == device_id:
+                        raise PowerTopologyError(
+                            "cycle",
+                            f"Assignment would create a power-source cycle "
+                            f"through {parent.display_name or parent.id}.",
+                        )
+                    if cur.power_source_device_id is None:
+                        break
+                    cur = session.get(Device, cur.power_source_device_id)
+                    if cur is None:
+                        break
+                else:
+                    raise PowerTopologyError(
+                        "cycle",
+                        "Power-source chain exceeds 50 hops — refusing to "
+                        "extend a likely-corrupt graph.",
+                    )
+
         # Only bump updated_at when a real change occurs (BUG-011).
         changed = False
         for k, v in patch.items():

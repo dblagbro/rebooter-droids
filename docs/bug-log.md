@@ -1211,3 +1211,111 @@ This is itself a process defect — see **BUG-061**.
   bug numbers 039, 047, 049 are unused (gaps) — harmless but worth a
   one-line "reserved/skipped" note to stop future readers hunting
   for them.
+
+
+## BUG-062 — Power-topology cycles persistable (self-parent + chain cycle)
+
+- **Severity:** high
+- **Area:** `app/services/devices/_mutations.py::update_device`
+- **Status:** **fixed in v0.6.40**
+- **Repro (pre-fix):** POST `/devices/<A>` with form field
+  `power_source_device_id=<A>` (self) — accepted, persisted. Then with
+  two devices: POST A → B, POST B → A — both accepted, circular topology.
+- **Expected:** typed validation error; both attempts rejected.
+- **Actual (pre-fix):** `setattr(d, "power_source_device_id", v)` ran
+  without any chain walk or self-id check; DB FK only enforced
+  existence (`ON DELETE SET NULL`, no CHECK).
+- **Cause:** comment-driven trust — handler at `devices_ui.py:236`
+  said "update_device handles the not-found / cycle-detect guards",
+  but `_mutations.py:100-119` had no such guards.
+- **Fix:** typed `PowerTopologyError` with `.subtype` in
+  `{self_parent, cycle, parent_missing}`. `update_device` walks the
+  proposed parent chain (≤50 hops) before any `setattr` — fails closed
+  if it would close a cycle or reference a missing parent. Test:
+  `tests/unit/test_device_topology_guards.py` covers all 5 paths.
+
+## BUG-063 — Non-existent parent FK → 500 instead of validation flash
+
+- **Severity:** high (operator-facing 500)
+- **Area:** `app/blueprints/admin/devices_ui.py::device_update_submit`
+- **Status:** **fixed in v0.6.40**
+- **Repro (pre-fix):** edit the `<select name="power_source_device_id">`
+  in DevTools, set value to `dev_doesnotexist`, submit.
+- **Expected:** flash "Selected power source no longer exists" + 302
+  back to the detail page.
+- **Actual (pre-fix):** `update_device` `setattr`'d the bogus id, DB
+  `flush()` raised `IntegrityError` on the FK constraint, handler's
+  only `except` was `UnknownPatchFieldError` → Flask 500.
+- **Cause:** missing pre-flight `session.get(Device, value)` in the
+  mutation layer + only one typed exception in the handler.
+- **Fix:** pre-flight `session.get(Device, parent_id)` in
+  `update_device`; raise `PowerTopologyError("parent_missing", ...)`;
+  handler catches and flashes.
+
+## BUG-064 — Cross-scope assignment via form-tamper (RBAC bypass)
+
+- **Severity:** high (RBAC)
+- **Area:** `app/blueprints/admin/devices_ui.py::device_update_submit`
+- **Status:** **fixed in v0.6.40**
+- **Repro (pre-fix):** scoped-to-site-A user opens detail page of a
+  site-A device. Picker shows only site-A devices (visible-fleet
+  filter applied). Edit the select's `<option value>` via DevTools to
+  a site-B device id (obtained by other means) and submit. Topology
+  references an out-of-scope target. Same bypass admits QA fixtures
+  (picker excludes via `include_qa_fixtures=False`, handler did not).
+- **Expected:** silently drop the out-of-scope value with a flash,
+  OR 403.
+- **Actual (pre-fix):** any device id form-tampered through; no
+  re-validation in the handler.
+- **Cause:** picker filtered the dropdown options visually but the
+  submit path trusted the raw form value.
+- **Fix:** handler re-runs the same `list_devices(include_qa_fixtures=
+  False)` and rejects if the submitted id isn't in the visible set.
+  Defence in depth: future change should add RBAC check in
+  `update_device` so any caller (not just web UI) is covered.
+
+## BUG-065 — Desktop top-nav renders 4 of 6 links (CI red)
+
+- **Severity:** high (release blocker — CI gate fails)
+- **Area:** `templates/layout.html`; test
+  `tests/qa/test_responsive.py::test_mobile_topbar_nav_links_reachable`
+- **Status:** **fixed in v0.6.40** (test contract updated to match the
+  shipped nav)
+- **Repro:** `pytest tests/ -m ci -x` halts with `assert 4 == 6`.
+- **Expected (pre-fix-of-test):** 6 links — Status / Devices / Rules /
+  History / Power / Settings.
+- **Actual:** 4 links — Devices / Rules / History / Settings.
+- **Cause:** PR-9 of the brutal-review redesign (shipped 0.6.29)
+  intentionally trimmed the nav to 4 items when `ui_nav_v2=1`
+  (default). Status reaches via the brand link; Power via ⌘K palette
+  or the device-detail Power section. The `test_responsive.py` test
+  was never updated to match — it lives in the `responsive` marker
+  bucket which the `-m ci` gate doesn't run by default, so the
+  regression slept until this QA pass.
+- **Fix:** test now accepts `count in (4, 6)` — 4 when nav_v2 is on
+  (default), 6 when reverted via `REBOOTER_UI_NAV_V2=0`. Keeps the
+  guard against accidental further regressions (e.g. count=3 still
+  fails).
+
+## BUG-066 through BUG-071 — medium / low — open
+
+The QA pass surfaced 6 additional issues that don't block release
+but are worth scheduling:
+
+- **BUG-066** — Topology mutations not audited with old/new values.
+  Handler logs only `fields: [...]`; operator can't tell what the
+  power-source was BEFORE this edit. **Status: open.**
+- **BUG-067** — Parent-delete silently orphans children. No per-child
+  audit entry; no `device.power_source_cleared_by_parent_delete`
+  event. FK is `ON DELETE SET NULL` so the data is consistent, but
+  reboot classifier loses context. **Status: open.**
+- **BUG-068** — Picker not site-scoped. Operator scoped to site A
+  sees site B devices in the dropdown. **Status: open.**
+- **BUG-069** — Unbounded child list in relay confirm() dialog.
+  `Turning X off will power-cycle: A, B, C, D, E, F, G, H, ...` could
+  exceed browser confirm() ~few-hundred-char limit. **Status: open.**
+- **BUG-070** — `display_name` accepts newlines / control chars.
+  No XSS (Jinja autoescape) but stored data is messy. **Status: fixed
+  in v0.6.40 (handler-side strip).**
+- **BUG-071** — Detail page renders unbounded children inline.
+  Cosmetic for now; will get ugly past ~10 children. **Status: open.**

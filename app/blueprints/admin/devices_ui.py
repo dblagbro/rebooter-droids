@@ -19,7 +19,7 @@ import. Endpoint names preserved across the split:
 
 from __future__ import annotations
 
-from flask import abort, g, redirect, render_template, request, url_for
+from flask import abort, flash, g, redirect, render_template, request, url_for
 
 from app.blueprints.admin import admin_ui_bp
 from app.blueprints.admin._common import _ctx
@@ -39,6 +39,7 @@ from app.services.commands import (
 from app.services.devices import (
     enqueue_display_name_sync,
     MergeRetireError,
+    PowerTopologyError,
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
     delete_devices_bulk as svc_delete_devices_bulk,
@@ -233,10 +234,34 @@ def device_update_submit(device_id: str):
     site_id = (request.form.get("site_id") or "").strip()
     # 0.6.39 #210: optional power-source assignment. Empty / "(none)"
     # value clears the topology; an existing device id sets the parent.
-    # Update-device handles the not-found / cycle-detect guards.
+    # Update-device handles the not-found / cycle-detect guards via
+    # PowerTopologyError below.
     power_source_raw = (request.form.get("power_source_device_id") or "").strip()
+    # 0.6.40 BUG-064 fix: cross-scope RBAC bypass. The picker on the
+    # detail page filtered by the same `list_devices(include_qa_fixtures
+    # =False)` the operator sees, but the handler accepted ANY device id
+    # via form-tamper. Re-validate via the SAME visible-fleet list before
+    # passing to update_device — silently downgrades a malicious or
+    # accidental out-of-scope id to None (and flashes a warning) rather
+    # than 403'ing.
+    if power_source_raw:
+        visible = svc_list_devices(include_qa_fixtures=False)
+        visible_ids = {d.get("id") for d in visible if d.get("id") != device_id}
+        if power_source_raw not in visible_ids:
+            flash(
+                "Power source could not be set — that device is not in "
+                "your visible fleet.",
+                category="warn",
+            )
+            power_source_raw = ""
+    # 0.6.40 BUG-070 fix: strip control chars + newlines from display_name.
+    # Empty string after strip falls back to current value rather than
+    # blanking; rejecting whitespace-only attempts.
+    raw_name = request.form.get("display_name") or ""
+    clean_name = "".join(c for c in raw_name if c == " " or (c.isprintable() and c not in "\t\n\r"))
+    clean_name = clean_name.strip()
     patch = {
-        "display_name": request.form.get("display_name") or "",
+        "display_name": clean_name,
         "notes": request.form.get("notes") or None,
         "central_management_enabled": "central_management_enabled" in request.form,
         "site_id": site_id or None,
@@ -246,6 +271,11 @@ def device_update_submit(device_id: str):
         updated = update_device(device_id, patch)
     except UnknownPatchFieldError:
         abort(400)
+    except PowerTopologyError as e:
+        # 0.6.40 BUG-063 fix: typed error surfaces a friendly flash
+        # instead of letting the FK IntegrityError bubble to a 500.
+        flash(str(e), category="error")
+        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
     if updated is None:
         abort(404)
     renamed = before.get("display_name") != updated.get("display_name")
