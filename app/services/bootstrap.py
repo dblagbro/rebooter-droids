@@ -182,6 +182,17 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # commands as received-by-device that the firmware never saw (lost
     # heartbeat response, mid-delivery reboot, etc).
     ("commands", "ack_received_at", "TIMESTAMPTZ"),
+    # 0.6.38 (#210): operator-defined power topology. When set, this
+    # device draws AC through the named parent device's relay — toggling
+    # the parent's relay off power-cycles this child. Used by the
+    # confirm-dialog warning + the reboot classifier so a child reporting
+    # reset_reason="Power On" while the parent's relay was off is
+    # annotated as "relay_induced" rather than counted as a ghost. NULL
+    # = device is independently powered (the default — most devices).
+    # ON DELETE SET NULL so dropping a parent doesn't cascade-delete the
+    # child; the child just loses its power-source attribution.
+    ("devices", "power_source_device_id",
+     "VARCHAR(40) REFERENCES devices(id) ON DELETE SET NULL"),
 )
 
 
