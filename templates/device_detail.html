@@ -40,14 +40,33 @@
     </p>
   {% endif %}
   {% if device.powers_devices %}
-    <p class="muted">
-      Powers:
-      {% for child in device.powers_devices %}
-        <a href="{{ url_for('admin_ui.device_detail_page', device_id=child.id) }}">{{ child.display_name or child.id }}</a>{% if not loop.last %}, {% endif %}
-      {% endfor %}
-      <span style="font-size:.85rem">— turning this device's relay off power-cycles
-        {{ 'it' if device.powers_devices|length == 1 else 'them' }}.</span>
-    </p>
+    {# 0.6.44 Batch C (#211 BUG-071): cap inline rendering at 10 children;
+       beyond that, summarize the count and collapse the full list into
+       a <details> so the page header doesn't get a wall of text on a
+       device that powers, say, a rack of 30 things. #}
+    {% set _N_INLINE = 10 %}
+    {% if device.powers_devices|length <= _N_INLINE %}
+      <p class="muted">
+        Powers:
+        {% for child in device.powers_devices %}
+          <a href="{{ url_for('admin_ui.device_detail_page', device_id=child.id) }}">{{ child.display_name or child.id }}</a>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        <span style="font-size:.85rem">— turning this device's relay off power-cycles
+          {{ 'it' if device.powers_devices|length == 1 else 'them' }}.</span>
+      </p>
+    {% else %}
+      <details class="muted">
+        <summary>
+          Powers <strong>{{ device.powers_devices|length }}</strong> downstream devices
+          <span style="font-size:.85rem">— turning this device's relay off power-cycles all of them.</span>
+        </summary>
+        <ul style="margin:.3rem 0 0 1.2rem; padding:0">
+        {% for child in device.powers_devices %}
+          <li><a href="{{ url_for('admin_ui.device_detail_page', device_id=child.id) }}">{{ child.display_name or child.id }}</a></li>
+        {% endfor %}
+        </ul>
+      </details>
+    {% endif %}
   {% endif %}
 </div>
 

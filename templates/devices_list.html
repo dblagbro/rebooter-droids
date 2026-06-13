@@ -297,14 +297,25 @@
             {# 0.6.38 #210: build a confirm message that combines the existing
                protected-device warning AND a power-topology warning when
                turning OFF a device that powers other devices. Either gate
-               surfaces a confirm dialog; both gates combine into one. #}
+               surfaces a confirm dialog; both gates combine into one.
+               0.6.44 Batch C (#211 BUG-069): cap the child-list at 5 names
+               then add "and N more". Pre-fix N=30 children produced a
+               ~600-char message that browser confirm() dialogs truncated;
+               operator could OK without seeing the full impact. #}
             {% set _confirm_msg = '' %}
             {% if d.is_protected %}
               {% set _confirm_msg = 'Toggle protected device ' ~ (d.display_name or d.id) ~ '?' %}
             {% endif %}
             {% if d.latest_relay_on and d.powers_devices %}
-              {% set _names = d.powers_devices|map(attribute='display_name')|join(', ') %}
-              {% set _topo = 'Turning ' ~ (d.display_name or d.id) ~ ' off will power-cycle: ' ~ _names ~ '. Continue?' %}
+              {% set _N_CAP = 5 %}
+              {% set _shown = d.powers_devices[:_N_CAP] %}
+              {% set _names = _shown|map(attribute='display_name')|join(', ') %}
+              {% if d.powers_devices|length > _N_CAP %}
+                {% set _extra = d.powers_devices|length - _N_CAP %}
+                {% set _topo = 'Turning ' ~ (d.display_name or d.id) ~ ' off will power-cycle ' ~ d.powers_devices|length ~ ' devices including: ' ~ _names ~ ' and ' ~ _extra ~ ' more. Continue?' %}
+              {% else %}
+                {% set _topo = 'Turning ' ~ (d.display_name or d.id) ~ ' off will power-cycle: ' ~ _names ~ '. Continue?' %}
+              {% endif %}
               {% set _confirm_msg = (_confirm_msg ~ ' ' if _confirm_msg else '') ~ _topo %}
             {% endif %}
             <form method="post"
