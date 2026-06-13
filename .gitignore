@@ -25,3 +25,10 @@ backups/
 tools/ui-audit-out/
 tools/ui-audit-cookie.txt
 data/diag/
+
+# 0.6.41 SECURITY: catch the build/audit outputs that have been
+# accidentally committed twice now. Never commit anything matching:
+tools/out/
+tools/session-cookie.txt
+tools/ui-audit-cookie.txt
+data/diag/
