@@ -43,7 +43,7 @@ with app.app_context():
     u = s.execute(select(User).where(User.email == 'YOUR-EMAIL')).scalar_one()
   ser = SecureCookieSessionInterface().get_signing_serializer(app)
   print('COOKIE', ser.dumps({'user_id': u.id}))
-" > tools/ui-audit-cookie.txt
+" > tools/session-cookie.txt
 
 # 2. Run the audit.
 python3 tools/ui-audit.py
