@@ -185,10 +185,19 @@ def device_detail_page(device_id: str):
     desired_cfg = detail.get("desired_config") or {}
     # 0.6.39 #210: list of other devices for the "Powered by" picker on
     # the settings form. Exclude THIS device (circular topology is
-    # meaningless) and QA fixtures. Small fleet → flat list is fine.
+    # meaningless) and QA fixtures.
+    # 0.6.44 Batch C (#211 BUG-068): scope the picker to the same site
+    # as THIS device. An operator scoped to site A should not see
+    # site B devices in the dropdown. site_id=None ("Default") falls
+    # back to all unscoped devices. Defence-in-depth: the handler in
+    # `device_update_submit` re-validates against the same list, so
+    # form-tamper of an out-of-scope id is silently dropped (the
+    # BUG-064 path is now covered both at picker AND submit).
+    _picker_pool = svc_list_devices(include_qa_fixtures=False)
+    _this_site = detail.get("site_id")
     all_devices_for_picker = [
-        d for d in svc_list_devices(include_qa_fixtures=False)
-        if d.get("id") != device_id
+        d for d in _picker_pool
+        if d.get("id") != device_id and d.get("site_id") == _this_site
     ]
     return render_template(
         "device_detail.html",
@@ -247,8 +256,15 @@ def device_update_submit(device_id: str):
     # accidental out-of-scope id to None (and flashes a warning) rather
     # than 403'ing.
     if power_source_raw:
+        # 0.6.44 Batch C (#211 BUG-068): match the picker's site-scope.
+        # `before` was loaded at the top of this handler; reuse its
+        # site_id so the filter is identical to what the picker showed.
+        this_site = before.get("site_id")
         visible = svc_list_devices(include_qa_fixtures=False)
-        visible_ids = {d.get("id") for d in visible if d.get("id") != device_id}
+        visible_ids = {
+            d.get("id") for d in visible
+            if d.get("id") != device_id and d.get("site_id") == this_site
+        }
         if power_source_raw not in visible_ids:
             flash(
                 "Power source could not be set — that device is not in "

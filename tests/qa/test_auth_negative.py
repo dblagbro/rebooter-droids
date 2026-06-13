@@ -13,9 +13,12 @@ from .conftest import ADMIN_EMAIL, ADMIN_PASS
 # entry below keeps CI logs clean of that one specific noise pattern.
 pytestmark = [
     pytest.mark.ci,
-    pytest.mark.filterwarnings(
-        "ignore:The specified key is .* bits which is below the .* bit minimum"
-    ),
+    # 0.6.44 Batch C fix: PyJWT emits InsecureKeyLengthWarning when the
+    # HMAC key is below the SHA256-recommended 32 bytes. Our negative-
+    # auth fixtures deliberately use short keys to forge invalid JWTs.
+    # The message is "The HMAC key is N bytes long, which is below ...";
+    # ignore by warning class so we catch any future PyJWT rephrase.
+    pytest.mark.filterwarnings("ignore::jwt.warnings.InsecureKeyLengthWarning"),
 ]
 
 
