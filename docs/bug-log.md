@@ -1304,21 +1304,35 @@ but are worth scheduling:
 
 - **BUG-066** — Topology mutations not audited with old/new values.
   Handler logs only `fields: [...]`; operator can't tell what the
-  power-source was BEFORE this edit. **Status: open.**
+  power-source was BEFORE this edit. **Status: fixed in v0.6.43
+  (Batch B) — `update_device_with_diff` returns old/new, handler
+  records `details.diff`.**
 - **BUG-067** — Parent-delete silently orphans children. No per-child
   audit entry; no `device.power_source_cleared_by_parent_delete`
   event. FK is `ON DELETE SET NULL` so the data is consistent, but
-  reboot classifier loses context. **Status: open.**
+  reboot classifier loses context. **Status: fixed in v0.6.43
+  (Batch B) — handler snapshots children pre-delete, writes
+  `orphaned_children` on the `device.deleted` audit row + a
+  per-child `device.power_source_cleared_by_parent_delete` row.**
 - **BUG-068** — Picker not site-scoped. Operator scoped to site A
-  sees site B devices in the dropdown. **Status: open.**
+  sees site B devices in the dropdown. **Status: fixed in v0.6.44
+  (Batch C) — handler filters by `device.site_id` AND re-validates
+  the submitted value against `visible_ids` to close the form-tamper
+  bypass. Architectural follow-up shipped in v0.6.45 (Batch D):
+  `_PATCHABLE` is now a typed validator map so future FK fields
+  inherit pre-flight validation by default rather than landing as
+  raw whitelist entries the way `power_source_device_id` originally
+  did.**
 - **BUG-069** — Unbounded child list in relay confirm() dialog.
   `Turning X off will power-cycle: A, B, C, D, E, F, G, H, ...` could
-  exceed browser confirm() ~few-hundred-char limit. **Status: open.**
+  exceed browser confirm() ~few-hundred-char limit. **Status: fixed
+  in v0.6.43 (Batch B) — caps display at 5 names + "and N more".**
 - **BUG-070** — `display_name` accepts newlines / control chars.
   No XSS (Jinja autoescape) but stored data is messy. **Status: fixed
   in v0.6.40 (handler-side strip).**
 - **BUG-071** — Detail page renders unbounded children inline.
-  Cosmetic for now; will get ugly past ~10 children. **Status: open.**
+  Cosmetic for now; will get ugly past ~10 children. **Status: fixed
+  in v0.6.43 (Batch B) — children collapse to `<details>` when N>10.**
 
 ## Reserved-for-history (gap numbers from earlier sweeps)
 
