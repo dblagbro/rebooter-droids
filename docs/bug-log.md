@@ -1297,7 +1297,7 @@ This is itself a process defect — see **BUG-061**.
   guard against accidental further regressions (e.g. count=3 still
   fails).
 
-## BUG-066 through BUG-071 — medium / low — open
+## BUG-066 through BUG-071 — medium / low — all fixed in v0.6.40..46
 
 The QA pass surfaced 6 additional issues that don't block release
 but are worth scheduling:
