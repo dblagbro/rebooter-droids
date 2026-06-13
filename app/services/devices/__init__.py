@@ -17,10 +17,12 @@ from app.services.devices._mutations import (
     PowerTopologyError,
     UnknownPatchFieldError,
     delete_device,
+    delete_device_with_audit_context,
     delete_devices_bulk,
     enqueue_display_name_sync,
     merge_retire_device,
     update_device,
+    update_device_with_diff,
 )
 from app.services.devices._query import (
     _active_assignments_by_device,
@@ -57,9 +59,11 @@ __all__ = [
     "PowerTopologyError",
     "MergeRetireError",
     "delete_device",
+    "delete_device_with_audit_context",
     "delete_devices_bulk",
     "merge_retire_device",
     "update_device",
+    "update_device_with_diff",
     "enqueue_display_name_sync",
     # Version helpers (re-exported from _versions.py)
     "is_upgrade",
