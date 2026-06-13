@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+
 from app.db import session_scope
 from app.models import Device
 from app.services.devices._serialize import serialize_device
@@ -67,6 +69,8 @@ def delete_device(device_id: str) -> bool:
     Note: the device's enrollment_token row is preserved
     (consumed_by_device_id becomes NULL via the SET NULL FK rule), so
     audit history is intact.
+
+    Returns True if the device existed and was deleted, False otherwise.
     """
     with session_scope() as session:
         d = session.get(Device, device_id)
@@ -75,6 +79,39 @@ def delete_device(device_id: str) -> bool:
         session.delete(d)
         session.flush()
         return True
+
+
+def delete_device_with_audit_context(device_id: str) -> dict | None:
+    """0.6.43 Batch B (#211 BUG-067): enumerate the children whose
+    power_source_device_id is about to go NULL via ON DELETE SET NULL,
+    THEN delete the parent. The handler logs the orphaned-children list
+    on the `device.deleted` audit row so the reboot classifier (and
+    future post-mortem walks) know that any `Power On` reset on the
+    listed children right after the delete is a known-cause cascade.
+
+    Returns {"deleted_id": ..., "orphaned_children": [{"id", "display_name"}]}
+    if the device existed, or None if not found.
+    """
+    with session_scope() as session:
+        d = session.get(Device, device_id)
+        if d is None:
+            return None
+        # Snapshot the children BEFORE the cascade fires.
+        children = session.execute(
+            select(Device.id, Device.display_name).where(
+                Device.power_source_device_id == device_id
+            )
+        ).all()
+        orphaned = [
+            {"id": cid, "display_name": cname or cid}
+            for cid, cname in children
+        ]
+        session.delete(d)
+        session.flush()
+        return {
+            "deleted_id": device_id,
+            "orphaned_children": orphaned,
+        }
 
 
 def delete_devices_bulk(
@@ -111,6 +148,42 @@ def delete_devices_bulk(
         "skipped_protected": skipped_protected,
         "skipped_unknown": skipped_unknown,
     }
+
+
+def update_device_with_diff(device_id: str, patch: dict) -> tuple[dict | None, dict]:
+    """0.6.43 Batch B (#211 BUG-066): wrap `update_device` so the caller
+    can audit-log the OLD value alongside the NEW for every changed
+    field. Pre-fix the audit row recorded `details: {fields: [...]}` —
+    operator could see THAT a topology change happened but not WHAT it
+    used to be. With the diff returned here the handler logs e.g.
+    `{"diff": {"power_source_device_id": {"old": "dev_A", "new": "dev_B"}}}`.
+
+    Returns (updated_dict_or_None, diff). When `updated_dict` is None
+    the device wasn't found and diff is empty.
+    """
+    unknown = set(patch.keys()) - _PATCHABLE
+    if unknown:
+        raise UnknownPatchFieldError(unknown)
+    # Capture old values BEFORE any setattr fires. session_scope below
+    # is the same one update_device uses for the actual mutation; we
+    # need pre-mutation snapshot here.
+    with session_scope() as session:
+        d = session.get(Device, device_id)
+        if d is None:
+            return None, {}
+        old_snapshot = {k: getattr(d, k) for k in patch.keys()}
+    # Delegate to the real mutation. Re-fetches and applies under its
+    # own session_scope; cycle/FK guards fire there.
+    updated = update_device(device_id, patch)
+    if updated is None:
+        return None, {}
+    # Diff: include every patched key whose new value differs from old.
+    diff: dict[str, dict] = {}
+    for k, new_v in patch.items():
+        old_v = old_snapshot.get(k)
+        if old_v != new_v:
+            diff[k] = {"old": old_v, "new": new_v}
+    return updated, diff
 
 
 def update_device(device_id: str, patch: dict) -> dict | None:

@@ -42,6 +42,7 @@ from app.services.devices import (
     PowerTopologyError,
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
+    delete_device_with_audit_context as svc_delete_device_with_audit_context,
     delete_devices_bulk as svc_delete_devices_bulk,
     firmware_version_breakdown,
     get_device_detail,
@@ -50,6 +51,7 @@ from app.services.devices import (
     list_devices as svc_list_devices,
     merge_retire_device as svc_merge_retire_device,
     update_device,
+    update_device_with_diff,
 )
 from app.services.sites import list_sites as svc_list_sites_only
 from app.services import schedules as schedules_svc
@@ -268,7 +270,12 @@ def device_update_submit(device_id: str):
         "power_source_device_id": power_source_raw or None,
     }
     try:
-        updated = update_device(device_id, patch)
+        # 0.6.43 Batch B (#211 BUG-066): use the diff-returning variant
+        # so the audit row captures old/new per field. Pre-fix the row
+        # listed `fields: [...]` — operator could see THAT a topology
+        # change happened but not the prior value. The new shape:
+        #   details: {diff: {field: {old: ..., new: ...}}, ...}
+        updated, diff = update_device_with_diff(device_id, patch)
     except UnknownPatchFieldError:
         abort(400)
     except PowerTopologyError as e:
@@ -294,7 +301,10 @@ def device_update_submit(device_id: str):
         target_type="device",
         target_id=device_id,
         details={
+            # Legacy field — kept for any dashboard still parsing the old shape.
             "fields": [k for k, v in patch.items() if v is not None],
+            # 0.6.43 Batch B (#211 BUG-066): typed old/new per changed field.
+            "diff": diff,
             "display_name_sync_enqueued": sync_enqueued,
         },
     )
@@ -304,14 +314,39 @@ def device_update_submit(device_id: str):
 @admin_ui_bp.post("/devices/<device_id>/delete")
 @role_required_ui(ROLE_SUPER_ADMIN, ROLE_ADMIN)
 def device_delete_submit(device_id: str):
-    if svc_delete_device(device_id):
+    # 0.6.43 Batch B (#211 BUG-067): enumerate children whose
+    # power_source_device_id is about to go NULL (via the FK's
+    # ON DELETE SET NULL) BEFORE the cascade fires, then log the
+    # orphaned-children list on the audit row. Any `Power On` reset
+    # on a listed child immediately after this delete is now a
+    # known-cause cascade rather than a mystery ghost.
+    outcome = svc_delete_device_with_audit_context(device_id)
+    if outcome is not None:
         audit_service.record(
             "device.deleted",
             actor_user_id=g.current_user.id,
             actor_email_snapshot=g.current_user.email,
             target_type="device",
             target_id=device_id,
+            details={
+                "orphaned_children": outcome["orphaned_children"],
+            },
         )
+        # 0.6.43 Batch B: also write a per-child audit row so a forensic
+        # walk that searches by target_id on the CHILD finds the
+        # parent-delete event without scanning every audit row.
+        for child in outcome["orphaned_children"]:
+            audit_service.record(
+                "device.power_source_cleared_by_parent_delete",
+                actor_user_id=g.current_user.id,
+                actor_email_snapshot=g.current_user.email,
+                target_type="device",
+                target_id=child["id"],
+                details={
+                    "former_parent_id": device_id,
+                    "child_display_name": child["display_name"],
+                },
+            )
     return redirect(url_for("admin_ui.list_devices_page"))
 
 
