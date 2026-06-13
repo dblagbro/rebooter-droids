@@ -285,3 +285,49 @@ rather than backlog-clearing:
 3. **Optional: a browser-installed CI lane.** The playwright
    files already gate cleanly via skip; a parallel `ci-browser`
    job that installs chromium would actually exercise them.
+
+## 2026-06-13 update — coverage gaps surfaced by deep-QA workflow
+
+The multi-agent QA pass found 4 HIGH bugs in power-topology code
+(0.6.38/0.6.39) that should have been caught at PR time. The mutation
+layer (`app/services/devices/_mutations.py`) had zero unit tests for
+power_source_device_id behaviour. The new
+`tests/unit/test_device_topology_guards.py` closes the gap with 6
+tests (self-parent, simple cycle, 3-hop cycle, missing parent, clear,
+valid chain). All run in `-m unit` against the in-process `hub_db`
+fixture — no nginx + Postgres needed.
+
+### Coverage gaps remaining (open work)
+
+| Surface | What's missing | BUG ref |
+|---|---|---|
+| Device delete cascade | No test that `device.deleted` audit entry records orphaned children. FK is `ON DELETE SET NULL` but the audit row doesn't capture which children lost their power source. | BUG-067 |
+| Audit-row content | Tests assert audit rows are WRITTEN but not their content. Topology old/new not visible to forensics. | BUG-066 |
+| Picker site-scoping | No test that picker excludes devices in sites outside current operator's scope. | BUG-068 |
+| Confirm dialog truncation | No test with N=30 children driving the relay-toggle confirm message. Browser limit could chop the warning. | BUG-069 |
+| Display-name validation | No test for newlines/control chars in display_name. | BUG-070 (handler-side fix shipped 0.6.40; service-side validation still open) |
+| Detail page N-children | No test for rendering 30 child devices in the "Powers:" line on detail. | BUG-071 |
+
+### `responsive` marker bucket — outside the CI gate
+
+`pytest -m ci` skips the `responsive` bucket. BUG-065 (nav-link count
+regression) slept for ~3 days in the `responsive` test that lives
+there because nothing ran it. Options:
+
+  1. Promote `responsive` tests into `-m ci` — they're Playwright-
+     driven and add ~30-60s of wall-clock to the gate. Acceptable.
+  2. Add a separate GitHub Actions job for `-m responsive` that runs
+     on the same image.
+
+Recommend option 1 for the next PR-time fix.
+
+### -x (halt-on-first-failure) hides downstream issues
+
+`tests/qa/test_responsive.py::test_mobile_topbar_nav_links_reachable`
+has two assertions (line 104 desktop, line 108 mobile). The `-x` flag
+halts on line 104 and never runs 108. If the mobile nav has ALSO
+regressed, we won't know until line 104 is fixed.
+
+Recommend splitting that test into two — `test_topnav_link_count`
+and `test_bottomnav_link_count` — so one failure doesn't mask the
+other.
