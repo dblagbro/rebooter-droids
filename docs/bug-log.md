@@ -1334,18 +1334,18 @@ but are worth scheduling:
   Cosmetic for now; will get ugly past ~10 children. **Status: fixed
   in v0.6.43 (Batch B) — children collapse to `<details>` when N>10.**
 
-## BUG-072 through BUG-076 — next-tier cleanup from #201 re-run
+## BUG-072 through BUG-076 — all fixed in v0.6.47
 
 Re-running the v0.6.10..HEAD code review at extra-high effort surfaced
 5 next-tier candidates that the original 15-finding cap had truncated.
-All verified by direct file read.
+All verified by direct file read; all fixed together in v0.6.47.
 
 - **BUG-072** — `display_name` blanks when operator submits an empty
   or whitespace-only value. The Batch C comment at
   `app/blueprints/admin/devices_ui.py:276-277` promises "Empty string
   after strip falls back to current value rather than blanking" but
   lines 278-282 add `clean_name=""` to the patch unconditionally.
-  **Status: open.** Failure: operator clears the name field by accident
+  **Status: fixed in v0.6.47.** Failure: operator clears the name field by accident
   → device row stores `display_name=""` → list/detail pages show
   `(no name)` until a re-edit. Fix: `if not clean_name: patch.pop(...)`
   before the patch dict, or apply the documented fallback explicitly.
@@ -1355,7 +1355,7 @@ All verified by direct file read.
   would inherit pre-flight checks; but `site_id` is mapped to
   `_accept_any`. The handler does NOT pre-check site existence either
   (`app/blueprints/admin/devices_ui.py:245` reads `request.form.get
-  ("site_id")` and passes through). **Status: open.** Failure: stale
+  ("site_id")` and passes through). **Status: fixed in v0.6.47.** Failure: stale
   form / form-tamper submits a deleted-site UUID → DB FK rejects with
   IntegrityError → user sees 500. Fix: `_validate_site_id(value, *,
   device, session)` calling `session.get(Site, value)` and raising a
@@ -1366,7 +1366,7 @@ All verified by direct file read.
   the devices handler only. `app/blueprints/admin/schedules.py:76-80`
   reads `target_id` from the form and stuffs it straight into
   `target = {"kind": target_kind, "id": target_id}` for `svc_create`.
-  **Status: open.** Failure: same exact cross-site RBAC vector as
+  **Status: fixed in v0.6.47.** Failure: same exact cross-site RBAC vector as
   BUG-064 / BUG-068, just on a different picker. Operator scoped to
   Site A form-tampers a Site B device id and a schedule targeting
   Site B gets created. Fix: capture `visible_ids` (devices + groups)
@@ -1386,7 +1386,7 @@ All verified by direct file read.
   `session_scope()` to snapshot the old row (lines 228-232) then
   delegates to `update_device` which opens a fresh session and
   re-fetches the same row. Two round-trips where one would do.
-  **Status: open.** Failure: extra ~2-5ms per device edit on
+  **Status: fixed in v0.6.47.** Failure: extra ~2-5ms per device edit on
   Postgres. Low impact today (handful of edits per day) but a smell
   worth fixing while the surface is fresh. Fix: pass an open session
   through, or restructure so `update_device_with_diff` snapshots and

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.db import session_scope
-from app.models import Device
+from app.models import Device, Site
 from app.services.devices._serialize import serialize_device
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,24 @@ log = logging.getLogger(__name__)
 # Returns the value to store (may differ from input if normalized).
 
 def _accept_any(value, *, device, session):  # noqa: ARG001
+    return value
+
+
+def _validate_site_id(value, *, device, session):  # noqa: ARG001
+    """0.6.47 BUG-073 fix: pre-flight site existence. site_id was the
+    last FK column in _PATCHABLE still mapped to `_accept_any`, which
+    meant a stale dropdown / form-tamper would land an invalid id on
+    update_device → DB FK rejects with IntegrityError → 500. The
+    SiteScopeError lets the handler render a flash instead.
+    """
+    if value is None or value == "":
+        return None
+    site = session.get(Site, value)
+    if site is None:
+        raise SiteScopeError(
+            "missing",
+            f"Selected site no longer exists (id={value}).",
+        )
     return value
 
 
@@ -79,12 +97,25 @@ def _validate_power_source_device_id(value, *, device, session):
 
 _PATCHABLE = {
     "display_name": _accept_any,
-    "site_id": _accept_any,
+    "site_id": _validate_site_id,  # 0.6.47 BUG-073
     "notes": _accept_any,
     "central_management_enabled": _accept_any,
     "is_protected": _accept_any,  # v0.3.2 (P3)
     "power_source_device_id": _validate_power_source_device_id,  # 0.6.39/0.6.45
 }
+
+
+class SiteScopeError(ValueError):
+    """0.6.47 BUG-073: typed error for invalid site_id assignment.
+    Mirrors PowerTopologyError so the handler can flash + redirect
+    instead of returning 500 from a bare IntegrityError.
+
+    Subtypes:
+      - 'missing' — referenced site id doesn't exist
+    """
+    def __init__(self, subtype: str, message: str) -> None:
+        super().__init__(message)
+        self.subtype = subtype
 
 
 class PowerTopologyError(ValueError):
@@ -208,13 +239,39 @@ def delete_devices_bulk(
     }
 
 
+def _apply_patch(session, d: Device, patch: dict) -> tuple[dict, dict]:
+    """0.6.47 BUG-076: shared core for update_device + _with_diff.
+    Runs inside the caller's session_scope so the wrappers don't each
+    open their own (the diff variant was paying 2 round-trips).
+    Returns (serialized_device, diff). Validators run BEFORE setattr.
+    """
+    old_snapshot = {k: getattr(d, k) for k in patch.keys()}
+    normalized: dict = {}
+    for k, v in patch.items():
+        normalized[k] = _PATCHABLE[k](v, device=d, session=session)
+    changed = False
+    for k, v in normalized.items():
+        if getattr(d, k) != v:
+            setattr(d, k, v)
+            changed = True
+    if changed:
+        d.updated_at = datetime.now(timezone.utc)
+        session.add(d)
+    session.flush()
+    diff: dict[str, dict] = {}
+    for k, new_v in normalized.items():
+        old_v = old_snapshot.get(k)
+        if old_v != new_v:
+            diff[k] = {"old": old_v, "new": new_v}
+    return serialize_device(d), diff
+
+
 def update_device_with_diff(device_id: str, patch: dict) -> tuple[dict | None, dict]:
-    """0.6.43 Batch B (#211 BUG-066): wrap `update_device` so the caller
-    can audit-log the OLD value alongside the NEW for every changed
-    field. Pre-fix the audit row recorded `details: {fields: [...]}` —
-    operator could see THAT a topology change happened but not WHAT it
-    used to be. With the diff returned here the handler logs e.g.
-    `{"diff": {"power_source_device_id": {"old": "dev_A", "new": "dev_B"}}}`.
+    """0.6.43 Batch B (#211 BUG-066): caller can audit-log the OLD
+    value alongside the NEW for every changed field. The diff is
+    captured against the NORMALIZED value (post-validator) so an audit
+    row for e.g. `site_id` records the same value that was actually
+    stored, even when a future validator normalizes the input.
 
     Returns (updated_dict_or_None, diff). When `updated_dict` is None
     the device wasn't found and diff is empty.
@@ -222,59 +279,23 @@ def update_device_with_diff(device_id: str, patch: dict) -> tuple[dict | None, d
     unknown = set(patch.keys()) - _PATCHABLE.keys()
     if unknown:
         raise UnknownPatchFieldError(unknown)
-    # Capture old values BEFORE any setattr fires. session_scope below
-    # is the same one update_device uses for the actual mutation; we
-    # need pre-mutation snapshot here.
     with session_scope() as session:
         d = session.get(Device, device_id)
         if d is None:
             return None, {}
-        old_snapshot = {k: getattr(d, k) for k in patch.keys()}
-    # Delegate to the real mutation. Re-fetches and applies under its
-    # own session_scope; cycle/FK guards fire there.
-    updated = update_device(device_id, patch)
-    if updated is None:
-        return None, {}
-    # Diff: include every patched key whose new value differs from old.
-    diff: dict[str, dict] = {}
-    for k, new_v in patch.items():
-        old_v = old_snapshot.get(k)
-        if old_v != new_v:
-            diff[k] = {"old": old_v, "new": new_v}
-    return updated, diff
+        return _apply_patch(session, d, patch)
 
 
 def update_device(device_id: str, patch: dict) -> dict | None:
     unknown = set(patch.keys()) - _PATCHABLE.keys()
     if unknown:
         raise UnknownPatchFieldError(unknown)
-
     with session_scope() as session:
         d = session.get(Device, device_id)
         if d is None:
             return None
-
-        # 0.6.45 Batch D (#211): per-field validator dispatch. Each
-        # validator runs BEFORE any setattr so a typed error
-        # (PowerTopologyError, future FK guards, ...) fires while the
-        # row is still pristine. _accept_any is the default for fields
-        # where any value is fine; future FK fields get their own
-        # validator and inherit the same fail-before-mutate guarantee.
-        normalized: dict = {}
-        for k, v in patch.items():
-            normalized[k] = _PATCHABLE[k](v, device=d, session=session)
-
-        # Only bump updated_at when a real change occurs (BUG-011).
-        changed = False
-        for k, v in normalized.items():
-            if getattr(d, k) != v:
-                setattr(d, k, v)
-                changed = True
-        if changed:
-            d.updated_at = datetime.now(timezone.utc)
-            session.add(d)
-        session.flush()
-        return serialize_device(d)
+        serialized, _diff = _apply_patch(session, d, patch)
+        return serialized
 
 
 def merge_retire_device(keep_device_id: str, retire_device_id: str) -> dict:
