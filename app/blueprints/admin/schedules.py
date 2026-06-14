@@ -77,6 +77,28 @@ def schedules_create_submit():
     target_id = (request.form.get("target_id") or "").strip()
     if kind == "power_cycle":
         if target_kind in ("device", "group"):
+            # 0.6.47 BUG-074 fix: re-validate target_id against the same
+            # pool the picker rendered from. Pre-fix the handler accepted
+            # any form value, so a stale dropdown / form-tamper could
+            # schedule a power_cycle against a non-visible device id (the
+            # exact BUG-064/068 vector, just on a different picker). The
+            # pool is identical to what schedules_page() emits to the
+            # template; drift-proof via grep ("svc_list_devices" /
+            # "svc_list_groups" with no other args).
+            if target_kind == "device":
+                visible_ids = {
+                    d.get("id")
+                    for d in svc_list_devices(include_qa_fixtures=False)
+                }
+            else:
+                visible_ids = {grp.get("id") for grp in svc_list_groups()}
+            if target_id not in visible_ids:
+                flash(
+                    f"Schedule target could not be set — that "
+                    f"{target_kind} is not in your visible fleet.",
+                    category="error",
+                )
+                return redirect(url_for("admin_ui.schedules_page"))
             target = {"kind": target_kind, "id": target_id}
         elif target_kind == "tag":
             target = {"kind": "tag", "tag": target_id}

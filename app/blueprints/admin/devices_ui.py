@@ -40,6 +40,7 @@ from app.services.devices import (
     enqueue_display_name_sync,
     MergeRetireError,
     PowerTopologyError,
+    SiteScopeError,
     UnknownPatchFieldError,
     delete_device as svc_delete_device,
     delete_device_with_audit_context as svc_delete_device_with_audit_context,
@@ -62,6 +63,21 @@ def _show_qa_fixtures(raw: str | None, default: bool) -> bool:
     if raw is None:
         return default
     return raw.lower() in ("1", "true", "yes", "on")
+
+
+def _visible_power_source_ids(device_id: str, this_site: str | None) -> set[str]:
+    """0.6.47 BUG-075 fix: single source of truth for which device ids
+    are eligible as a power source for `device_id` in `this_site`. The
+    pre-fix duplicated this predicate at the picker render site (~L196)
+    and at the submit re-validation site (~L263); a future filter
+    extension would drift one copy from the other and silently re-open
+    BUG-068. Both call sites now share this helper.
+    """
+    pool = svc_list_devices(include_qa_fixtures=False)
+    return {
+        d.get("id") for d in pool
+        if d.get("id") != device_id and d.get("site_id") == this_site
+    }
 
 
 @admin_ui_bp.get("/devices")
@@ -193,11 +209,15 @@ def device_detail_page(device_id: str):
     # `device_update_submit` re-validates against the same list, so
     # form-tamper of an out-of-scope id is silently dropped (the
     # BUG-064 path is now covered both at picker AND submit).
-    _picker_pool = svc_list_devices(include_qa_fixtures=False)
+    # 0.6.47 BUG-075: share the predicate with the submit-side validator
+    # via _visible_power_source_ids. The render needs the full dicts (for
+    # name/id display), so we filter the pool here but the set comes from
+    # the same helper to keep the eligibility rule single-sourced.
     _this_site = detail.get("site_id")
+    _eligible = _visible_power_source_ids(device_id, _this_site)
     all_devices_for_picker = [
-        d for d in _picker_pool
-        if d.get("id") != device_id and d.get("site_id") == _this_site
+        d for d in svc_list_devices(include_qa_fixtures=False)
+        if d.get("id") in _eligible
     ]
     return render_template(
         "device_detail.html",
@@ -256,16 +276,10 @@ def device_update_submit(device_id: str):
     # accidental out-of-scope id to None (and flashes a warning) rather
     # than 403'ing.
     if power_source_raw:
-        # 0.6.44 Batch C (#211 BUG-068): match the picker's site-scope.
-        # `before` was loaded at the top of this handler; reuse its
-        # site_id so the filter is identical to what the picker showed.
+        # 0.6.47 BUG-075: predicate moved to `_visible_power_source_ids`
+        # so picker render and submit re-validation can't drift apart.
         this_site = before.get("site_id")
-        visible = svc_list_devices(include_qa_fixtures=False)
-        visible_ids = {
-            d.get("id") for d in visible
-            if d.get("id") != device_id and d.get("site_id") == this_site
-        }
-        if power_source_raw not in visible_ids:
+        if power_source_raw not in _visible_power_source_ids(device_id, this_site):
             flash(
                 "Power source could not be set — that device is not in "
                 "your visible fleet.",
@@ -273,30 +287,39 @@ def device_update_submit(device_id: str):
             )
             power_source_raw = ""
     # 0.6.40 BUG-070 fix: strip control chars + newlines from display_name.
-    # Empty string after strip falls back to current value rather than
-    # blanking; rejecting whitespace-only attempts.
     raw_name = request.form.get("display_name") or ""
     clean_name = "".join(c for c in raw_name if c == " " or (c.isprintable() and c not in "\t\n\r"))
     clean_name = clean_name.strip()
     patch = {
-        "display_name": clean_name,
         "notes": request.form.get("notes") or None,
         "central_management_enabled": "central_management_enabled" in request.form,
         "site_id": site_id or None,
         "power_source_device_id": power_source_raw or None,
     }
+    # 0.6.47 BUG-072 fix: an empty display_name (or one whose chars all
+    # get stripped) must NOT blank the stored value. Pre-fix the
+    # comment promised "fallback to current value rather than blanking"
+    # but the patch dict added "display_name": "" unconditionally. Now
+    # the key is omitted from the patch when there's no real name to
+    # store, so update_device leaves the existing value intact.
+    if clean_name:
+        patch["display_name"] = clean_name
     try:
         # 0.6.43 Batch B (#211 BUG-066): use the diff-returning variant
-        # so the audit row captures old/new per field. Pre-fix the row
-        # listed `fields: [...]` — operator could see THAT a topology
-        # change happened but not the prior value. The new shape:
-        #   details: {diff: {field: {old: ..., new: ...}}, ...}
+        # so the audit row captures old/new per field.
         updated, diff = update_device_with_diff(device_id, patch)
     except UnknownPatchFieldError:
         abort(400)
     except PowerTopologyError as e:
         # 0.6.40 BUG-063 fix: typed error surfaces a friendly flash
         # instead of letting the FK IntegrityError bubble to a 500.
+        flash(str(e), category="error")
+        return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
+    except SiteScopeError as e:
+        # 0.6.47 BUG-073: same shape as PowerTopologyError but for the
+        # site_id FK. Pre-fix this was the only _PATCHABLE entry still
+        # mapped to _accept_any, so a stale dropdown raised a bare
+        # IntegrityError → 500.
         flash(str(e), category="error")
         return redirect(url_for("admin_ui.device_detail_page", device_id=device_id))
     if updated is None:

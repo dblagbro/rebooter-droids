@@ -15,6 +15,7 @@ from __future__ import annotations
 from app.services.devices._mutations import (
     MergeRetireError,
     PowerTopologyError,
+    SiteScopeError,
     UnknownPatchFieldError,
     delete_device,
     delete_device_with_audit_context,
@@ -57,6 +58,7 @@ __all__ = [
     # Writes
     "UnknownPatchFieldError",
     "PowerTopologyError",
+    "SiteScopeError",
     "MergeRetireError",
     "delete_device",
     "delete_device_with_audit_context",
