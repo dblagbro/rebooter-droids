@@ -1376,21 +1376,39 @@ threshold.
 2026-06-16 23:47 UTC). Burst is intermittent; the watchdog root
 crash is the actual trigger and isn't reproducing on-demand.
 
-**Status: open.** Not blocking — fleet usable, bursts are recoverable
-clean planned restarts (not crashes), only one currently-live unit
-sees it. Next investigation:
-- **(a)** Find what's allocating 8K+ during the first HTTPS that
-  doesn't release — likely BearSSL secondary buffer or central-state
-  POST payload. Free or chunk it.
-- **(b)** Make the proactive threshold smarter: e.g. require
-  `mfb<10K AND fh<18K` (combined floor+free check) so normal
-  fragmentation alone doesn't fire it, only real erosion.
-- **(c)** Find the Hardware Watchdog root cause so the burst-trigger
-  goes away.
+**Status: fixes shipped in firmware 0.2.34 — in soak.**
 
-(a) and (b) are independent fix candidates; (c) is the highest-value
-but lowest-data path until the next live watchdog fires with the
-diag-syslog harness running.
+**Fix (b) shipped.** `CentralClient::maybeHeapPressureRestart` now
+consults the heap-trajectory ring after the debounce passes. If the
+newest mfb sample exceeds the oldest by ≥1024 bytes (recovery in
+progress), the fire is suppressed and the debounce resets. .190's
+oscillating 8K↔15K pattern shows clear recovery during recovery
+gaps; this should suppress the burst loop.
+
+**Fix (c) shipped.** Added `OP_FS_EVENT_LOG_WRITE / OP_FS_CONFIG_WRITE
+/ OP_FS_BOOT_STATE_WRITE` breadcrumb opcodes and wrapped every
+`persist()` site in `PreCrashBreadcrumb::Scope`. Next watchdog crash
+on the fleet will name the in-flight FS operation.
+
+**Fix (a) shipped — reframed.** Trajectory data ruled out the
+hypothesised "8K alloc that doesn't release" — mfb dips per
+heartbeat and recovers in the gap. The verbose heartbeat is the
+dominant per-call fragmenter. Pre-fix `shouldUseCompactHeartbeat()`
+gated only on `free_heap<20K`; .190 had fh=20-21K (above) while
+mfb=8-15K (below the danger line). Added a companion `mfb<14K` gate
+so compact engages on fragmentation alone.
+
+**Soak plan:** .190 picks up 0.2.34 within ~60 min of next firmware
+check. Watch device_events for next 24h:
+- ZERO `device.rebooted` events with `planned_reason=
+  heap_pressure_proactive` would confirm (b) + (a) closed the burst.
+- ANY new `Hardware Watchdog` event should now ship a `breadcrumb`
+  event identifying the in-flight operation.
+
+If the burst returns with planned restarts, (b) is misjudging the
+trajectory and needs tightening (e.g. require LARGER recovery delta).
+If watchdog recurs with no breadcrumb, the crash is happening
+outside the wrapped scopes — extend coverage in 0.2.35.
 
 ## BUG-072 through BUG-076 — all fixed in v0.6.47
 
