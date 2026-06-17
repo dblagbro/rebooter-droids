@@ -1334,6 +1334,64 @@ but are worth scheduling:
   Cosmetic for now; will get ugly past ~10 children. **Status: fixed
   in v0.6.43 (Batch B) — children collapse to `<details>` when N>10.**
 
+## BUG-077 — firmware 0.2.33 proactive-restart burst loop on .190 — open
+
+**Discovered 2026-06-14 during live-fleet health check.** .190
+(C4:D8:D5:0D:26:AE) — the only currently-online live unit, and the
+only one without a parent in the power topology — has logged **39
+device.rebooted events in the 48h prior to 2026-06-16 07:46 UTC**.
+All but the first in each burst carry `planned_reason=
+heap_pressure_proactive`; the trigger of each burst is a Hardware
+Watchdog crash.
+
+**Pattern (verified):**
+1. Hardware Watchdog reset fires (root crash — cause TBD).
+2. Boot comes up with the heap already heavily fragmented:
+   `free_heap≈21K but max_free_block≈8-10K` within ~5s of the first
+   HTTPS handshake (central enrollment / state sync).
+3. mfb oscillates 8-15K — chronically below the 0.2.33 13K
+   proactive-restart threshold.
+4. Once the `uptime>30min` gate clears, the proactive restart fires
+   at exactly the ~30-minute mark every cycle.
+5. Reboot, re-fragment, fire again. Burst can last 2-6 hours and 4-12
+   reboots before fragmentation pattern shifts and the cycle breaks.
+
+**Why this is a regression:** 0.2.33 raised the proactive threshold
+from 11K → 13K specifically to fix the "fleet sustained mfb=11216
+inside WiFi SDK NULL-deref crash window" issue. But 13K sits in the
+noise band of the real fragmented mfb floor (8-15K oscillation), so
+the proactive restart now fires routinely on fragmented post-watchdog
+boots. Pre-0.2.33 (11K threshold) these boots stayed alive even
+fragmented; only true heap-erosion (pre-0.2.6 EventLog leak) hit the
+threshold.
+
+**Evidence (.190, 2026-06-14):**
+- 18:33 — Hardware Watchdog
+- 19:04, 19:36, 20:06, 20:36 — proactive every 30 min (4 in a row)
+- Trajectory after the 20:36 boot: mfb=16736 at uptime 36s, drops to
+  9208 by uptime 96s (single big BearSSL/central-enrollment alloc),
+  stays 8-15K oscillating thereafter.
+
+**NOT happening right now** (.190 has been up 16h healthy as of
+2026-06-16 23:47 UTC). Burst is intermittent; the watchdog root
+crash is the actual trigger and isn't reproducing on-demand.
+
+**Status: open.** Not blocking — fleet usable, bursts are recoverable
+clean planned restarts (not crashes), only one currently-live unit
+sees it. Next investigation:
+- **(a)** Find what's allocating 8K+ during the first HTTPS that
+  doesn't release — likely BearSSL secondary buffer or central-state
+  POST payload. Free or chunk it.
+- **(b)** Make the proactive threshold smarter: e.g. require
+  `mfb<10K AND fh<18K` (combined floor+free check) so normal
+  fragmentation alone doesn't fire it, only real erosion.
+- **(c)** Find the Hardware Watchdog root cause so the burst-trigger
+  goes away.
+
+(a) and (b) are independent fix candidates; (c) is the highest-value
+but lowest-data path until the next live watchdog fires with the
+diag-syslog harness running.
+
 ## BUG-072 through BUG-076 — all fixed in v0.6.47
 
 Re-running the v0.6.10..HEAD code review at extra-high effort surfaced
@@ -1403,5 +1461,5 @@ future readers don't hunt for them.
 - **BUG-049** — reserved, no entry assigned.
 
 If a future bug needs a number, use the next sequential after the
-highest assigned (currently BUG-076). Do NOT reuse 039 / 047 / 049 —
+highest assigned (currently BUG-077). Do NOT reuse 039 / 047 / 049 —
 keeping them empty preserves the original sweep's numbering audit.
