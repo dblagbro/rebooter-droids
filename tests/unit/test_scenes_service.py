@@ -27,7 +27,7 @@ from app.services.scenes import (
 )
 from app.services.watchdog import (
     WatchdogValidationError,
-    _validate_action,
+    validate_action,
     create_rule,
 )
 from app.services.watchdog_runtime._actions import _fire_scene
@@ -144,13 +144,13 @@ def test_scene_items_returns_raw_items(hub_db):
 
 # ── apply_scene referencing a saved scene ──────────────────────────────
 
-def test_validate_action_accepts_apply_scene_with_scene_id():
-    _validate_action({"kind": "apply_scene", "scene_id": "scn_abc"})
+def testvalidate_action_accepts_apply_scene_with_scene_id():
+    validate_action({"kind": "apply_scene", "scene_id": "scn_abc"})
 
 
-def test_validate_action_rejects_apply_scene_with_neither_id_nor_items():
+def testvalidate_action_rejects_apply_scene_with_neither_id_nor_items():
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "apply_scene"})
+        validate_action({"kind": "apply_scene"})
 
 
 def test_create_rule_binding_referencing_a_saved_scene(hub_db):

@@ -15,6 +15,7 @@ from app.middleware.admin_auth import (
     role_required_api,
     role_required_ui,
 )
+from app.middleware.picker_scope import PickerScopeError, validate_picker_id
 from app.middleware.response import err, ok
 from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services import audit as audit_service
@@ -77,14 +78,12 @@ def schedules_create_submit():
     target_id = (request.form.get("target_id") or "").strip()
     if kind == "power_cycle":
         if target_kind in ("device", "group"):
-            # 0.6.47 BUG-074 fix: re-validate target_id against the same
-            # pool the picker rendered from. Pre-fix the handler accepted
-            # any form value, so a stale dropdown / form-tamper could
-            # schedule a power_cycle against a non-visible device id (the
-            # exact BUG-064/068 vector, just on a different picker). The
-            # pool is identical to what schedules_page() emits to the
-            # template; drift-proof via grep ("svc_list_devices" /
-            # "svc_list_groups" with no other args).
+            # 0.6.47 BUG-074 + 0.6.49 refactor: re-validate target_id
+            # against the picker pool via the shared
+            # `middleware.picker_scope.validate_picker_id` helper. Pool
+            # MUST stay identical to what `schedules_page()` emits to
+            # the template (`svc_list_devices(include_qa_fixtures=False)`
+            # / `svc_list_groups()` — both unfiltered today).
             if target_kind == "device":
                 visible_ids = {
                     d.get("id")
@@ -92,12 +91,14 @@ def schedules_create_submit():
                 }
             else:
                 visible_ids = {grp.get("id") for grp in svc_list_groups()}
-            if target_id not in visible_ids:
-                flash(
-                    f"Schedule target could not be set — that "
-                    f"{target_kind} is not in your visible fleet.",
-                    category="error",
+            try:
+                target_id = validate_picker_id(
+                    target_id,
+                    visible_ids,
+                    scope_label=f"Schedule {target_kind}",
                 )
+            except PickerScopeError as e:
+                flash(str(e), category="error")
                 return redirect(url_for("admin_ui.schedules_page"))
             target = {"kind": target_kind, "id": target_id}
         elif target_kind == "tag":

@@ -7,7 +7,7 @@ stably `success`, `on_clear` once stably `failure`. This is the
 primitive behind "while Jeopardy is airing, surround off; when it
 clears, surround on".
 
-Covers `_validate_action` (pure), `create_rule` with a binding, and
+Covers `validate_action` (pure), `create_rule` with a binding, and
 the `_binding_tick` runtime (edges, idempotency, debounce, the
 `relay_on`/`relay_off` set-state actions, protected-device skip).
 DB-backed cases use the `hub_db` isolated-SQLite fixture.
@@ -24,43 +24,43 @@ from app.db import session_scope
 from app.models import Command, Device, WatchdogRule
 from app.services.watchdog import (
     WatchdogValidationError,
-    _validate_action,
+    validate_action,
     create_rule,
 )
 from app.services.watchdog_runtime._state import _update_state_and_maybe_fire
 
 
-# ── _validate_action (pure) ────────────────────────────────────────────
+# ── validate_action (pure) ────────────────────────────────────────────
 
 @pytest.mark.parametrize(
     "kind", ["cycle", "hold_off", "notify_only", "relay_on", "relay_off"]
 )
-def test_validate_action_accepts_leaf_kinds(kind):
-    _validate_action({"kind": kind})  # no raise
+def testvalidate_action_accepts_leaf_kinds(kind):
+    validate_action({"kind": kind})  # no raise
 
 
-def test_validate_action_rejects_unknown_kind():
+def testvalidate_action_rejects_unknown_kind():
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "teleport"})
+        validate_action({"kind": "teleport"})
 
 
-def test_validate_action_accepts_well_formed_binding():
-    _validate_action({
+def testvalidate_action_accepts_well_formed_binding():
+    validate_action({
         "kind": "binding",
         "on_active": {"kind": "relay_off"},
         "on_clear": {"kind": "relay_on"},
     })
 
 
-def test_validate_action_rejects_binding_missing_sub_action():
+def testvalidate_action_rejects_binding_missing_sub_action():
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "binding", "on_active": {"kind": "relay_off"}})
+        validate_action({"kind": "binding", "on_active": {"kind": "relay_off"}})
 
 
-def test_validate_action_rejects_binding_with_non_leaf_sub():
+def testvalidate_action_rejects_binding_with_non_leaf_sub():
     # a binding sub-action must be a leaf — no binding-in-binding
     with pytest.raises(WatchdogValidationError):
-        _validate_action({
+        validate_action({
             "kind": "binding",
             "on_active": {"kind": "relay_off"},
             "on_clear": {"kind": "binding"},

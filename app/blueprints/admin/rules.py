@@ -38,6 +38,7 @@ from app.services.conflict_detection import (
     detect_conflicts as svc_detect_conflicts,
     has_blocking as svc_has_blocking,
 )
+from app.middleware.picker_scope import PickerScopeError, validate_picker_id
 from app.services.devices import list_devices as svc_list_devices
 from app.services.groups import list_groups as svc_list_groups
 from app.services.scenes import list_scenes as svc_list_scenes
@@ -65,6 +66,37 @@ STRUCTURED_PROBE_KINDS = frozenset({
     "ical_event_active", "epg_show_airing",
     "power_above", "power_below", "power_zero_while_on",
 })
+
+
+def _scope_rule_target(target: dict) -> dict:
+    """0.6.49 BUG-078 fix: re-validate `target.id` against the same
+    picker pool the rules form rendered. Pre-fix the rules handlers
+    accepted ANY device/group id from the form, so a stale dropdown
+    or form-tamper could point a rule at a non-visible target — the
+    same vector that BUG-064 / BUG-068 closed on the device-detail
+    picker and BUG-074 closed on the schedules picker. The watchdog
+    runtime then silently no-ops on a non-existent target (per
+    `_resolve_target_devices`), so the operator never sees the issue.
+
+    Tag targets carry a free-text label, not a picker id, so they
+    pass through unchecked here; the existing `WatchdogValidationError`
+    gate inside `services.watchdog.create_rule` rejects empty tags.
+    """
+    kind = target.get("kind")
+    if kind not in ("device", "group"):
+        return target
+    if kind == "device":
+        visible_ids = {
+            d.get("id") for d in svc_list_devices(include_qa_fixtures=False)
+        }
+    else:
+        visible_ids = {grp.get("id") for grp in svc_list_groups()}
+    validated = validate_picker_id(
+        target.get("id"),
+        visible_ids,
+        scope_label=f"Rule {kind}",
+    )
+    return {**target, "id": validated}
 
 
 def _action_form_supported(action: dict) -> bool:
@@ -230,13 +262,14 @@ def rules_create_submit():
     try:
         probe = build_probe_from_form(request.form)
         target = build_target_from_form(request.form)
+        target = _scope_rule_target(target)
         action = build_action_from_form(request.form)
         maint_windows = build_maintenance_windows_from_form(request.form)
         failure_threshold = _int_field(request.form, "failure_threshold", default=3)
         recovery_threshold = _int_field(request.form, "recovery_threshold", default=2)
         window_seconds = _int_field(request.form, "window_seconds", default=60)
         cooldown_seconds = _int_field(request.form, "cooldown_seconds", default=300)
-    except (RuleFormError, FormValidationError) as e:
+    except (RuleFormError, FormValidationError, PickerScopeError) as e:
         flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_page"))
 
@@ -480,13 +513,14 @@ def rules_edit_form_submit(rule_id: str):
     try:
         probe = build_probe_from_form(request.form)
         target = build_target_from_form(request.form)
+        target = _scope_rule_target(target)
         action = build_action_from_form(request.form)
         maint_windows = build_maintenance_windows_from_form(request.form)
         failure_threshold = _int_field(request.form, "failure_threshold", default=3)
         recovery_threshold = _int_field(request.form, "recovery_threshold", default=2)
         window_seconds = _int_field(request.form, "window_seconds", default=60)
         cooldown_seconds = _int_field(request.form, "cooldown_seconds", default=300)
-    except (RuleFormError, FormValidationError) as e:
+    except (RuleFormError, FormValidationError, PickerScopeError) as e:
         flash(str(e), "error")
         return redirect(url_for("admin_ui.rules_edit_page", rule_id=rule_id))
 

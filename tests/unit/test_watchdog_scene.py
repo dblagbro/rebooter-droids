@@ -6,7 +6,8 @@ OFF and subwoofer OFF; when it clears, both back ON". It is usable as
 a plain rule action and, paired with Stage A, as a binding's
 `on_active` / `on_clear` edge — the complete TV-scheduling shape.
 
-Covers `_validate_action` / `_validate_leaf` (pure), `create_rule`,
+Covers `validate_action` (pure; recurses through `_validate_leaf`),
+`create_rule`,
 the `_fire_scene` runtime, and the binding+scene integration.
 DB-backed cases use the `hub_db` isolated-SQLite fixture.
 """
@@ -23,7 +24,7 @@ from app.db import session_scope
 from app.models import Command, Device, WatchdogRule
 from app.services.watchdog import (
     WatchdogValidationError,
-    _validate_action,
+    validate_action,
     create_rule,
 )
 from app.services.watchdog_runtime._actions import _fire_scene
@@ -40,45 +41,45 @@ def _types(device_id: str) -> list[str]:
         ]
 
 
-# ── _validate_action — apply_scene (pure) ──────────────────────────────
+# ── validate_action — apply_scene (pure) ──────────────────────────────
 
 def test_validate_accepts_apply_scene():
-    _validate_action({"kind": "apply_scene",
+    validate_action({"kind": "apply_scene",
                       "items": [{"device_id": "d1", "relay": "off"}]})
 
 
 def test_validate_rejects_apply_scene_with_no_items():
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "apply_scene", "items": []})
+        validate_action({"kind": "apply_scene", "items": []})
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "apply_scene"})
+        validate_action({"kind": "apply_scene"})
 
 
 def test_validate_rejects_item_without_device_id():
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "apply_scene", "items": [{"relay": "off"}]})
+        validate_action({"kind": "apply_scene", "items": [{"relay": "off"}]})
 
 
 def test_validate_rejects_item_with_bad_relay_value():
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "apply_scene",
+        validate_action({"kind": "apply_scene",
                           "items": [{"device_id": "d1", "relay": "sideways"}]})
 
 
 def test_validate_rejects_item_with_neither_relay_nor_config():
     with pytest.raises(WatchdogValidationError):
-        _validate_action({"kind": "apply_scene",
+        validate_action({"kind": "apply_scene",
                           "items": [{"device_id": "d1"}]})
 
 
 def test_validate_accepts_config_only_item():
-    _validate_action({"kind": "apply_scene",
+    validate_action({"kind": "apply_scene",
                       "items": [{"device_id": "d1",
                                  "config": {"device_name": "X"}}]})
 
 
 def test_validate_accepts_binding_with_apply_scene_edges():
-    _validate_action({
+    validate_action({
         "kind": "binding",
         "on_active": {"kind": "apply_scene",
                       "items": [{"device_id": "d1", "relay": "off"}]},
@@ -91,7 +92,7 @@ def test_validate_rejects_binding_with_malformed_scene_edge():
     # Proves _validate_leaf recurses through the binding sub-actions —
     # a binding edge with an empty apply_scene must be rejected.
     with pytest.raises(WatchdogValidationError):
-        _validate_action({
+        validate_action({
             "kind": "binding",
             "on_active": {"kind": "apply_scene", "items": []},
             "on_clear": {"kind": "relay_on"},

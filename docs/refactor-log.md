@@ -17,6 +17,108 @@ Append-only journal of structural changes. Newest at top. Format:
 
 ---
 
+## 2026-06-17 — picker-scope helper + alias promotion (watchdog refactor follow-ups)
+
+- **Branch:** `main` (single atomic commit per follow-up)
+- **Releases included:** v0.6.49 (combines #214 + #215)
+- **Scope:** the two next-recommended targets from the v0.6.48
+  refactor entry. Both behavior-preserving structural changes.
+- **Key changes:**
+  - **#214 (alias promotion):** Migrated the four test files
+    (`test_probe_kind_registry.py`, `test_scenes_service.py`,
+    `test_watchdog_scene.py`, `test_watchdog_binding.py`) from the
+    underscore-prefixed `_validate_probe` / `_validate_action` to
+    the public `validate_probe` / `validate_action` names. Deleted
+    the back-compat aliases from
+    `app/services/watchdog/__init__.py`. The public name now stands
+    alone — no more dual surface. Comment references in
+    `models/watchdog.py` + `tests/qa/test_v0534_probe_validation.py`
+    + `tests/unit/test_watchdog_scene.py` updated to the post-split
+    module path.
+  - **#215 (picker-scope helper):** New
+    `app/middleware/picker_scope.py` with
+    `validate_picker_id(form_value, visible_ids, *, scope_label,
+    required=True)` + typed `PickerScopeError`. Centralized the
+    BUG-064 / BUG-068 / BUG-074 form-tamper defense pattern in one
+    place. Three handlers now call it:
+    - `blueprints/admin/schedules.py` — migrated from the inline
+      check shipped in 0.6.47 (BUG-074).
+    - `blueprints/admin/rules.py` — NEW `_scope_rule_target()`
+      helper invoked from both `rules_create_submit` and
+      `rules_update_submit`. Closes BUG-078 (filed in the same ship)
+      on the watchdog-rule target picker.
+    - `blueprints/admin/groups.py::group_add_member_submit` —
+      closes BUG-078 on the group-add-member picker.
+  - The device-update handler's `_visible_power_source_ids` helper
+    (closing BUG-064 / BUG-068) intentionally NOT migrated to the
+    generic helper — its scope is domain-specific (site +
+    self-exclusion + QA-fixture exclusion) and bending the generic
+    helper around it would be lossy. Left as a clean factor.
+  - `tests/unit/test_picker_scope_helper.py` — 10 new tests pinning
+    the helper contract (accepts visible id, strips whitespace,
+    rejects tampered, required vs optional, generator-safe,
+    error-message scope label).
+- **Architectural decisions:**
+  - The helper lives under `middleware/` (not `services/`) because
+    it's a form-input gate — the architecture rule (§"Module-
+    boundary principles") puts cross-cutting concerns like
+    decorators + the response envelope + rate-limiting under
+    `middleware/`. The picker-scope gate is the same shape: cross-
+    cutting, no domain ownership, called from blueprints.
+  - The helper accepts an arbitrary `Iterable[str]` (set, list, or
+    generator) for `visible_ids`. Callers that already build a set
+    (most do) pass it as-is and pay zero conversion cost; one-shot
+    generators are materialized internally so the membership check
+    doesn't leak generator exhaustion into the caller.
+  - `_scope_rule_target` lives inside `rules.py` (not
+    `_rules_forms.py`) because it needs the picker pool, which is
+    a blueprint-layer concern (the form-builder layer is
+    deliberately ignorant of which pool fed the form).
+- **Files impacted:**
+  - 1 file added: `app/middleware/picker_scope.py` (98 LOC)
+  - 1 file added: `tests/unit/test_picker_scope_helper.py` (134 LOC)
+  - 4 files modified: `blueprints/admin/{schedules,rules,groups}.py`
+    + `services/watchdog/__init__.py`
+  - 4 tests migrated: the four `_validate_*` import sites
+  - 3 comment/docstring updates in `models/watchdog.py` +
+    `tests/qa/test_v0534_probe_validation.py` +
+    `tests/unit/test_watchdog_scene.py`
+  - 2 docs updated: `architecture.md` (middleware tree entry),
+    `refactor-log.md` (this entry).
+  - `docs/bug-log.md` — BUG-078 entry filed and immediately marked
+    fixed in v0.6.49.
+- **Risks:**
+  - Picker pool drift: each handler still computes its own visible
+    set. The helper only centralizes the membership-check gate, not
+    the pool itself. Mitigated by a comment in each handler tying
+    its pool to the render-time pool (drift caught by grep, not
+    type system). A future improvement would expose
+    `render-time` pools as named functions to bind them; left for a
+    later refactor when the pool definitions cross 3+ call sites
+    each.
+  - Behavior preservation in `schedules.py`: the original
+    error-message wording ("Schedule target could not be set —
+    that {target_kind} is not in your visible fleet.") shifted to
+    the helper's standard wording. The shape (scope_label + "could
+    not be set — ... your visible fleet.") is preserved; the
+    `{target_kind}` interpolation is now `f"Schedule {target_kind}"`
+    flowing through the scope_label parameter. Verified
+    end-to-end by the 770-test unit suite.
+- **Remaining issues:**
+  - The picker pool definitions themselves are still duplicated at
+    render+submit sites (e.g. `svc_list_devices(include_qa_fixtures
+    =False)` appears in 4 places). Centralizing the pool itself is
+    the next step IF the duplication count grows further. Today the
+    count is bounded by the picker fan-out, which is rule of three.
+  - The legacy `picker_scope` unit suite (`test_picker_scope.py`)
+    still uses underscore-prefixed local helpers (`_create_site`,
+    `_create_device`) — pre-existing convention, not in scope.
+- **Next recommended targets:** see updated entry at top of
+  bug-log.md and architecture.md — re-prioritized after this
+  ship.
+
+---
+
 ## 2026-06-17 — split `services/watchdog.py` into `services/watchdog/` subpackage
 
 - **Branch:** `main` (single atomic commit)

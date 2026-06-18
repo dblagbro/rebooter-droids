@@ -12,7 +12,9 @@ Two bugs the 2026-05-15 deep regression sweep surfaced:
   KNOWN_PROBE_KINDS` and (for `internet`) the `targets` list shape.
   All other per-kind required fields were unvalidated, so e.g.
   `{"kind":"power_above","threshold_w":"oops"}` returned 201. v0.5.34
-  adds a `_validate_probe()` per-kind dispatcher.
+  adds a `validate_probe()` per-kind dispatcher (since v0.6.48 the
+  module path is `app.services.watchdog._validate.validate_probe`,
+  re-exported from the package root).
 
 This file is the regression net. If either fix regresses, these
 tests fail loud.

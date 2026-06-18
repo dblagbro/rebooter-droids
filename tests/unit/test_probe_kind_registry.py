@@ -8,7 +8,7 @@ supported ~26 kinds while validation accepted only 13, so a dozen
 runtime-supported probe kinds could not be created via the API or the
 JSON editor.
 
-This file pins that contract and checks `_validate_probe` has a
+This file pins that contract and checks `validate_probe` has a
 working branch for every canonical kind.
 """
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 
 from app.models.watchdog import KNOWN_PROBE_KINDS
-from app.services.watchdog import WatchdogValidationError, _validate_probe
+from app.services.watchdog import WatchdogValidationError, validate_probe
 from app.services.watchdog_runtime._probes import DISPATCHED_PROBE_KINDS
 
 
@@ -130,30 +130,30 @@ def test_fixture_covers_every_kind():
     assert set(_VALID_PROBES) == set(KNOWN_PROBE_KINDS)
 
 
-# ── _validate_probe — every canonical kind has a working branch ────────
+# ── validate_probe — every canonical kind has a working branch ────────
 
 @pytest.mark.parametrize("kind", sorted(_VALID_PROBES))
-def test_validate_probe_accepts_well_formed_probe(kind):
+def testvalidate_probe_accepts_well_formed_probe(kind):
     # A well-formed probe returns None. If a kind were in
-    # KNOWN_PROBE_KINDS without a _validate_probe branch, the
+    # KNOWN_PROBE_KINDS without a validate_probe branch, the
     # fail-closed default ("no validator") would raise here.
-    assert _validate_probe(_VALID_PROBES[kind]) is None
+    assert validate_probe(_VALID_PROBES[kind]) is None
 
 
 @pytest.mark.parametrize("kind, missing", _MISSING_FIELD_CASES)
-def test_validate_probe_rejects_missing_required_field(kind, missing):
+def testvalidate_probe_rejects_missing_required_field(kind, missing):
     probe = {k: v for k, v in _VALID_PROBES[kind].items() if k != missing}
     with pytest.raises(WatchdogValidationError):
-        _validate_probe(probe)
+        validate_probe(probe)
 
 
-def test_validate_probe_rejects_non_numeric_ha_threshold():
+def testvalidate_probe_rejects_non_numeric_ha_threshold():
     bad = dict(_VALID_PROBES["ha_numeric_above"], threshold="not-a-number")
     with pytest.raises(WatchdogValidationError):
-        _validate_probe(bad)
+        validate_probe(bad)
 
 
-def test_validate_probe_rejects_non_numeric_snmp_threshold():
+def testvalidate_probe_rejects_non_numeric_snmp_threshold():
     bad = dict(_VALID_PROBES["snmp_throughput_above"], threshold_bps="lots")
     with pytest.raises(WatchdogValidationError):
-        _validate_probe(bad)
+        validate_probe(bad)
