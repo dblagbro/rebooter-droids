@@ -100,6 +100,8 @@ app/
 │  ├─ mqtt_subscriber.py                     B17 Ship 3 — MQTT subscriber thread
 │  ├─ devices/            subpackage (v0.5.15) — see "Service subpackages"
 │  │  ├─ __init__.py _serialize.py _query.py _mutations.py
+│  ├─ watchdog/           subpackage (v0.6.48) — see "Service subpackages"
+│  │  ├─ __init__.py _render.py _validate.py _query.py _mutations.py
 │  ├─ external_sensors/   subpackage (v0.5.65) — B17 integration registry
 │  │  ├─ __init__.py      public API re-exports
 │  │  ├─ _common.py       _iso + shared constants (dependency-free leaf)
@@ -167,7 +169,7 @@ services/<x>/
 ```
 
 The `{_serialize, _query, _mutations}` triad is the *starting* shape —
-a subpackage uses whatever cohesive slices its domain needs. Three
+a subpackage uses whatever cohesive slices its domain needs. Four
 precedents exist:
 
 - `devices/` (v0.5.15) — `_serialize` / `_query` / `_mutations`.
@@ -178,6 +180,12 @@ precedents exist:
   `_inbound` / `_query`. Sliced by *ingestion shape* (poll vs. inbound)
   rather than the read/write split, because that is the axis the
   domain actually varies along.
+- `watchdog/` (v0.6.48) — `_render` / `_validate` / `_query` /
+  `_mutations`. `_validate` is the busiest churn axis (every new
+  probe kind / action kind adds rules); isolating it stops the rest
+  of the service from drifting on validation changes. `_render` is
+  pure presentation with no `session_scope()` — same dependency-free
+  shape as `devices/_serialize`.
 
 A leaf module with genuinely shared, dependency-free helpers
 (`external_sensors/_common.py`) is acceptable and is not
