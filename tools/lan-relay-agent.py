@@ -163,6 +163,35 @@ def _session_for(ip: str) -> requests.Session:
     return s
 
 
+_EXPECTED_RELAY_STATE = {"relay_on": True, "relay_off": False}
+
+
+def _report_state_confirmed(device_id: str | None, relay_on: bool, command_id: str | None) -> None:
+    """0.6.50 Phase 2.5: tell the hub the relay flipped, BEFORE the next
+    device heartbeat lands. Closes the "click feels instant but status
+    chip takes ~60s" gap. Fire-and-forget — failure to reach the hub
+    does not propagate to the operator, the next heartbeat is still
+    the source of truth.
+
+    relay_toggle is intentionally NOT reported because the agent doesn't
+    know what state the device WAS in before — only the device itself
+    can resolve that, via the next heartbeat. relay_on / relay_off are
+    self-describing so a confirmed delivery == confirmed final state.
+    """
+    if not device_id or not HUB_URL or not API_TOKEN:
+        return
+    url = urljoin(HUB_URL + "/", f"api/v1/admin/services/devices/{device_id}/state-confirmed")
+    try:
+        requests.post(
+            url,
+            json={"relay_on": relay_on, "command_id": command_id},
+            headers={"Authorization": f"Bearer {API_TOKEN}"},
+            timeout=2.0,
+        )
+    except requests.RequestException as e:
+        log.debug("state-confirmed callback to hub failed: %s", e)
+
+
 def deliver(event: dict) -> None:
     ctype = event.get("type")
     ip = event.get("device_local_ip")
@@ -177,10 +206,15 @@ def deliver(event: dict) -> None:
         return
     # Try the UDP fast path first; fall back to HTTP if the device has
     # no UDP secret configured for the agent, or the device didn't ACK.
+    device_id = event.get("device_id")
+    command_id = event.get("command_id") or event.get("id")
+    expected = _EXPECTED_RELAY_STATE.get(ctype)
     t0 = time.monotonic()
     if _try_udp(ip, ctype):
         dt_ms = int((time.monotonic() - t0) * 1000)
         log.info("delivered %s → %s via UDP (%s ms)", ctype, ip, dt_ms)
+        if expected is not None:
+            _report_state_confirmed(device_id, expected, command_id)
         return
     url = f"http://{ip}{path}"
     try:
@@ -190,6 +224,10 @@ def deliver(event: dict) -> None:
             "delivered %s → %s via HTTP (%s ms, http %s)",
             ctype, ip, dt_ms, r.status_code,
         )
+        # Only report when the device actually accepted (2xx). A 5xx /
+        # timeout means we don't actually know the final state.
+        if expected is not None and 200 <= r.status_code < 300:
+            _report_state_confirmed(device_id, expected, command_id)
     except requests.RequestException as e:
         dt_ms = int((time.monotonic() - t0) * 1000)
         log.warning(
