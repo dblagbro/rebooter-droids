@@ -306,11 +306,22 @@ def devices_live():
             last_sample = traj[-1] if isinstance(traj, list) and traj else {}
             if not isinstance(last_sample, dict):
                 last_sample = {}
+            # 0.6.51 (#178 Phase 2.5): when the LAN agent reported a
+            # post-flip state-confirmed callback AFTER the last
+            # heartbeat, trust the agent_ack value instead of the
+            # heartbeat-stored relay_on. Cleared back to the heartbeat
+            # path the moment the next heartbeat row lands. Falls back
+            # silently when `last_known_relay_on` is NULL (column not
+            # yet populated for this device, or the device pre-dates
+            # the column).
+            relay_value = (bool(hb.relay_on) if hb else None)
+            if getattr(d, "last_known_relay_on", None) is not None:
+                relay_value = bool(d.last_known_relay_on)
             out.append({
                 "id": d.id,
                 "heartbeat_state": hb_state,
                 "online": hb_state == "online",
-                "latest_relay_on": (bool(hb.relay_on) if hb else None),
+                "latest_relay_on": relay_value,
                 "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None,
                 "uptime_seconds": (hb.uptime_seconds if hb else None),
                 "health_state": (hb.health_state if hb else None),

@@ -83,6 +83,16 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
         # session, so set it here too rather than depending on write
         # ordering between the two sessions.
         device.last_seen_at = now
+        # 0.6.51 (#178 Phase 2.5): clear the agent_ack hint now that
+        # we have a fresh heartbeat. The hint exists only to cover the
+        # gap between a relay click and the next heartbeat; once the
+        # heartbeat lands, the heartbeat's `relay_on` field is the
+        # ground truth. Leaving the hint set would lock the
+        # devices_live API into the agent-reported state even if the
+        # device subsequently changed locally (operator pressed the
+        # physical button, auto-recovery flipped it, etc).
+        if hasattr(device, "last_known_relay_on") and device.last_known_relay_on is not None:
+            device.last_known_relay_on = None
         if payload.get("firmware_version"):
             device.firmware_version = payload["firmware_version"]
         if payload.get("local_ip"):

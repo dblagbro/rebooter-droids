@@ -121,6 +121,21 @@ class Device(Base):
         ForeignKey("devices.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    # 0.6.51 (#178 Phase 2.5): stamped by the LAN-relay-agent's
+    # state-confirmed callback the moment a relay command is delivered
+    # + acknowledged 2xx by the device. Closes the gap between the
+    # click (instant via SSE push) and the next ~60s heartbeat
+    # (canonical relay_on update). The SSE `device_state_changed`
+    # event with `source: agent_ack` already delivers the new state to
+    # already-open browser tabs; this column is consulted on the cold
+    # page render so a refresh between click and next heartbeat shows
+    # the just-flipped state rather than the stale heartbeat one.
+    # NULL until first agent_ack lands; callers fall back to the
+    # heartbeat-derived relay_on.
+    last_known_relay_on: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
     # 0.6.38 #210: self-referential relationships for the power topology.
     # `power_source` = the parent device whose relay feeds this one.
     # `powers_devices` = the list of children fed by this device's relay.
