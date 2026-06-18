@@ -130,6 +130,48 @@ curl -fsS https://www.voipguru.org/rebooter/api/v1/version
 curl -fsSI https://www.voipguru.org/rebooter/firmware/    # 403 if empty (expected)
 ```
 
+## LAN relay agent (sub-second relay control)
+
+The `tools/lan-relay-agent.py` daemon subscribes to the hub's SSE
+command stream and dispatches relay commands directly to each device's
+LAN IP. Without the agent running, click → relay defaults to the
+device's ~30s poll cycle and the WebUI status chip waits up to ~60s
+for the next heartbeat. With it running, both happen in ~850ms
+end-to-end (verified 0.6.50, 2026-06-18).
+
+**Install on any host that's on the device LAN AND can reach the
+hub:**
+
+```
+tools/install-lan-relay-agent.sh
+```
+
+It prompts for the hub URL + a `rbt_` token (mint at
+`/app/tokens` with read+write scopes — write is required for the
+0.6.50 state-confirmed callback that powers the real-time UI flip),
+probes both endpoints, installs the systemd-user unit with the
+ExecStart path rewritten for the actual checkout, enables
+user-lingering (so the service survives logout), and starts.
+
+**Verify:**
+
+```
+systemctl --user status lan-relay-agent
+journalctl --user -u lan-relay-agent -n 20
+```
+
+The agent logs every delivered command with the device IP + measured
+round-trip latency.
+
+**Where to run it:** any host on the LAN works. We run it on `tmrwww01`
+(the hub host itself) since it's always on, always on the LAN, and
+already has the repo checked out. The agent does not need to share a
+host with the hub — it's a normal SSE subscriber + LAN client.
+
+**Token rotation:** mint a new token, edit
+`~/.config/lan-relay-agent.env`, then `systemctl --user restart
+lan-relay-agent`.
+
 ## Architectural rules
 
 ### Postgres is private to its node
