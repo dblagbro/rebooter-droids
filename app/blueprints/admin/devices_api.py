@@ -15,7 +15,11 @@ UI and API handlers. Endpoint names preserved across the split:
 
 from __future__ import annotations
 
+import logging
+
 from flask import g, request
+
+log = logging.getLogger(__name__)
 
 from app.blueprints.admin import admin_api_bp
 from app.middleware.admin_auth import (
@@ -155,6 +159,79 @@ def services_enqueue(device_id: str):
         "type": cmd.type,
         "status": cmd.status,
     }, status=201)
+
+
+# 0.6.50 #178 Phase 2.5: fast state-confirmed callback. After the LAN
+# agent delivers a relay command and the device responds 200, the agent
+# POSTs here to push the confirmed new relay state into the hub's SSE
+# stream. Pre-fix the UI only learned about the flip on the device's
+# next ~60s heartbeat; now the device_state_changed event fires within
+# a few hundred ms of the click, closing the "click feels instant but
+# the status chip takes a minute to update" gap.
+#
+# Token-bearer with WRITE scope (same as /services/devices/<id>/enqueue).
+# The endpoint does NOT modify device_heartbeats — the next real
+# heartbeat is still the source of truth for everything else (heap,
+# uptime, etc). It only:
+#   1. Stamps `devices.last_known_relay_on` so a page refresh before
+#      the next heartbeat still reflects reality.
+#   2. Publishes a `device_state_changed` event carrying the new
+#      relay state so the JS SSE listener flips the chip.
+@admin_api_bp.post("/services/devices/<device_id>/state-confirmed")
+def services_state_confirmed(device_id: str):
+    from datetime import datetime, timezone
+    from app.middleware.token_auth import resolve_api_token_principal
+    from app.services import api_tokens as token_svc
+    from app.services import event_bus
+    from app.db import session_scope
+    from app.models import Device
+
+    principal = resolve_api_token_principal()
+    if principal is None:
+        return err("auth_required", "Authentication required.", status=401)
+    scopes = principal.get("scopes") or []
+    if token_svc.SCOPE_WRITE not in scopes:
+        return err("forbidden", "Token lacks write scope.", status=403)
+
+    body = request.get_json(silent=True) or {}
+    if "relay_on" not in body:
+        return err("validation_failed", "relay_on is required.", status=400)
+    relay_on = bool(body["relay_on"])
+    command_id = body.get("command_id")  # optional, audit context only
+
+    with session_scope() as session:
+        d = session.get(Device, device_id)
+        if d is None:
+            return err("device_unknown", "Device not found.", status=404)
+        local_ip = d.local_ip
+        # Stamp a transient "last known relay state" hint. The schema
+        # already carries last_known_relay_on (added in the PR-10 ship);
+        # if a future migration drops it, fall back silently — the SSE
+        # event is the real value-delivery channel.
+        if hasattr(d, "last_known_relay_on"):
+            d.last_known_relay_on = relay_on
+
+    now = datetime.now(timezone.utc)
+    try:
+        event_bus.publish({
+            "kind": "device_state_changed",
+            "device_id": device_id,
+            "local_ip": local_ip,
+            "latest_relay_on": relay_on,
+            "source": "agent_ack",
+            "command_id": command_id,
+            "ts": now.isoformat(),
+        })
+    except Exception:  # pragma: no cover
+        log.exception(
+            "event_bus.publish failed for state-confirmed %s", device_id
+        )
+
+    return ok({
+        "device_id": device_id,
+        "relay_on": relay_on,
+        "source": "agent_ack",
+    })
 
 
 # Note: a previous draft of this file included a /control-secret endpoint
