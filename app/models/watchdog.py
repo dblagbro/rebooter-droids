@@ -149,7 +149,7 @@ KNOWN_RULE_STATUSES = (
 # set-state actions. `binding` is a *level-triggered* meta-action — its
 # `on_active` / `on_clear` sub-actions (each a leaf kind) make the
 # rule's target track the probe state both ways (see
-# `services/watchdog.py::_validate_action` + the binding runtime in
+# `services/watchdog/_validate.py::validate_action` + the binding runtime in
 # `watchdog_runtime/_state.py::_binding_tick`). A binding lives wholly
 # inside the existing `action` JSON column — no schema change.
 ACTION_KIND_CYCLE = "cycle"

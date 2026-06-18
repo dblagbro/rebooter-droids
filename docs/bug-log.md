@@ -1468,6 +1468,42 @@ All verified by direct file read; all fixed together in v0.6.47.
   through, or restructure so `update_device_with_diff` snapshots and
   mutates inside one scope.
 
+## BUG-078 — rules + groups pickers missed the BUG-074 visible-ids defense — fixed in v0.6.49
+
+The 0.6.49 refactor that consolidated the picker-scope re-validation
+into `app/middleware/picker_scope.py::validate_picker_id` surfaced a
+real residual: the rules picker (rules_create_submit and
+rules_update_submit, both via `build_target_from_form`) and the
+group-add-member picker accepted ANY form-submitted device/group id
+without re-validating it against the picker's visible pool. Same
+shape as BUG-064 / BUG-068 / BUG-074, just on three more pickers.
+
+Failure mode (rules): operator A on Site A opens the rules-create
+form, picks a Site A device from the dropdown. Operator A (or a
+stale page) tampers with `target_id` in the POST body, swapping in a
+Site B device id. The handler accepts it; the watchdog runtime's
+`_resolve_target_devices` silently no-ops on a non-existent or
+non-visible target, so the operator never sees the issue but a
+malicious or accidental cross-scope rule is sitting in the
+`watchdog_rules` table. Closes the same vector class on rules.
+
+Failure mode (groups): operator submits a form `device_id` for a
+device not currently in the picker pool (already-a-member or
+not-listed). Group memberships influence rule + schedule fan-out, so
+the silent-success case is a scope drift.
+
+**Fix:** all three handlers (rules_create_submit, rules_update_submit,
+group_add_member_submit) now call `validate_picker_id` with the same
+visible set the picker rendered from. The schedules handler (BUG-074)
+migrated to the same helper for consistency. The device-update
+handler (BUG-064 / BUG-068) keeps its existing
+`_visible_power_source_ids` helper unchanged — that one's already a
+clean factor with a domain-specific scope (site + self-exclusion +
+QA-fixture exclusion) and would be lossy to bend into the generic
+helper signature.
+
+**Status: fixed in v0.6.49.**
+
 ## Reserved-for-history (gap numbers from earlier sweeps)
 
 Batch A QA hygiene (2026-06-13): three bug numbers were never assigned
@@ -1479,5 +1515,5 @@ future readers don't hunt for them.
 - **BUG-049** — reserved, no entry assigned.
 
 If a future bug needs a number, use the next sequential after the
-highest assigned (currently BUG-077). Do NOT reuse 039 / 047 / 049 —
+highest assigned (currently BUG-078). Do NOT reuse 039 / 047 / 049 —
 keeping them empty preserves the original sweep's numbering audit.

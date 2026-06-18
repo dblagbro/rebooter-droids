@@ -86,6 +86,9 @@ app/
 ├─ middleware/
 │  ├─ admin_auth.py       role-aware decorators (admin_required_*, role_required_*)
 │  ├─ device_auth.py      device-token resolution + 401 logging
+│  ├─ picker_scope.py     v0.6.49 — `validate_picker_id()` + typed
+│  │                       `PickerScopeError`; centralized BUG-064 /
+│  │                       BUG-068 / BUG-074 / BUG-078 defense
 │  ├─ rate_limit.py       Flask-Limiter wiring (memory backend, single-worker)
 │  └─ response.py         ok()/err() envelope helpers
 ├─ services/              business logic; one module per domain aggregate

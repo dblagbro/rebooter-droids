@@ -14,6 +14,7 @@ from app.middleware.admin_auth import (
     role_required_api,
     role_required_ui,
 )
+from app.middleware.picker_scope import PickerScopeError, validate_picker_id
 from app.middleware.response import err, ok
 from app.models.users import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services import audit as audit_service
@@ -82,9 +83,30 @@ def group_detail_page(group_id: str):
 @admin_ui_bp.post("/groups/<group_id>/members")
 @admin_required_ui
 def group_add_member_submit(group_id: str):
-    device_id = (request.form.get("device_id") or "").strip()
-    if not device_id:
-        abort(400)
+    # 0.6.49 BUG-078 fix: re-validate device_id against the same
+    # picker pool the group-detail page renders (`svc_list_devices()`
+    # minus current members). Pre-fix the handler accepted any
+    # form-submitted id, so form-tamper could add a non-visible
+    # device to a group — same vector class as BUG-064 / BUG-068 /
+    # BUG-074 on the other pickers. Group memberships influence
+    # rule + schedule fan-out, so closing this gates an
+    # otherwise-silent scope drift.
+    detail = get_group_detail(group_id)
+    if detail is None:
+        abort(404)
+    member_ids = {m["id"] for m in detail.get("members", [])}
+    visible_ids = {
+        d["id"] for d in svc_list_devices() if d["id"] not in member_ids
+    }
+    try:
+        device_id = validate_picker_id(
+            request.form.get("device_id"),
+            visible_ids,
+            scope_label="Group member",
+        )
+    except PickerScopeError as e:
+        flash(str(e), category="error")
+        return redirect(url_for("admin_ui.group_detail_page", group_id=group_id))
     try:
         add_members(group_id, [device_id])
     except LookupError:

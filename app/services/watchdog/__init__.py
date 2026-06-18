@@ -41,15 +41,6 @@ from app.services.watchdog._validate import (
     validate_probe,
 )
 
-# v0.6.48 back-compat: the legacy single-file module exposed
-# `_validate_probe` / `_validate_action` / `_validate_leaf` as
-# module-level callables. A handful of tests + internal callers may
-# still import via those underscore names; alias them so the move is
-# behavior-preserving. Promote to public names in a follow-up cleanup
-# pass.
-_validate_probe = validate_probe
-_validate_action = validate_action
-
 __all__ = [
     # Reads
     "list_rules",
