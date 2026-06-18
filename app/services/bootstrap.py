@@ -193,6 +193,17 @@ _PENDING_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # child; the child just loses its power-source attribution.
     ("devices", "power_source_device_id",
      "VARCHAR(40) REFERENCES devices(id) ON DELETE SET NULL"),
+    # 0.6.51 (#178 Phase 2.5): the LAN-relay-agent's state-confirmed
+    # callback stamps this so a page refresh BETWEEN the click and the
+    # next ~60s heartbeat shows the just-flipped state rather than the
+    # stale heartbeat-stored value. The SSE `device_state_changed`
+    # event with `source: agent_ack` is still the real-time push to
+    # already-open browser tabs; this column is only consulted on the
+    # cold page render in `devices_live` + the rules-list serializer.
+    # NULL until the first agent_ack lands (devices that pre-date 0.6.50
+    # or never receive a relay command); callers fall back to the
+    # heartbeat-derived `latest_relay_on`.
+    ("devices", "last_known_relay_on", "BOOLEAN"),
 )
 
 
