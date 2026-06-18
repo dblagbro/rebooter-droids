@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.50] - 2026-06-18
+
+## [0.6.48] - 2026-06-17
+
+### Changed
+
+- **Adaptive heartbeat cadence (relay-click responsiveness).** Operator pain: clicking a relay-on/off in the UI took up to a full `heartbeat_interval_seconds` (60s default; observed median ~35s in `commands.delivered_at - created_at` over the last 7 days) to reach the device. Now: when a device has pending or recently-active commands (any command created OR delivered within `command_active_window_seconds`, default 60s), the heartbeat handler returns `heartbeat_interval_active_seconds` (default 5s) as `next_heartbeat_after_seconds` instead of the steady-state value. Click-to-execute latency during interactive sessions drops from ~35s median to ~2.5s median (uniform over 0-5s). After 60s with no new command activity, the cadence falls back to the steady-state 60s — heap pressure on the ESP8266 only rises during operator interaction, not at idle.
+  - New settings (env): `REBOOTER_HEARTBEAT_INTERVAL_ACTIVE_SECONDS` (default `5`), `REBOOTER_COMMAND_ACTIVE_WINDOW_SECONDS` (default `60`). Existing `REBOOTER_HEARTBEAT_INTERVAL_SECONDS` unchanged.
+  - New service helper: `services.commands.has_recent_command_activity(device_id, window_seconds)` — cheap query against the existing `(device_id, created_at desc)` / `(device_id, delivered_at desc)` index paths, no migration required.
+  - Firmware: NO change required. `next_heartbeat_after_seconds` has been honoured by firmware ≥0.1.x; this is purely a hub-side adjustment to what value gets sent.
+  - Revert path: set `REBOOTER_HEARTBEAT_INTERVAL_ACTIVE_SECONDS=60` (or whatever the steady-state value is) and the active branch becomes a no-op.
+
 ## [0.6.47] - 2026-06-14
 
 ## [0.6.46] - 2026-06-13
