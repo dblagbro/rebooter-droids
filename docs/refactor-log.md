@@ -17,6 +17,125 @@ Append-only journal of structural changes. Newest at top. Format:
 
 ---
 
+## 2026-06-17 — split `services/watchdog.py` into `services/watchdog/` subpackage
+
+- **Branch:** `main` (single atomic commit)
+- **Releases included:** v0.6.48
+- **Scope:** behavior-preserving refactor — single largest
+  non-subpackaged service module (`services/watchdog.py` at 952 LOC,
+  ≈2× the 500-LOC soft limit) split into a 4-way subpackage. Mirrors
+  the precedent set by `services/devices/`,
+  `services/watchdog_runtime/`, and `services/external_sensors/`.
+- **Key changes:**
+  - New subpackage `app/services/watchdog/` with four cohesive slices:
+    - `_render.py` (225 LOC) — pure presentation; renders the
+      operator-facing plain-English rule sentence (R-WD-1). No
+      `session_scope()`, no model writes.
+    - `_validate.py` (340 LOC) — per-kind probe + action validators +
+      typed `WatchdogValidationError`. This is the busiest churn axis
+      of the service (every new probe / action kind adds rules here).
+    - `_query.py` (175 LOC) — read-only queries + serializer
+      (`list_rules`, `get_rule`, `list_rules_for_device`,
+      `list_recent_events`, `probe_now`, `serialize_rule`, `_iso`).
+    - `_mutations.py` (220 LOC) — writes (`create_rule`,
+      `update_rule`, `delete_rule`, `set_enabled`) sharing a new
+      private `_validate_rule_inputs()` pre-flight helper.
+  - Public API surface preserved via `__init__.py` re-exports +
+    `__all__` declaration. Every existing
+    `from app.services.watchdog import …` resolves unchanged.
+  - Back-compat aliases (`_validate_probe`, `_validate_action`) at
+    the package root for the one test that imports the underscore-
+    prefixed names; promote to public names in a follow-up cleanup.
+  - Hidden incidental win: the create_rule + update_rule validation
+    blocks were duplicated verbatim (~30 lines each); consolidated
+    into a single `_validate_rule_inputs()` helper called from both,
+    eliminating the source-of-truth drift risk that was already
+    biting BUG-035 / BUG-036 / BUG-038 / BUG-055.
+  - Old `app/services/watchdog.py` deleted in the same commit.
+  - `docs/architecture.md` updated: source-layout tree gains the
+    `watchdog/` entry, and the "Service subpackages" section gains
+    `watchdog/` as the fourth precedent with notes on the
+    validation-churn-axis rationale.
+- **Architectural decisions:**
+  - Slice by *responsibility*, not by HTTP-surface or read/write
+    alone — `_render` and `_validate` are pulled out because they
+    each evolve along independent axes (presentation, validation
+    registry). Read/write split for the rest matches the established
+    `devices/` precedent.
+  - Validation gets its own slice rather than living next to writes
+    (which would have been the simpler split): the 340-LOC validator
+    is half the file's size and is the highest-churn axis. Future
+    probe-kind additions touch only `_validate.py`, not the writes.
+  - `_render` is pure (no DB) so it has zero imports from elsewhere
+    in the subpackage. Module-level imports are one-directional
+    (`_query → _render`, `_mutations → _query + _validate + _render`).
+    No cycles, no deferred imports needed inside this subpackage.
+  - Per-slice file sizes (175–340 LOC) are well under the 500-LOC
+    soft limit; the slowest-growing axis (mutations) gets the
+    smallest file so future additions land cleanly without
+    re-splitting.
+- **Files impacted:**
+  - 1 file deleted: `app/services/watchdog.py` (952 LOC)
+  - 5 files added: `app/services/watchdog/{__init__,_render,
+    _validate,_query,_mutations}.py` (1015 LOC total, +63 LOC for
+    re-exports + the duplicated-validation-block consolidation
+    comment overhead, offset by ~30 LOC saved in
+    `_validate_rule_inputs()`).
+  - 2 docs updated: `docs/architecture.md` (source layout +
+    Service subpackages precedents), `docs/refactor-log.md` (this
+    entry).
+  - 0 consumer files touched. Every
+    `from app.services.watchdog import …` continues to resolve.
+- **Risks:**
+  - Import-path drift: any code that imported the legacy
+    `_validate_probe`, `_validate_action`, or `_validate_leaf`
+    underscore symbols would break. Mitigated by keeping
+    `_validate_probe = validate_probe` and
+    `_validate_action = validate_action` aliases at the package
+    root. The one test grep'd at the time (`test_probe_kind_registry.py`)
+    uses `_validate_probe` and passes against the new layout.
+  - Behavior preservation: the validation block was lifted verbatim
+    out of `create_rule` + `update_rule` into the shared helper. Any
+    bug introduced would show as a diff in the error-message string
+    or the ordering of which check fires first. The 760-test unit
+    suite includes 159 watchdog-targeted tests — all green pre and
+    post.
+- **Remaining issues:**
+  - `services/watchdog_runtime/_probes_integrations.py` (1053 LOC)
+    is now the single largest file in `services/`. It is already
+    inside a subpackage and is shaped as one pure `_probe_*` per
+    integration kind with no shared state, so the case for splitting
+    further (by integration kind: roku / ha / weather / ical / power
+    / solar / snmp / media / webhook / mqtt / epg) is weaker than
+    `watchdog.py`'s was — splitting would add 11 files for marginal
+    cohesion benefit. Defer.
+  - `blueprints/admin/devices_ui.py` (840 LOC) is the largest
+    blueprint, but the "co-locate UI + API per feature" rule
+    (architecture.md §"Module-boundary principles") explicitly
+    forbids splitting it further. Re-evaluate only if it crosses
+    1000 LOC.
+  - `services/config_backup.py` (977 LOC) is the next-largest
+    non-subpackaged service. Lower iteration than watchdog (it's
+    operational tooling, not user-feature surface), so the case for
+    splitting is weaker. Re-evaluate when it next grows.
+- **Next recommended targets:**
+  1. Promote the back-compat `_validate_probe` / `_validate_action`
+     aliases to a public name migration in tests, then delete the
+     aliases. Two-step: update test imports, ship, delete aliases.
+  2. Consolidate the duplicated picker-validation pattern (BUG-074
+     fixed it in `schedules.py`; the same shape lives in
+     `blueprints/admin/_rules_forms.py` build_target_from_form and
+     `groups.py` device-picker render). Extract a
+     `middleware/picker_scope.py::validate_picker_id(form_value,
+     visible_ids, *, scope_label)` helper that all three handlers
+     call. Closes the latent BUG-064 vector on the remaining
+     pickers.
+  3. If `config_backup.py` grows past 1000 LOC, split into a
+     subpackage along the take/restore/list axes (similar to
+     `external_sensors/` ingestion-shape split).
+
+---
+
 ## 2026-05-15 — extract rule-form mapping out of the rules blueprint
 
 - **Branch:** `main` (single atomic commit)
