@@ -118,6 +118,14 @@ def list_devices_page():
     # Keeps the query small (LIMIT 6, in-Python uniquify by device).
     recent_reboots = _recent_reboot_summary(limit=3)
 
+    # 0.6.54 Slice C: hoist the dashboard's verdict banner onto the
+    # devices list — since this page is now the post-login home,
+    # the operator must see "Degraded · 9 of 10 offline" as the
+    # FIRST thing, before the per-device table. The inbox service
+    # is the same source of truth the dashboard consumes.
+    from app.services import inbox as inbox_service
+    list_inbox = inbox_service.health_and_attention(limit=0)
+
     return render_template(
         "devices_list.html",
         **_ctx(
@@ -125,6 +133,7 @@ def list_devices_page():
                 "devices": devices,
                 "fw_breakdown": fw_breakdown,
                 "latest_stable": latest_stable,
+                "inbox": list_inbox,
                 # v0.4.29: callable for the template to ask "would
                 # going from <current> to <target> be a real upgrade
                 # (numerically newer)?". Replaces the old `!=` check.
