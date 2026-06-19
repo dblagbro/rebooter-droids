@@ -1,6 +1,25 @@
 {% extends "layout.html" %}
 {% block title %}Devices - Rebooter-Droids{% endblock %}
 {% block content %}
+
+{# 0.6.54 Slice C: verdict banner promoted onto the devices-list,
+   which is now the post-login home (auth_ui.login_submit redirects
+   here). Same tier-0 page-chrome treatment as the /app/ dashboard
+   uses, same source data (inbox.health_and_attention). The operator
+   sees fleet state as the first thing on the page that controls the
+   fleet. #}
+{% if inbox %}
+<section class="v3-verdict v3-verdict-{{ inbox.verdict }}" role="status">
+  <div class="v3-verdict-icon" aria-hidden="true">
+    {% if inbox.verdict == 'all-clear' %}✓{% elif inbox.verdict == 'attention' %}!{% elif inbox.verdict == 'degraded' %}⚠{% else %}?{% endif %}
+  </div>
+  <div class="v3-verdict-body">
+    <h1 class="v3-verdict-title">{{ inbox.verdict_label }}</h1>
+    <p class="v3-verdict-msg">{{ inbox.verdict_message }}</p>
+  </div>
+</section>
+{% endif %}
+
 <div class="v3-page-header">
   <h1>Devices</h1>
   {# v0.5.2: split the fleet-count from the pending-adoption link

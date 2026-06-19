@@ -31,7 +31,7 @@ def login_page():
         from app.middleware.admin_auth import _resolve_user
 
         if _resolve_user() is not None:
-            return redirect(url_for("admin_ui.index"))
+            return redirect(url_for("admin_ui.list_devices_page"))
         # Stale cookie — _resolve_user already cleared the session.
         # Fall through to render the login form.
     return render_template("login.html", version=__version__, error=None)
@@ -69,7 +69,13 @@ def login_submit():
         jti=jti,
         ttl_seconds=60 * 60 * 24 * 31,  # match Flask permanent-session lifetime
     )
-    return redirect(url_for("admin_ui.index"))
+    # 0.6.54 Slice C: post-login lands on the Devices page (the
+    # action surface) instead of the dashboard (an admin counts
+    # surface). Both critic agents converged on "kill the
+    # dashboard — Devices IS home." Dashboard stays reachable via
+    # the topbar Status link for operators who want the activity
+    # feed.
+    return redirect(url_for("admin_ui.list_devices_page"))
 
 
 # ── v0.4.1: forgot-password + reset-password flow ─────────────────────────
