@@ -1028,6 +1028,17 @@ tr:hover td { background: var(--bg-elev-2); }
   .topbar .badge { font-size: 0.68rem; padding: 0.1rem 0.4rem; }
 }
 
+/* 0.6.55 Slice E: on the smallest phones the topbar version + role
+   tags are vanity, not action. The operator-perspective critic agent
+   called them out for eating ~64px of vertical real estate on a 375px
+   screen. Below 640px just hide them — the bottomnav still shows the
+   primary destinations, and the version is reachable via Settings if
+   anyone needs it. */
+@media (max-width: 640px) {
+  .topbar .version,
+  .topbar .badge { display: none; }
+}
+
 /* ── #6 — settings sections: tab strip on desktop, jump-menu on phone ──
  * The 12-section tab strip is unusable scrolled at 375px. The
  * settings_tabs component renders both a <nav class="v3-tabs"> and a
