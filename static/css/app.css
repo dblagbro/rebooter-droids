@@ -1298,3 +1298,133 @@ tr:hover td { background: var(--bg-elev-2); }
 .v3-fleet-stat-good .v3-fleet-stat-num { color: var(--green-fg); }
 .v3-fleet-stat-warn .v3-fleet-stat-num { color: var(--amber-fg); }
 .v3-fleet-stat-bad  .v3-fleet-stat-num { color: var(--red-fg); }
+
+/* ── 0.6.52 Slice A: relay-state HERO chip on device-detail ──────── */
+/* The relay state is THE primary status on the device-detail page.
+   Pre-fix it was rendered as `<span class="muted">· relay ON</span>` —
+   identical weight to firmware version. The hero promotes it to a
+   chunky pill + state-aware toggle that flips optimistically on
+   click and surfaces the SSE source (agent_ack vs heartbeat). */
+
+.v3-relay-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  border-left-width: 6px;
+}
+.v3-relay-hero[data-relay-state="on"]  { border-left-color: var(--green-fg); }
+.v3-relay-hero[data-relay-state="off"] { border-left-color: var(--text-muted, #999); }
+
+.v3-relay-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  min-width: 6.5rem;
+}
+.v3-relay-hero[data-relay-state="on"]  .v3-relay-chip { color: var(--green-fg); }
+.v3-relay-hero[data-relay-state="off"] .v3-relay-chip { color: var(--text-muted, #888); }
+
+.v3-relay-chip-dot {
+  width: 0.7rem; height: 0.7rem; border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 2px var(--bg-elev-2);
+  background: currentColor;
+}
+.v3-relay-hero[data-relay-state="on"]  .v3-relay-chip-dot { background: var(--green-fg); }
+.v3-relay-hero[data-relay-state="off"] .v3-relay-chip-dot { background: var(--text-muted, #999); }
+
+.v3-relay-chip-source {
+  font-size: 0.95rem;
+  line-height: 1;
+  margin-left: 0.15rem;
+  cursor: help;
+  opacity: 0.85;
+}
+.v3-relay-hero[data-relay-source="agent_ack"] .v3-relay-chip-source { color: var(--amber-fg, #d97706); }
+
+/* Pending-confirmation state: gentle pulse on the dot + chip until
+   SSE / poll confirms or the 4s deadline fires. */
+@keyframes v3-relay-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+.v3-relay-hero[data-relay-pending] .v3-relay-chip-dot {
+  animation: v3-relay-pulse 0.9s ease-in-out infinite;
+}
+.v3-relay-hero[data-relay-pending] .v3-relay-chip {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
+.v3-relay-toggle-form { margin: 0; }
+.v3-relay-toggle-btn {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.55rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--text-strong);
+  cursor: pointer;
+  min-width: 8rem;
+  transition: background-color 0.12s ease, transform 0.05s ease;
+}
+.v3-relay-toggle-btn:hover { background: var(--border); }
+.v3-relay-toggle-btn:active { transform: translateY(1px); }
+.v3-relay-hero[data-relay-state="on"]  .v3-relay-toggle-btn { background: var(--bg-elev-2); }
+/* The action label flips ON↔OFF via JS — no per-state button color
+   change so the click target stays visually stable. */
+
+.v3-power-more { margin-top: 1rem; }
+.v3-power-more > summary {
+  cursor: pointer;
+  color: var(--text-muted, #666);
+  padding: 0.4rem 0;
+  font-size: 0.95rem;
+}
+.v3-power-more > summary:hover { color: var(--text-strong); }
+.v3-power-more[open] > summary { color: var(--text-strong); margin-bottom: 0.5rem; }
+
+/* ── 0.6.52 Slice A: success-toast variant ───────────────────────── */
+/* The pre-existing JS used .v3-toast but no CSS defined it — toasts
+   appeared as unstyled <div>s at the bottom of the body. Now they
+   slide up from the bottom-right, fade after 3s, severity-colored. */
+
+.v3-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  padding: 0.75rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  background: var(--bg-elev);
+  color: var(--text-strong);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-muted, #888);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: v3-toast-in 0.18s ease-out forwards;
+  max-width: 26rem;
+}
+.v3-toast-success { border-left-color: var(--green-fg); }
+.v3-toast-error   { border-left-color: var(--red-fg); }
+.v3-toast-fade { opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; }
+@keyframes v3-toast-in {
+  to { opacity: 1; transform: translateY(0); }
+}
