@@ -62,6 +62,28 @@
   --space-6:  1.5rem;
   --bottomnav-h: 56px;
   --topbar-h:    52px;
+
+  /* 0.6.53 Slice D severity ramp — five tiers so the palette can
+     express "act now" vs "noted" vs "all good" instead of one shade
+     per color doing duty for both alerts and delete buttons. Existing
+     --red-fg / --green-fg / --amber-fg stay for back-compat; new
+     surfaces consume the --sev-* tokens. Loud critical reserved for
+     outages-in-progress that need an action right now. */
+  --sev-critical-bg:  #b91c1c;   /* loud red, white text on top */
+  --sev-critical-fg:  #ffffff;
+  --sev-critical-rail: #ef4444;  /* 4px row-rail color */
+  --sev-attention-bg: #5a2222;   /* existing calmer red — "needs eyes" */
+  --sev-attention-fg: #fca5a5;
+  --sev-attention-rail: #ef4444;
+  --sev-watch-bg:     #5a3d1c;
+  --sev-watch-fg:     #fcd34d;
+  --sev-watch-rail:   #f59e0b;
+  --sev-ok-bg:        #064e3b;
+  --sev-ok-fg:        #6ee7b7;
+  --sev-ok-rail:      #10b981;
+  --sev-quiet-bg:     #1f232a;
+  --sev-quiet-fg:     #8a8f99;
+  --sev-quiet-rail:   #4b5563;
 }
 
 [data-theme="light"] {
@@ -88,6 +110,25 @@
   --info-bg:      #dbeafe;
   --info-border:  #93c5fd;
   --info-fg:      #1e40af;
+
+  /* 0.6.53 Slice D severity ramp (light theme). Same five tiers as
+     the dark default; light-mode critical pops harder against the
+     bright surfaces. */
+  --sev-critical-bg:  #dc2626;
+  --sev-critical-fg:  #ffffff;
+  --sev-critical-rail: #dc2626;
+  --sev-attention-bg: #fee2e2;   /* existing polite red */
+  --sev-attention-fg: #b91c1c;
+  --sev-attention-rail: #ef4444;
+  --sev-watch-bg:     #fef3c7;
+  --sev-watch-fg:     #b45309;
+  --sev-watch-rail:   #f59e0b;
+  --sev-ok-bg:        #d1fae5;
+  --sev-ok-fg:        #047857;
+  --sev-ok-rail:      #10b981;
+  --sev-quiet-bg:     #f1f5f9;
+  --sev-quiet-fg:     #475569;
+  --sev-quiet-rail:   #94a3b8;
 }
 
 @media (prefers-color-scheme: light) {
@@ -115,6 +156,22 @@
     --info-bg:      #dbeafe;
     --info-border:  #93c5fd;
     --info-fg:      #1e40af;
+    /* 0.6.53 Slice D ramp (system → light). */
+    --sev-critical-bg:  #dc2626;
+    --sev-critical-fg:  #ffffff;
+    --sev-critical-rail: #dc2626;
+    --sev-attention-bg: #fee2e2;
+    --sev-attention-fg: #b91c1c;
+    --sev-attention-rail: #ef4444;
+    --sev-watch-bg:     #fef3c7;
+    --sev-watch-fg:     #b45309;
+    --sev-watch-rail:   #f59e0b;
+    --sev-ok-bg:        #d1fae5;
+    --sev-ok-fg:        #047857;
+    --sev-ok-rail:      #10b981;
+    --sev-quiet-bg:     #f1f5f9;
+    --sev-quiet-fg:     #475569;
+    --sev-quiet-rail:   #94a3b8;
   }
 }
 
@@ -621,48 +678,64 @@ tr:hover td { background: var(--bg-elev-2); }
 
 /* ────────────────────────────── status / inbox (P2) ──────────────────── */
 
+/* 0.6.53 Slice D: verdict banner promoted to TIER-0 page chrome —
+   no card border, no card background. The verdict IS the page
+   talking ("Degraded · 9 of 10 offline") so it should read like
+   page chrome, not a floating card. Severity comes from the icon
+   pill + a subtle left rail in the new ramp color. Same shape on
+   all four verdict states. */
 .v3-verdict {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-2);
   margin-bottom: var(--space-5);
-  border: 1px solid var(--border);
-  background: var(--bg-elev);
+  background: transparent;
+  border: 0;
+  border-left: 4px solid var(--sev-quiet-rail);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .v3-verdict-icon {
-  font-size: 2rem;
+  font-size: 1.6rem;
   font-weight: 700;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.v3-verdict-title { margin: 0; font-size: 1.2rem; }
+.v3-verdict-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
 .v3-verdict-msg { margin: 0.15rem 0 0; color: var(--text-muted); }
 
 .v3-verdict-all-clear .v3-verdict-icon {
-  background: var(--green-bg); color: var(--green-fg);
+  background: var(--sev-ok-bg); color: var(--sev-ok-fg);
 }
-.v3-verdict-all-clear { border-color: var(--green-fg); }
+.v3-verdict-all-clear { border-left-color: var(--sev-ok-rail); }
 
 .v3-verdict-attention .v3-verdict-icon {
-  background: var(--amber-bg); color: var(--amber-fg);
+  background: var(--sev-watch-bg); color: var(--sev-watch-fg);
 }
-.v3-verdict-attention { border-color: var(--amber-fg); }
+.v3-verdict-attention { border-left-color: var(--sev-watch-rail); }
 
+/* Degraded uses the LOUD critical pill (white-on-red) — this is the
+   one state that should pop. Other surfaces in the ramp stay calm so
+   this one carries the "act now" weight. */
 .v3-verdict-degraded .v3-verdict-icon {
-  background: var(--red-bg); color: var(--red-fg);
+  background: var(--sev-critical-bg); color: var(--sev-critical-fg);
 }
-.v3-verdict-degraded { border-color: var(--red-fg); }
+.v3-verdict-degraded { border-left-color: var(--sev-critical-rail); }
 
 .v3-verdict-unknown .v3-verdict-icon {
-  background: var(--bg-elev-2); color: var(--text-muted);
+  background: var(--sev-quiet-bg); color: var(--sev-quiet-fg);
 }
+.v3-verdict-unknown { border-left-color: var(--sev-quiet-rail); }
 
 .v3-section-title {
   margin: 0 0 var(--space-3);
@@ -704,14 +777,24 @@ tr:hover td { background: var(--bg-elev-2); }
 .v3-attention-hint {
   font-size: 0.85rem;
 }
-.v3-sev-warn { border-left: 3px solid var(--amber-fg); padding-left: var(--space-3); }
-.v3-sev-info { border-left: 3px solid var(--info-fg); padding-left: var(--space-3); }
+/* 0.6.53 Slice D: severity row-rails consolidated on the new ramp.
+   4px left border + small left padding. NO background tint on
+   attention/watch rows — the rail does the severity work; tinting
+   the background made the operator's eye drown in pink. Only the
+   CRITICAL rail keeps a tinted background (sparingly, for outages-
+   in-progress where the screen should pop). */
+.v3-sev-info { border-left: 4px solid var(--info-fg); padding-left: var(--space-3); }
+.v3-sev-warn { border-left: 4px solid var(--sev-watch-rail); padding-left: var(--space-3); }
+.v3-sev-attention { border-left: 4px solid var(--sev-attention-rail); padding-left: var(--space-3); }
 .v3-sev-critical {
-  border-left: 4px solid var(--red-fg);
+  border-left: 4px solid var(--sev-critical-rail);
   padding-left: var(--space-3);
-  background: var(--red-bg);
+  background: var(--sev-critical-bg);
+  color: var(--sev-critical-fg);
   margin-left: -3px;
 }
+.v3-sev-critical a,
+.v3-sev-critical .muted { color: var(--sev-critical-fg); opacity: 0.92; }
 
 
 /* ────────────────────────────── filter chips (P2) ────────────────────── */
@@ -1427,4 +1510,81 @@ tr:hover td { background: var(--bg-elev-2); }
 .v3-toast-fade { opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; }
 @keyframes v3-toast-in {
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 0.6.53 Slice D: severity row-rail + tier-0 page banner ─────── */
+/* Pre-fix the same flat `.v3-card` chrome was used for page-level
+   banners ("Pause watchdog rules portal-wide", "Degraded - 9 of 10
+   offline") AND for grouped sub-content cards AND for content tables.
+   No hierarchy — the eye couldn't tell what was page chrome vs what
+   was a single item. Slice D introduces:
+   - .v3-row-sev-*  — 4px left rail on row-level cards (attention
+     list items, history rows, firmware rows). Pills demoted to
+     muted metadata so the rail does the severity work.
+   - .v3-banner-page — borderless, full-bleed page chrome for the
+     top-of-page "this is your overall fleet state" sentence. NO
+     card border; tier-0 surface so it reads as the page talking,
+     not as a floating item. */
+
+.v3-row-sev {
+  border-left: 4px solid var(--sev-quiet-rail);
+  padding-left: 0.85rem;
+}
+.v3-row-sev-critical  { border-left-color: var(--sev-critical-rail); }
+.v3-row-sev-attention { border-left-color: var(--sev-attention-rail); }
+.v3-row-sev-watch     { border-left-color: var(--sev-watch-rail); }
+.v3-row-sev-ok        { border-left-color: var(--sev-ok-rail); }
+.v3-row-sev-quiet     { border-left-color: var(--sev-quiet-rail); }
+
+/* Tier-0 page chrome banner (no card border). For "you have 7
+   devices needing attention" / "fleet is healthy" page-level
+   summary sentences. */
+.v3-banner-page {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.65rem 0.2rem 0.85rem;
+  margin: 0 0 0.75rem;
+  border: 0;
+  background: transparent;
+  font-size: 1.05rem;
+}
+.v3-banner-page-num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0.75rem;
+  border-radius: 8px;
+  background: var(--sev-quiet-bg);
+  color: var(--sev-quiet-fg);
+  min-width: 2.4rem;
+  text-align: center;
+}
+.v3-banner-page-sev-critical .v3-banner-page-num {
+  background: var(--sev-critical-bg); color: var(--sev-critical-fg);
+}
+.v3-banner-page-sev-attention .v3-banner-page-num {
+  background: var(--sev-attention-bg); color: var(--sev-attention-fg);
+}
+.v3-banner-page-sev-watch .v3-banner-page-num {
+  background: var(--sev-watch-bg); color: var(--sev-watch-fg);
+}
+.v3-banner-page-sev-ok .v3-banner-page-num {
+  background: var(--sev-ok-bg); color: var(--sev-ok-fg);
+}
+.v3-banner-page-msg { color: var(--text-strong); font-weight: 500; }
+.v3-banner-page-msg em { font-style: normal; color: var(--text-muted); }
+
+/* Demote .badge usage to muted metadata when it sits alongside a
+   row-rail (the rail IS the severity, the badge stops competing).
+   Pages that need an actual status pill keep the old .badge.green
+   / .badge.red / .badge.amber chrome — they just shouldn't apply
+   it to row-rail rows. */
+.v3-row-sev .badge {
+  background: transparent;
+  border: 0;
+  padding: 0 0.1rem;
+  font-weight: 500;
+  color: var(--text-muted);
 }
