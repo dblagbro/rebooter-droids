@@ -160,6 +160,14 @@ def record_heartbeat(device_id: str, payload: dict) -> dict:
             "heap_fragmentation_pct": (traj[-1].get("fp")
                                        if isinstance(traj, list) and traj
                                        and isinstance(traj[-1], dict) else None),
+            # 0.6.52 Slice B: identify the SOURCE of this state report so
+            # the browser chip can distinguish "device self-reported in
+            # the last 60s heartbeat" (this path) from "LAN agent fired
+            # the relay and got an immediate 2xx ack" (state-confirmed).
+            # The JS surfaces this as different glyphs + tooltip copy so
+            # the operator FEELS the sub-second push the 0.6.50/0.6.51
+            # work delivered.
+            "source": "heartbeat",
             "ts": now.isoformat(),
         }
 

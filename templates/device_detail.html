@@ -98,10 +98,46 @@
       <strong class="bad">Offline</strong>
     {% endif %}
     {% if device.firmware_version %}<span class="muted">· firmware {{ device.firmware_version }}</span>{% endif %}
-    {% if _hb and _hb.relay_on is not none %}
-      <span class="muted">· relay {{ 'ON' if _hb.relay_on else 'OFF' }}</span>
+  </div>
+
+  {# 0.6.52 Slice A: relay-state HERO chip. Pre-fix the relay state was
+     rendered as `<span class="muted">· relay ON</span>` in this hero
+     prose line — the entire 0.6.50/0.6.51 sub-second SSE work was
+     invisible because the chip read like firmware-version metadata.
+     Now it's a chunky pill above the fold with source-aware glyph
+     (lightning bolt = agent_ack, heartbeat-pulse = device heartbeat)
+     that the JS at devices_live.js applyDetailPanel surfaces. #}
+  {% if _hb and _hb.relay_on is not none %}
+  {% set _initial_relay_on = (device.last_known_relay_on if device.last_known_relay_on is not none else _hb.relay_on) %}
+  <div class="v3-relay-hero" data-relay-hero-device="{{ device.id }}"
+       data-relay-state="{{ 'on' if _initial_relay_on else 'off' }}"
+       data-relay-source="{{ 'agent_ack' if device.last_known_relay_on is not none else 'heartbeat' }}">
+    <span class="v3-relay-chip" data-live="relay-chip">
+      <span class="v3-relay-chip-dot" aria-hidden="true"></span>
+      <strong data-live="relay-state">{{ 'ON' if _initial_relay_on else 'OFF' }}</strong>
+      <span class="v3-relay-chip-source" data-live="relay-source" aria-label="source"
+            title="{% if device.last_known_relay_on is not none %}Confirmed via LAN agent — relay fired and acknowledged{% else %}Reported by device's last heartbeat{% endif %}">
+        {% if device.last_known_relay_on is not none %}⚡{% else %}♥{% endif %}
+      </span>
+    </span>
+    {% set _can_act = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
+    {% if _can_act and not device.is_held_off %}
+    <form method="post" class="v3-relay-toggle-form"
+          action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
+          data-relay-hero-form>
+      <input type="hidden" name="type" data-relay-hero-target
+             value="{{ 'relay_off' if _initial_relay_on else 'relay_on' }}">
+      {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
+      <button type="submit" class="v3-relay-toggle-btn" data-relay-hero-btn
+              data-current="{{ 'on' if _initial_relay_on else 'off' }}">
+        <span class="v3-relay-toggle-action" data-live="relay-action-label">
+          {{ 'Turn OFF' if _initial_relay_on else 'Turn ON' }}
+        </span>
+      </button>
+    </form>
     {% endif %}
   </div>
+  {% endif %}
   <div class="v3-detail-hero-action">
     {% set can_act = current_user is defined and current_user and current_user.role in ('super_admin','admin') %}
     {% if device.is_held_off and can_act %}
@@ -446,16 +482,25 @@
   </div>
   {% endif %}
 
-  <div class="actions">
-    {% for t in ["relay_on", "relay_off", "relay_toggle", "device_restart", "check_firmware"] %}
-    <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
-          {% if t in ('relay_off', 'device_restart') %}data-confirm-message="{{ t }} on {{ device.display_name or device.id }} — proceed?"{% endif %}>
-      <input type="hidden" name="type" value="{{ t }}">
-      {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
-      <button type="submit"{% if t in ('relay_off', 'device_restart') %} class="btn-danger"{% endif %}>{{ t }}</button>
-    </form>
-    {% endfor %}
-  </div>
+  {# 0.6.52 Slice A: collapsed action wall. The state-aware Turn ON /
+     Turn OFF toggle hero above replaces the relay_on + relay_off +
+     relay_toggle buttons here (toggle is fully redundant with the
+     state-aware one). device_restart + check_firmware remain as
+     secondary actions, demoted behind a disclosure so the operator
+     does not see a 5-button identical-weight pile every visit. #}
+  <details class="v3-power-more">
+    <summary>More power actions</summary>
+    <div class="actions">
+      {% for t in ["device_restart", "check_firmware"] %}
+      <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
+            {% if t in ('device_restart',) %}data-confirm-message="{{ t }} on {{ device.display_name or device.id }} — proceed?"{% endif %}>
+        <input type="hidden" name="type" value="{{ t }}">
+        {% if device.is_protected %}<input type="hidden" name="override_lockout" value="1">{% endif %}
+        <button type="submit"{% if t == 'device_restart' %} class="btn-danger"{% endif %}>{{ t }}</button>
+      </form>
+      {% endfor %}
+    </div>
+  </details>
 
   <form method="post" action="{{ url_for('admin_ui.device_send_command', device_id=device.id) }}"
         data-confirm-message="relay_cycle on {{ device.display_name or device.id }} — power will drop, then return after {{ '{{' }}power_off_seconds{{ '}}' }} s. Proceed?">

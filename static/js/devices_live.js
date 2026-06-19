@@ -98,7 +98,39 @@
     return Math.floor(sec / 3600) + 'h ago';
   }
 
+  // 0.6.52 Slice A/B: apply the relay-hero chip + state-aware toggle
+  // button when SSE / poll confirms a new relay state. dev.source ===
+  // "agent_ack" gets the lightning bolt + "Confirmed via LAN agent
+  // (~Xms ago)" tooltip; "heartbeat" gets the heartbeat-pulse glyph.
+  // The pre-fix code threw ev.source away entirely; the 0.6.50/0.6.51
+  // sub-second push was invisible to the operator.
+  function applyRelayHero(dev) {
+    var hero = document.querySelector('[data-relay-hero-device="' + dev.id + '"]');
+    if (!hero) return;
+    if (dev.latest_relay_on !== null && dev.latest_relay_on !== undefined) {
+      var newState = dev.latest_relay_on ? 'on' : 'off';
+      hero.dataset.relayState = newState;
+      hero.dataset.relaySource = dev.source || 'heartbeat';
+      var stateEl = hero.querySelector('[data-live="relay-state"]');
+      if (stateEl) stateEl.textContent = newState.toUpperCase();
+      var sourceEl = hero.querySelector('[data-live="relay-source"]');
+      if (sourceEl) {
+        sourceEl.textContent = (dev.source === 'agent_ack') ? '⚡' : '♥';
+        sourceEl.title = (dev.source === 'agent_ack')
+          ? 'Confirmed via LAN agent — relay fired and acknowledged'
+          : "Reported by device's last heartbeat";
+      }
+      var actionEl = hero.querySelector('[data-live="relay-action-label"]');
+      if (actionEl) actionEl.textContent = (newState === 'on') ? 'Turn OFF' : 'Turn ON';
+      var targetInput = hero.querySelector('[data-relay-hero-target]');
+      if (targetInput) targetInput.value = (newState === 'on') ? 'relay_off' : 'relay_on';
+      var btn = hero.querySelector('[data-relay-hero-btn]');
+      if (btn) btn.dataset.current = newState;
+    }
+  }
+
   function applyDetailPanel(dev) {
+    applyRelayHero(dev);
     var badgeEl = detailPanel.querySelector('[data-live="heartbeat-badge"]');
     if (badgeEl) {
       var stateMap = { online: 'online', offline: 'offline', never: 'never heartbeated' };
@@ -141,6 +173,9 @@
               // optimistic state when the polled value matches.
               if (d.latest_relay_on !== null && d.latest_relay_on !== undefined) {
                 clearPendingIfMatches(d.id, !!d.latest_relay_on);
+                // 0.6.52 Slice A: hero too. Poll doesn't carry source,
+                // so default to 'heartbeat' tag for the toast.
+                clearHeroPendingIfMatches(d.id, !!d.latest_relay_on, 'heartbeat');
               }
               applyListRow(listRows[k], d);
             }
@@ -211,6 +246,94 @@
     document.body.appendChild(el);
     setTimeout(function () { el.classList.add('v3-toast-fade'); }, 3000);
     setTimeout(function () { el.remove(); }, 4000);
+  }
+
+  // 0.6.52 Slice A: optimistic flip + click→confirm latency timer for
+  // the device-detail relay-hero. Pre-fix the device-detail page had
+  // ZERO feedback in the 800ms between click and the SSE
+  // device_state_changed event — the operator clicked, the page form-
+  // POSTed, then waited for a Flask redirect with only the browser's
+  // own load spinner. The optimistic flip + a timed success toast
+  // makes the 0.6.50/0.6.51 sub-second push visible. Runs in the
+  // capture phase so an outer confirm-handler that preventDefault's
+  // is honored (the listener for the list-page rows below is wired
+  // the same way).
+  var heroPendingByDevice = {};
+  document.addEventListener('submit', function (ev) {
+    var form = ev.target;
+    if (!form || !form.matches || !form.matches('[data-relay-hero-form]')) return;
+    var hero = form.closest('[data-relay-hero-device]');
+    if (!hero) return;
+    var deviceId = hero.dataset.relayHeroDevice;
+    var preClickOn = hero.dataset.relayState === 'on';
+    var willBeOn = !preClickOn;
+    fastUntil = Date.now() + FAST_BURST_MS;
+    // Visual flip — synchronous on submit so the chip flips before
+    // the page navigates. data-relay-state drives the CSS color.
+    hero.dataset.relayState = willBeOn ? 'on' : 'off';
+    hero.dataset.relayPending = '1';  // CSS pulses while pending
+    var stateEl = hero.querySelector('[data-live="relay-state"]');
+    if (stateEl) stateEl.textContent = willBeOn ? 'ON' : 'OFF';
+    var actionEl = hero.querySelector('[data-live="relay-action-label"]');
+    if (actionEl) actionEl.textContent = willBeOn ? 'Turn OFF' : 'Turn ON';
+    var btn = hero.querySelector('[data-relay-hero-btn]');
+    if (btn) btn.dataset.current = willBeOn ? 'on' : 'off';
+    // Defer the hidden-input rewrite until AFTER the form serializes
+    // so the click that just fired sends the right command and the
+    // NEXT click sends the inverted one. Same trick as the list-page
+    // 0.6.36 hotfix Finding #1.
+    setTimeout(function () {
+      var target = hero.querySelector('[data-relay-hero-target]');
+      if (target) target.value = willBeOn ? 'relay_off' : 'relay_on';
+    }, 0);
+    queueMicrotask(function () {
+      if (ev.defaultPrevented) {
+        // Operator cancelled at the confirm modal — revert.
+        hero.dataset.relayState = preClickOn ? 'on' : 'off';
+        delete hero.dataset.relayPending;
+        if (stateEl) stateEl.textContent = preClickOn ? 'ON' : 'OFF';
+        if (actionEl) actionEl.textContent = preClickOn ? 'Turn OFF' : 'Turn ON';
+        if (btn) btn.dataset.current = preClickOn ? 'on' : 'off';
+        return;
+      }
+      heroPendingByDevice[deviceId] = {
+        expectedOn: willBeOn,
+        clickAtMs: performance.now(),
+        deadline: Date.now() + OPTIMISTIC_TIMEOUT_MS,
+        preClickOn: preClickOn,
+      };
+      setTimeout(function () {
+        var entry = heroPendingByDevice[deviceId];
+        if (!entry) return;
+        if (Date.now() < entry.deadline) return;
+        // Snap back to pre-click state — the device did not confirm.
+        hero.dataset.relayState = entry.preClickOn ? 'on' : 'off';
+        delete hero.dataset.relayPending;
+        if (stateEl) stateEl.textContent = entry.preClickOn ? 'ON' : 'OFF';
+        if (actionEl) actionEl.textContent = entry.preClickOn ? 'Turn OFF' : 'Turn ON';
+        if (btn) btn.dataset.current = entry.preClickOn ? 'on' : 'off';
+        toast('Device did not confirm the change', 'error');
+        delete heroPendingByDevice[deviceId];
+      }, OPTIMISTIC_TIMEOUT_MS + 100);
+    });
+  }, true);
+
+  // When SSE / poll confirms the hero's expected state, clear the
+  // pending entry, fire the success toast with measured latency, and
+  // drop the pulsing-pending CSS class. The chip glyph (lightning vs
+  // heartbeat) is set by applyRelayHero via dev.source.
+  function clearHeroPendingIfMatches(deviceId, latestRelayOn, source) {
+    var entry = heroPendingByDevice[deviceId];
+    if (!entry) return;
+    if (latestRelayOn === entry.expectedOn) {
+      var dtMs = Math.round(performance.now() - entry.clickAtMs);
+      var hero = document.querySelector('[data-relay-hero-device="' + deviceId + '"]');
+      if (hero) delete hero.dataset.relayPending;
+      var label = (latestRelayOn ? 'ON' : 'OFF');
+      var via = (source === 'agent_ack') ? ' · confirmed via agent' : ' · confirmed via heartbeat';
+      toast('Relay ' + label + ' (' + dtMs + 'ms)' + via, 'success');
+      delete heroPendingByDevice[deviceId];
+    }
   }
 
   document.addEventListener('submit', function (ev) {
@@ -294,6 +417,12 @@
         // state matches the freshly-reported one — this clears the
         // pending entry so the 4s snap-back doesn't fire.
         clearPendingIfMatches(ev.device_id, !!ev.latest_relay_on);
+        // 0.6.52 Slice A/B: same for the device-detail hero, and
+        // emit the success toast carrying the measured click→confirm
+        // latency + which path delivered (agent_ack vs heartbeat).
+        if (ev.latest_relay_on !== null && ev.latest_relay_on !== undefined) {
+          clearHeroPendingIfMatches(ev.device_id, !!ev.latest_relay_on, ev.source);
+        }
         // List page: find the row and apply just the rapid-update fields
         if (listRows.length) {
           for (var i = 0; i < listRows.length; i++) {
