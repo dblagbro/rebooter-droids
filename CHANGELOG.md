@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.56] - 2026-06-23
+
+### Changed
+
+- **CHANGELOG erratum + future-drift gate.** Closes the proxy-team finding (memo `2026-06-30-rebooter-droids-adaptive-heartbeat-design-shipped-code-didnt.md`) that v0.6.48's "adaptive heartbeat cadence" entry documented `has_recent_command_activity()` / `heartbeat_interval_active_seconds` / `command_active_window_seconds` / `REBOOTER_HEARTBEAT_INTERVAL_ACTIVE_SECONDS` / `REBOOTER_COMMAND_ACTIVE_WINDOW_SECONDS` — none of which ever existed in `app/` (git log `-S` confirms the symbols only ever lived in the CHANGELOG itself, never in code). The actual relay-click-responsiveness pain the missing feature was meant to solve was already addressed by v0.6.50's SSE push + LAN agent (~850ms click → UI-confirmed flip in production), so re-implementing the un-shipped design would be redundant.
+  - The v0.6.48 entry now carries an `### Errata` block describing the correction; the original (correct) entry text re-asserts that v0.6.48 was the `services/watchdog.py` → `services/watchdog/` subpackage split per `docs/refactor-log.md`.
+  - New gate at `tests/unit/test_changelog_symbols_exist_in_source.py` — every backtick-quoted Python-/env-var-shaped identifier in a released CHANGELOG version (≥ 0.6.48, not under `### Errata`, not `[Unreleased]`) must resolve to at least one occurrence under `app/`. Future doc-without-code drift trips the suite before merge. Same shape as llm-proxy-v2's `tests/unit/test_v5141_hook_runner_pins_all_endpoints.py` the proxy team cited as their precedent.
+
 ## [0.6.55] - 2026-06-19
 
 ## [0.6.54] - 2026-06-19
@@ -23,11 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Adaptive heartbeat cadence (relay-click responsiveness).** Operator pain: clicking a relay-on/off in the UI took up to a full `heartbeat_interval_seconds` (60s default; observed median ~35s in `commands.delivered_at - created_at` over the last 7 days) to reach the device. Now: when a device has pending or recently-active commands (any command created OR delivered within `command_active_window_seconds`, default 60s), the heartbeat handler returns `heartbeat_interval_active_seconds` (default 5s) as `next_heartbeat_after_seconds` instead of the steady-state value. Click-to-execute latency during interactive sessions drops from ~35s median to ~2.5s median (uniform over 0-5s). After 60s with no new command activity, the cadence falls back to the steady-state 60s — heap pressure on the ESP8266 only rises during operator interaction, not at idle.
-  - New settings (env): `REBOOTER_HEARTBEAT_INTERVAL_ACTIVE_SECONDS` (default `5`), `REBOOTER_COMMAND_ACTIVE_WINDOW_SECONDS` (default `60`). Existing `REBOOTER_HEARTBEAT_INTERVAL_SECONDS` unchanged.
-  - New service helper: `services.commands.has_recent_command_activity(device_id, window_seconds)` — cheap query against the existing `(device_id, created_at desc)` / `(device_id, delivered_at desc)` index paths, no migration required.
-  - Firmware: NO change required. `next_heartbeat_after_seconds` has been honoured by firmware ≥0.1.x; this is purely a hub-side adjustment to what value gets sent.
-  - Revert path: set `REBOOTER_HEARTBEAT_INTERVAL_ACTIVE_SECONDS=60` (or whatever the steady-state value is) and the active branch becomes a no-op.
+- **Refactor: `services/watchdog.py` (952 LOC) → `services/watchdog/` subpackage.** Behavior-preserving 4-way slice (`_render` / `_validate` / `_query` / `_mutations`). See `docs/refactor-log.md` 2026-06-17 entry for full rationale. Mirrors the precedent set by `services/devices/`, `services/watchdog_runtime/`, and `services/external_sensors/`. 18 device unit tests pass unchanged.
+
+### Errata (0.6.56 correction)
+
+This entry previously documented an **"adaptive heartbeat cadence"** feature with `heartbeat_interval_active_seconds`, `command_active_window_seconds`, `has_recent_command_activity()`, and env vars `REBOOTER_HEARTBEAT_INTERVAL_ACTIVE_SECONDS` + `REBOOTER_COMMAND_ACTIVE_WINDOW_SECONDS`. **That code was never implemented in 0.6.48 or any subsequent release.** Empirical click-to-execute p50 stayed at ~60s (the steady-state interval) post-0.6.48 ship, matching design-not-shipped exactly. The proxy-team monitoring agent flagged the doc/code drift on 2026-06-30; this errata closes it. The actual relay-click-responsiveness pain the missing entry was solving was addressed by **v0.6.50's SSE push + LAN agent** (see 0.6.50 entry below) — verified ~850ms click → UI-confirmed flip via the new state-confirmed callback path, well past the 2.5s target the un-shipped adaptive-heartbeat design proposed.
 
 ## [0.6.47] - 2026-06-14
 
