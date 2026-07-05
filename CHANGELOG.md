@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.57] - 2026-07-05
+
+### Fixed
+
+- **CI green.** v0.6.56's changelog body listed the five disavowed identifiers in backtick-quoted prose *outside* the v0.6.48 `### Errata` sub-block, so `test_changelog_symbols_exist_in_source.py` — the very future-drift gate that release introduced — flagged them as documented-but-missing under v0.6.56 and failed CI. The list is now folded to a natural-language pointer at the v0.6.48 Errata block below (which still enumerates all five). No behavior change; docs-only.
+
 ## [0.6.56] - 2026-06-23
 
 ### Changed
 
-- **CHANGELOG erratum + future-drift gate.** Closes the proxy-team finding (memo `2026-06-30-rebooter-droids-adaptive-heartbeat-design-shipped-code-didnt.md`) that v0.6.48's "adaptive heartbeat cadence" entry documented `has_recent_command_activity()` / `heartbeat_interval_active_seconds` / `command_active_window_seconds` / `REBOOTER_HEARTBEAT_INTERVAL_ACTIVE_SECONDS` / `REBOOTER_COMMAND_ACTIVE_WINDOW_SECONDS` — none of which ever existed in `app/` (git log `-S` confirms the symbols only ever lived in the CHANGELOG itself, never in code). The actual relay-click-responsiveness pain the missing feature was meant to solve was already addressed by v0.6.50's SSE push + LAN agent (~850ms click → UI-confirmed flip in production), so re-implementing the un-shipped design would be redundant.
+- **CHANGELOG erratum + future-drift gate.** Closes the proxy-team finding (memo `2026-06-30-rebooter-droids-adaptive-heartbeat-design-shipped-code-didnt.md`) that v0.6.48's "adaptive heartbeat cadence" entry documented five identifiers (three Python symbols + two env vars, all listed in the v0.6.48 `### Errata` block below) that never existed in `app/` — git log `-S` confirms the symbols only ever lived in the CHANGELOG itself, never in code. The actual relay-click-responsiveness pain the missing feature was meant to solve was already addressed by v0.6.50's SSE push + LAN agent (~850ms click → UI-confirmed flip in production), so re-implementing the un-shipped design would be redundant.
   - The v0.6.48 entry now carries an `### Errata` block describing the correction; the original (correct) entry text re-asserts that v0.6.48 was the `services/watchdog.py` → `services/watchdog/` subpackage split per `docs/refactor-log.md`.
   - New gate at `tests/unit/test_changelog_symbols_exist_in_source.py` — every backtick-quoted Python-/env-var-shaped identifier in a released CHANGELOG version (≥ 0.6.48, not under `### Errata`, not `[Unreleased]`) must resolve to at least one occurrence under `app/`. Future doc-without-code drift trips the suite before merge. Same shape as llm-proxy-v2's `tests/unit/test_v5141_hook_runner_pins_all_endpoints.py` the proxy team cited as their precedent.
 
