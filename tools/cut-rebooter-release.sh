@@ -75,6 +75,21 @@ git tag -a "v${NEW_VERSION}" -m "v${NEW_VERSION}"
 git push origin main
 git push origin "v${NEW_VERSION}"
 
+# 2026-07-05: CI-wait gate. After the v0.6.56 → v0.6.57 4-day-red-CI
+# incident (test caught its own changelog + nobody was watching for
+# ~96h), block here until GitHub Actions returns green for this push.
+# Failure aborts the release BEFORE tagging/docker/prod steps so we
+# can't ship an image whose tests didn't pass.
+echo "→ Waiting for CI to go green on this push …"
+if ! bash "$REPO_ROOT/scripts/wait_for_ci.sh" --timeout 600 ; then
+  echo
+  echo "✗ CI failed for v${NEW_VERSION} — release aborted."
+  echo "  Fix the failing tests, then run this script again with the"
+  echo "  next patch version. The commit and tag are already on origin;"
+  echo "  no rollback needed — the follow-up commit will supersede them."
+  exit 1
+fi
+
 NOTES="$(awk -v v="$NEW_VERSION" '
   $0 ~ "^## \\[" v "\\]" { capture=1; next }
   capture && /^## \[/ { exit }
